@@ -2,11 +2,11 @@
 #include <queue>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <functional>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -30,15 +30,15 @@ struct known_peers_comparator : public std::binary_function<char*, char*, bool> 
 struct known_peers_hasher {
 
     //BKDR hash algorithm
-    int operator()( char* str ) const {
+    int operator()( char* key ) const {
 
         int seed = 131; //31 131 1313 13131131313 etc//
         int hash = 0;
+        size_t len = strlen( key );
 
-        while( *str ) {
+        for( size_t i = 0; i < len; ++i ) {
 
-            hash = ( ( hash * seed ) + ( *str ) );
-            ++str;
+            hash = ( ( hash * seed ) + key[ i ] );
         }
 
         return ( hash & 0x7FFFFFFF );
@@ -70,25 +70,24 @@ struct PendingReadCallbackArgs {
     size_t* out_packet_len;
 };
 
-struct PendingReadsQueueItem;
-
-typedef std::function<PendingReadsQueueItem*(PendingReadCallbackArgs*)> PendingReadsQueueCb_t;
-
 struct PendingReadsQueueItem {
 
     size_t len;
-    PendingReadsQueueCb_t* cb;
+    PendingReadsQueueItem* (Client::*cb) (PendingReadCallbackArgs*);
 };
 
 static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events );
 
 static inline char* make_peer_id( size_t peer_name_len, char* peer_name, uint32_t peer_port ) {
 
-    char* peer_id = (char*)malloc( peer_name_len + sizeof( peer_port ) + 1 );
+    char* peer_id = (char*)malloc( peer_name_len
+        + 1 // :
+        + 5 // port string
+        + 1 // \0
+    );
 
     memcpy( peer_id, peer_name, peer_name_len );
-    memcpy( peer_id + peer_name_len, &peer_port, sizeof( peer_port ) );
-    peer_id[ peer_name_len + sizeof( peer_port ) ] = '\0';
+    sprintf( peer_id + peer_name_len, ":%u", peer_port );
 
     return peer_id;
 }
@@ -99,15 +98,15 @@ class Client {
         struct client_bound_ev_io watcher;
         int fh;
         struct ev_loop* loop;
-        char * read_queue;
+        char* read_queue;
         size_t read_queue_length;
         size_t read_queue_mapped_length;
         std::queue<WriteQueueItem*> write_queue;
         pthread_mutex_t write_queue_mutex;
-        char * peer_name;
+        char* peer_name;
         size_t peer_name_len;
         uint32_t peer_port;
-        char * peer_id;
+        char* peer_id;
         std::queue<PendingReadsQueueItem**> pending_reads;
 
         void read_cb() {
@@ -122,6 +121,10 @@ class Client {
 
                 if( ! pending_reads.empty() ) {
 
+                    // Pending reads queue is a top priority callback
+                    // If there is a pending read - incoming data should
+                    // be passed to such a callback
+
                     auto _item = pending_reads.front();
                     auto item = *_item;
                     --in_packet_len;
@@ -135,23 +138,28 @@ class Client {
                             .out_packet_len = &out_packet_len
                         };
 
-                        auto new_item = (*(item -> cb))( &args );
+                        auto new_item = (this ->* (item -> cb))( &args );
                         in_packet_len += item -> len;
 
-                        free( item -> cb );
                         free( item );
 
                         if( new_item == nullptr ) {
 
+                            // If pending read has received all its data -
+                            // remove it from the queue
                             pending_reads.pop();
 
                         } else {
 
+                            // If pending read requests more data -
+                            // wait for it
                             *_item = new_item;
                         }
 
                     } else {
 
+                        // If we have a pending read, but requested amount
+                        // of data is still not arrived - we should wait for it
                         break;
                     }
 
@@ -237,70 +245,7 @@ class Client {
                     PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
 
                     item -> len = 4;
-
-                    PendingReadsQueueCb_t cb = [ this ]( PendingReadCallbackArgs* args ){
-
-                        uint32_t _len;
-                        memcpy( &_len, args -> data, 4 );
-                        uint32_t len = ntohl( _len );
-
-                        PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
-
-                        item -> len = len + 4;
-
-                        PendingReadsQueueCb_t cb = [ this ]( PendingReadCallbackArgs* args ){
-
-                            uint32_t host_len = args -> len - 4;
-
-                            char host[ host_len ];
-                            memcpy( host, args -> data, host_len );
-
-                            uint32_t _port;
-                            memcpy( &_port, args -> data + host_len, 4 );
-                            uint32_t port = ntohl( _port );
-
-                            char* out_packet = (char*)malloc( 1 );
-                            *(args -> out_packet) = out_packet;
-                            *(args -> out_packet_len) = 1;
-
-                            auto _peer_id = make_peer_id( host_len, host, port );
-
-                            pthread_mutex_lock( &known_peers_mutex );
-
-                            auto known_peer = known_peers.find( _peer_id );
-
-                            if( known_peer == known_peers.end() ) {
-
-                                out_packet[ 0 ] = 'k';
-
-                                peer_name = (char*)malloc( host_len );
-                                memcpy( peer_name, host, host_len );
-
-                                peer_name_len = host_len;
-                                peer_port = port;
-                                peer_id = _peer_id;
-
-                                known_peers[ _peer_id ] = this;
-
-                            } else {
-
-                                free( _peer_id );
-                                out_packet[ 0 ] = 'f';
-                            }
-
-                            pthread_mutex_unlock( &known_peers_mutex );
-
-                            return nullptr;
-                        };
-
-                        item -> cb = (PendingReadsQueueCb_t*)malloc( sizeof( PendingReadsQueueCb_t ) );
-                        memcpy( item -> cb, &cb, sizeof( PendingReadsQueueCb_t ) );
-
-                        return item;
-                    };
-
-                    item -> cb = (PendingReadsQueueCb_t*)malloc( sizeof( PendingReadsQueueCb_t ) );
-                    memcpy( item -> cb, &cb, sizeof( PendingReadsQueueCb_t ) );
+                    item -> cb = &Client::packet_h_cb1;
 
                     pending_reads.push( &item );
 
@@ -322,12 +267,73 @@ class Client {
             }
         }
 
+        PendingReadsQueueItem* packet_h_cb1( PendingReadCallbackArgs* args ) {
+
+            uint32_t _len;
+            memcpy( &_len, args -> data, args -> len );
+            uint32_t len = ntohl( _len );
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+
+            item -> len = len + 4;
+            item -> cb = &Client::packet_h_cb2;
+
+            return item;
+        }
+
+        PendingReadsQueueItem* packet_h_cb2( PendingReadCallbackArgs* args ) {
+
+            uint32_t host_len = args -> len - 4;
+
+            char host[ host_len ];
+            memcpy( host, args -> data, host_len );
+
+            uint32_t _port;
+            memcpy( &_port, args -> data + host_len, 4 );
+            uint32_t port = ntohl( _port );
+
+            char* out_packet = (char*)malloc( 1 );
+            *(args -> out_packet) = out_packet;
+            *(args -> out_packet_len) = 1;
+
+            auto _peer_id = make_peer_id( host_len, host, port );
+
+            pthread_mutex_lock( &known_peers_mutex );
+
+            auto known_peer = known_peers.find( _peer_id );
+
+            if( known_peer == known_peers.end() ) {
+
+                out_packet[ 0 ] = 'k';
+
+                peer_name = (char*)malloc( host_len );
+                memcpy( peer_name, host, host_len );
+
+                peer_name_len = host_len;
+                peer_port = port;
+                peer_id = _peer_id;
+
+                known_peers[ _peer_id ] = this;
+
+            } else {
+
+                free( _peer_id );
+                out_packet[ 0 ] = 'f';
+            }
+
+            pthread_mutex_unlock( &known_peers_mutex );
+
+            return nullptr;
+        }
+
     public:
         Client( int _fh, struct ev_loop* _loop ) : fh( _fh ), loop( _loop ) {
 
+            read_queue = NULL;
             peer_name = NULL;
             peer_id = NULL;
             read_queue_length = 0;
+            read_queue_mapped_length = 0;
             pthread_mutex_init( &write_queue_mutex, NULL );
 
             fcntl( fh, F_SETFL, fcntl( fh, F_GETFL, 0 ) | O_NONBLOCK );
@@ -338,6 +344,10 @@ class Client {
         }
 
         ~Client() {
+
+            ev_io_stop( loop, &watcher.watcher );
+            shutdown( fh, SHUT_RDWR );
+            close( fh );
 
             pthread_mutex_lock( &known_peers_mutex );
 
@@ -353,16 +363,11 @@ class Client {
 
             pthread_mutex_unlock( &known_peers_mutex );
 
-            ev_io_stop( loop, &watcher.watcher );
-            shutdown( fh, SHUT_RDWR );
-            close( fh );
-
             while( ! pending_reads.empty() ) {
 
                 auto _item = pending_reads.front();
                 auto item = *_item;
 
-                free( item -> cb );
                 free( item );
 
                 pending_reads.pop();
@@ -418,7 +423,7 @@ class Client {
 
             auto offset = read_queue_length;
 
-            if( read_queue_length == 0 ) {
+            if( read_queue == NULL ) {
 
                 read_queue_length = len;
                 read_queue_mapped_length = read_size +
@@ -466,6 +471,9 @@ class Client {
                 }
             }
 
+            if( result == NULL )
+                ev_io_set( &watcher.watcher, fh, EV_READ );
+
             pthread_mutex_unlock( &write_queue_mutex );
 
             return result;
@@ -505,26 +513,29 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
     if( events & EV_READ ) {
 
-        char buf[ read_size ];
+        char* buf = (char*)malloc( read_size );
 
-        int read = recv( _watcher -> fd, buf, sizeof( buf ), 0 );
+        int read = recv( _watcher -> fd, buf, read_size, 0 );
 
-        if( read < 0 ) {
+        if( read > 0 ) {
+
+            watcher -> client -> push_read_queue( read, buf );
+            free( buf );
+
+        } else if( read < 0 ) {
 
             if( ( errno != EAGAIN ) && ( errno != EINTR ) ) {
 
                 perror( "recv" );
+                free( buf );
                 delete watcher -> client;
+
+                return;
             }
-
-            return;
-
-        } else if( read > 0 ) {
-
-            watcher -> client -> push_read_queue( read, buf );
 
         } else {
 
+            free( buf );
             delete watcher -> client;
 
             return;
@@ -535,18 +546,19 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
         auto item = watcher -> client -> get_pending_write();
 
-        if( item == NULL ) {
-
-            ev_io_set( _watcher, _watcher -> fd, EV_READ );
-
-        } else {
+        if( item != NULL ) {
 
             int written = write( _watcher -> fd, ( item -> data + item -> pos ), item -> len );
 
             if( written < 0 ) {
 
-                perror( "write" );
-                delete watcher -> client;
+                if( ( errno != EAGAIN ) && ( errno != EINTR ) ) {
+
+                    perror( "write" );
+                    delete watcher -> client;
+
+                    return;
+                }
 
             } else {
 
@@ -589,6 +601,13 @@ void* client_thread( void* args ) {
     return NULL;
 }
 
+void* discovery_thread( void* args ) {
+
+
+
+    return NULL;
+}
+
 static void socket_cb( struct ev_loop* loop, ev_io* watcher, int events ) {
 
     struct sockaddr_in addr;
@@ -612,6 +631,8 @@ static void socket_cb( struct ev_loop* loop, ev_io* watcher, int events ) {
 int main() {
 
     printf("k\n");
+    signal( SIGPIPE, SIG_IGN );
+
     struct sockaddr_in addr;
 
     int fh = socket( PF_INET, SOCK_STREAM, 0 );
