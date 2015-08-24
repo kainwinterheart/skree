@@ -2,6 +2,7 @@
 #include <queue>
 #include <errno.h>
 #include <fcntl.h>
+#include <netdb.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,16 +11,26 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <netinet/tcp.h>
 #include <unordered_map>
 
 size_t read_size = 131072;
-
-std::queue<int> new_clients;
-pthread_mutex_t new_clients_mutex;
+time_t discovery_timeout_milliseconds = 3000;
 
 class Client;
 
-struct known_peers_comparator : public std::binary_function<char*, char*, bool> {
+struct new_client_t {
+
+    int fh;
+    void (*cb) (Client*);
+    sockaddr_in* s_in;
+    socklen_t s_in_len;
+};
+
+std::queue<new_client_t*> new_clients;
+pthread_mutex_t new_clients_mutex;
+
+struct char_pointer_comparator : public std::binary_function<char*, char*, bool> {
 
     bool operator()( const char* a, const char* b ) const {
 
@@ -27,7 +38,7 @@ struct known_peers_comparator : public std::binary_function<char*, char*, bool> 
     }
 };
 
-struct known_peers_hasher {
+struct char_pointer_hasher {
 
     //BKDR hash algorithm
     int operator()( char* key ) const {
@@ -45,21 +56,21 @@ struct known_peers_hasher {
     }
 };
 
-typedef std::unordered_map<char*, Client*, known_peers_hasher, known_peers_comparator> known_peers_t;
-known_peers_t known_peers;
+std::unordered_map<char*, Client*, char_pointer_hasher, char_pointer_comparator> known_peers;
 pthread_mutex_t known_peers_mutex;
+
+struct peer_to_discover_t {
+
+    uint32_t port;
+    const char* host;
+};
+
+std::unordered_map<char*, peer_to_discover_t, char_pointer_hasher, char_pointer_comparator> peers_to_discover;
 
 struct client_bound_ev_io {
 
     ev_io watcher;
     Client* client;
-};
-
-struct WriteQueueItem {
-
-    size_t len;
-    size_t pos;
-    char* data;
 };
 
 struct PendingReadCallbackArgs {
@@ -74,6 +85,14 @@ struct PendingReadsQueueItem {
 
     size_t len;
     PendingReadsQueueItem* (Client::*cb) (PendingReadCallbackArgs*);
+};
+
+struct WriteQueueItem {
+
+    size_t len;
+    size_t pos;
+    char* data;
+    PendingReadsQueueItem* cb;
 };
 
 static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events );
@@ -108,6 +127,8 @@ class Client {
         uint32_t peer_port;
         char* peer_id;
         std::queue<PendingReadsQueueItem**> pending_reads;
+        sockaddr_in* s_in;
+        socklen_t s_in_len;
 
         void read_cb() {
 
@@ -148,6 +169,7 @@ class Client {
                             // If pending read has received all its data -
                             // remove it from the queue
                             pending_reads.pop();
+                            free( _item );
 
                         } else {
 
@@ -247,11 +269,7 @@ class Client {
                     item -> len = 4;
                     item -> cb = &Client::packet_h_cb1;
 
-                    pending_reads.push( &item );
-
-                // } else if ( ... ) {
-
-
+                    push_pending_reads_queue( item );
 
                 } else {
 
@@ -263,7 +281,7 @@ class Client {
                     memmove( read_queue, read_queue + in_packet_len, read_queue_length );
 
                 if( out_packet_len > 0 )
-                    push_write_queue( out_packet_len, out_packet );
+                    push_write_queue( out_packet_len, out_packet, NULL );
             }
         }
 
@@ -326,8 +344,32 @@ class Client {
             return nullptr;
         }
 
+        PendingReadsQueueItem* discovery_cb4( PendingReadCallbackArgs* args ) {
+
+            auto peer_id = make_peer_id( args -> len, args -> data, this -> get_conn_port() );
+
+            printf( "ERMAHGERD DERSCERVEREY: %s\n", peer_id );
+
+            return nullptr;
+        }
+
+        PendingReadsQueueItem* discovery_cb3( PendingReadCallbackArgs* args ) {
+
+            uint32_t _len;
+            memcpy( &_len, args -> data, args -> len );
+            uint32_t len = ntohl( _len );
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+
+            item -> len = len;
+            item -> cb = &Client::discovery_cb4;
+
+            return item;
+        }
+
     public:
-        Client( int _fh, struct ev_loop* _loop ) : fh( _fh ), loop( _loop ) {
+        Client( int _fh, struct ev_loop* _loop, sockaddr_in* _s_in, socklen_t _s_in_len )
+            : fh( _fh ), loop( _loop ), s_in( _s_in ), s_in_len( _s_in_len ) {
 
             read_queue = NULL;
             peer_name = NULL;
@@ -345,11 +387,12 @@ class Client {
 
         ~Client() {
 
+            pthread_mutex_lock( &known_peers_mutex );
+
             ev_io_stop( loop, &watcher.watcher );
             shutdown( fh, SHUT_RDWR );
             close( fh );
-
-            pthread_mutex_lock( &known_peers_mutex );
+            free( s_in );
 
             if( peer_id != NULL ) {
 
@@ -369,11 +412,10 @@ class Client {
                 auto item = *_item;
 
                 free( item );
+                free( _item );
 
                 pending_reads.pop();
             }
-
-            pthread_mutex_lock( &write_queue_mutex );
 
             while( ! write_queue.empty() ) {
 
@@ -381,10 +423,10 @@ class Client {
                 write_queue.pop();
 
                 free( item -> data );
+                if( item -> cb != NULL ) free( item -> cb );
                 free( item );
             }
 
-            pthread_mutex_unlock( &write_queue_mutex );
             pthread_mutex_destroy( &write_queue_mutex );
 
             if( read_queue != NULL ) free( read_queue );
@@ -404,6 +446,18 @@ class Client {
         uint32_t get_peer_port() {
 
             return peer_port;
+        }
+
+        uint32_t get_conn_port() {
+
+            if( s_in -> sin_family == AF_INET ) {
+
+                return ntohs( s_in -> sin_port );
+
+            } else {
+
+                return ntohs( ((sockaddr_in6*)s_in) -> sin6_port );
+            }
         }
 
         char* get_peer_id() {
@@ -467,6 +521,7 @@ class Client {
 
                     write_queue.pop();
                     free( item -> data );
+                    if( item -> cb != NULL ) free( item -> cb );
                     free( item );
                 }
             }
@@ -479,13 +534,14 @@ class Client {
             return result;
         }
 
-        void push_write_queue( size_t len, char* data ) {
+        void push_write_queue( size_t len, char* data, PendingReadsQueueItem* cb ) {
 
             WriteQueueItem* item = (WriteQueueItem*)malloc( sizeof( *item ) );
 
             item -> len = len;
             item -> data = data;
             item -> pos = 0;
+            item -> cb = cb;
 
             pthread_mutex_lock( &write_queue_mutex );
 
@@ -496,17 +552,45 @@ class Client {
 
             pthread_mutex_unlock( &write_queue_mutex );
         }
+
+        void push_pending_reads_queue( PendingReadsQueueItem* item ) {
+
+            PendingReadsQueueItem** _item = (PendingReadsQueueItem**)malloc( sizeof( *_item ) );
+            *_item = item;
+
+            pending_reads.push( _item );
+        }
+
+        PendingReadsQueueItem* discovery_cb2( PendingReadCallbackArgs* args ) {
+
+            if( args -> data[ 0 ] == 'k' ) {
+
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+
+                item -> len = 4;
+                item -> cb = &Client::discovery_cb3;
+
+                return item;
+
+            } else {
+
+                delete this;
+
+                return nullptr;
+            }
+        }
 };
 
 static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
     struct client_bound_ev_io* watcher = (struct client_bound_ev_io*)_watcher;
+    auto client = watcher -> client;
 
     if( events & EV_ERROR ) {
 
         printf( "EV_ERROR!\n" );
 
-        delete watcher -> client;
+        delete client;
 
         return;
     }
@@ -519,7 +603,7 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
         if( read > 0 ) {
 
-            watcher -> client -> push_read_queue( read, buf );
+            client -> push_read_queue( read, buf );
             free( buf );
 
         } else if( read < 0 ) {
@@ -528,7 +612,7 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
                 perror( "recv" );
                 free( buf );
-                delete watcher -> client;
+                delete client;
 
                 return;
             }
@@ -536,7 +620,7 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
         } else {
 
             free( buf );
-            delete watcher -> client;
+            delete client;
 
             return;
         }
@@ -544,7 +628,7 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
     if( events & EV_WRITE ) {
 
-        auto item = watcher -> client -> get_pending_write();
+        auto item = client -> get_pending_write();
 
         if( item != NULL ) {
 
@@ -555,7 +639,7 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
                 if( ( errno != EAGAIN ) && ( errno != EINTR ) ) {
 
                     perror( "write" );
-                    delete watcher -> client;
+                    delete client;
 
                     return;
                 }
@@ -563,6 +647,12 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
             } else {
 
                 item -> pos += written;
+
+                if( item -> cb != NULL ) {
+
+                    client -> push_pending_reads_queue( item -> cb );
+                    item -> cb = NULL;
+                }
             }
         }
     }
@@ -584,12 +674,22 @@ void* client_thread( void* args ) {
 
             if( ! new_clients.empty() ) {
 
-                int fh = new_clients.front();
+                auto new_client = new_clients.front();
                 new_clients.pop();
 
                 pthread_mutex_unlock( &new_clients_mutex );
 
-                auto client = new Client( fh, loop );
+                auto client = new Client(
+                    new_client -> fh,
+                    loop,
+                    new_client -> s_in,
+                    new_client -> s_in_len
+                );
+
+                if( new_client -> cb != NULL )
+                    new_client -> cb( client );
+
+                free( new_client );
 
             } else {
 
@@ -601,28 +701,165 @@ void* client_thread( void* args ) {
     return NULL;
 }
 
+void discovery_cb1( Client* client ) {
+
+    char* w_req = (char*)malloc( 1 );
+    w_req[ 0 ] = 'w';
+
+    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+
+    item -> len = 1;
+    item -> cb = &Client::discovery_cb2;
+
+    client -> push_write_queue( 1, w_req, item );
+}
+
 void* discovery_thread( void* args ) {
 
+    while( true ) {
 
+        for( auto it = peers_to_discover.begin(); it != peers_to_discover.end(); ++it ) {
+
+            printf( "about to discovery %s...\n", it -> first );
+            auto peer_to_discover = it -> second;
+
+            addrinfo hints;
+            addrinfo* service_info;
+
+            memset( &hints, 0, sizeof( hints ) );
+            hints.ai_family = AF_UNSPEC;
+            hints.ai_socktype = SOCK_STREAM;
+            hints.ai_flags = AI_NUMERICSERV;
+
+            char port[ 6 ];
+            sprintf( port, "%d", peer_to_discover.port );
+
+            int rv;
+
+            if( ( rv = getaddrinfo( peer_to_discover.host, port, &hints, &service_info ) ) != 0 ) {
+
+                fprintf( stderr, "getaddrinfo: %s\n", gai_strerror( rv ) );
+                continue;
+            }
+
+            int fh;
+            int yes = 1;
+            sockaddr_in* addr = (sockaddr_in*)malloc( sizeof( *addr ) );
+            socklen_t addr_len;
+            bool connected = false;
+
+            for( auto ai_it = service_info; ai_it != NULL; ai_it = ai_it -> ai_next ) {
+
+                if( ( fh = socket( ai_it -> ai_family, ai_it -> ai_socktype, ai_it -> ai_protocol ) ) == -1 ) {
+
+                    perror( "socket" );
+                    continue;
+                }
+
+                if( setsockopt( fh, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof( yes ) ) == -1 ) {
+
+                    perror( "setsockopt" );
+                    continue;
+                }
+
+                if( setsockopt( fh, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof( yes ) ) == -1 ) {
+
+                    perror( "setsockopt" );
+                    continue;
+                }
+
+                timeval tv;
+                tv.tv_sec = ( discovery_timeout_milliseconds / 1000 );
+                tv.tv_usec = ( ( discovery_timeout_milliseconds % 1000 ) * 1000 );
+
+                if( setsockopt( fh, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof( tv ) ) == -1 ) {
+
+                    perror( "setsockopt" );
+                    continue;
+                }
+
+                if( setsockopt( fh, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof( tv ) ) == -1 ) {
+
+                    perror( "setsockopt" );
+                    continue;
+                }
+
+                if( connect( fh, ai_it -> ai_addr, ai_it -> ai_addrlen ) == -1 ) {
+
+                    if( errno != EINPROGRESS ) {
+
+                        close( fh );
+                        perror( "connect" );
+                        continue;
+                    }
+
+                    fcntl( fh, F_SETFL, fcntl( fh, F_GETFL, 0 ) | O_NONBLOCK );
+                }
+
+                *addr = *(sockaddr_in*)(ai_it -> ai_addr);
+                addr_len = ai_it -> ai_addrlen;
+                connected = true;
+
+                break;
+            }
+
+            if( connected ) {
+
+                if( getpeername( fh, (sockaddr*)addr, &addr_len ) == -1 ) {
+
+                    perror( "getpeername" );
+                    close( fh );
+                    free( addr );
+
+                } else {
+
+                    new_client_t* new_client = (new_client_t*)malloc( sizeof( *new_client ) );
+
+                    new_client -> fh = fh;
+                    new_client -> cb = discovery_cb1;
+                    new_client -> s_in = addr;
+                    new_client -> s_in_len = addr_len;
+
+                    pthread_mutex_lock( &new_clients_mutex );
+                    new_clients.push( new_client );
+                    pthread_mutex_unlock( &new_clients_mutex );
+                }
+
+            } else {
+
+                fprintf( stderr, "Peer %s is unreachable\n", it -> first );
+            }
+        }
+
+        sleep( 5 );
+    }
 
     return NULL;
 }
 
 static void socket_cb( struct ev_loop* loop, ev_io* watcher, int events ) {
 
-    struct sockaddr_in addr;
-    socklen_t len = sizeof( addr );
+    sockaddr_in* addr = (sockaddr_in*)malloc( sizeof( *addr ) );
+    socklen_t len = sizeof( *addr );
 
-    int fh = accept( watcher -> fd, (struct sockaddr*)&addr, &len );
+    int fh = accept( watcher -> fd, (sockaddr*)addr, &len );
 
     if( fh < 0 ) {
 
         perror( "accept" );
+        free( addr );
         return;
     }
 
+    new_client_t* new_client = (new_client_t*)malloc( sizeof( *new_client ) );
+
+    new_client -> fh = fh;
+    new_client -> cb = NULL;
+    new_client -> s_in = addr;
+    new_client -> s_in_len = len;
+
     pthread_mutex_lock( &new_clients_mutex );
-    new_clients.push( fh );
+    new_clients.push( new_client );
     pthread_mutex_unlock( &new_clients_mutex );
 
     return;
@@ -633,11 +870,11 @@ int main() {
     printf("k\n");
     signal( SIGPIPE, SIG_IGN );
 
-    struct sockaddr_in addr;
+    sockaddr_in addr;
 
     int fh = socket( PF_INET, SOCK_STREAM, 0 );
 
-    addr.sin_family = AF_INET;
+    addr.sin_family = AF_UNSPEC;
     addr.sin_port = htons( 7654 );
     addr.sin_addr.s_addr = INADDR_ANY;
 
@@ -649,7 +886,7 @@ int main() {
         return 1;
     }
 
-    if( bind( fh, (struct sockaddr*)&addr, sizeof( addr ) ) != 0 ) {
+    if( bind( fh, (sockaddr*)&addr, sizeof( addr ) ) != 0 ) {
 
         perror( "bind" );
         return 1;
@@ -678,7 +915,38 @@ int main() {
         threads.push( thread );
     }
 
+    {
+        peer_to_discover_t localhost7654 = {
+            .port = 7654,
+            .host = "127.0.0.1\0"
+        };
+
+        peer_to_discover_t localhost8765 = {
+            .port = 8765,
+            .host = "127.0.0.1\0"
+        };
+
+        peers_to_discover[ make_peer_id(
+            strlen( localhost7654.host ),
+            (char*)localhost7654.host,
+            localhost7654.port
+
+        ) ] = localhost7654;
+
+        peers_to_discover[ make_peer_id(
+            strlen( localhost8765.host ),
+            (char*)localhost8765.host,
+            localhost8765.port
+
+        ) ] = localhost8765;
+    }
+
+    pthread_t discovery;
+    pthread_create( &discovery, NULL, discovery_thread, NULL );
+
     ev_run( loop, 0 );
+
+    pthread_join( discovery, NULL );
 
     while( ! threads.empty() ) {
 
