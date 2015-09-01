@@ -97,6 +97,7 @@ struct PendingReadsQueueItem {
     size_t len;
     PendingReadsQueueItem* (Client::*cb) (PendingReadCallbackArgs*);
     void* ctx = NULL;
+    bool opcode = false;
 };
 
 struct WriteQueueItem {
@@ -176,6 +177,111 @@ class Client {
         sockaddr_in* s_in;
         socklen_t s_in_len;
 
+        void ordinary_packet_cb(
+            const char& opcode, char** out_packet,
+            size_t* out_packet_len, size_t* in_packet_len
+        ) {
+
+            if( opcode == 'w' ) {
+
+                auto _out_packet = (char*)malloc( 1 + sizeof( my_hostname_len )
+                    + my_hostname_len );
+
+                _out_packet[ 0 ] = 'k';
+                *out_packet_len += 1;
+
+                uint32_t _hostname_len = htonl( my_hostname_len );
+                memcpy( _out_packet + *out_packet_len, &_hostname_len,
+                        sizeof( _hostname_len ) );
+                *out_packet_len += sizeof( _hostname_len );
+
+                memcpy( _out_packet + *out_packet_len, my_hostname, my_hostname_len );
+                *out_packet_len += my_hostname_len;
+
+                *out_packet = _out_packet;
+
+            } else if( opcode == 'l' ) {
+
+                uint32_t _known_peers_len;
+                auto _out_packet = (char*)malloc( 1 + sizeof( _known_peers_len ) );
+
+                _out_packet[ 0 ] = 'k';
+                *out_packet_len += 1;
+
+                pthread_mutex_lock( &known_peers_mutex );
+
+                _known_peers_len = htonl( known_peers.size() );
+                memcpy( _out_packet + *out_packet_len, &_known_peers_len,
+                    sizeof( _known_peers_len ) );
+                *out_packet_len += sizeof( _known_peers_len );
+
+                for( auto it = known_peers.begin(); it != known_peers.end(); ++it ) {
+
+                    auto peer = it -> second;
+
+                    auto peer_name_len = peer -> get_peer_name_len();
+                    uint32_t _peer_name_len = htonl( peer_name_len );
+                    uint32_t _peer_port = htonl( peer -> get_peer_port() );
+
+                    _out_packet = (char*)realloc( _out_packet, *out_packet_len
+                        + sizeof( _peer_name_len ) + peer_name_len
+                        + sizeof( _peer_port ) );
+
+                    memcpy( _out_packet + *out_packet_len, &_peer_name_len,
+                            sizeof( _peer_name_len ) );
+                    *out_packet_len += sizeof( _peer_name_len );
+
+                    memcpy( _out_packet + *out_packet_len, peer -> get_peer_name(),
+                        peer_name_len );
+                    *out_packet_len += peer_name_len;
+
+                    memcpy( _out_packet + *out_packet_len, &_peer_port,
+                        sizeof( _peer_port ) );
+                    *out_packet_len += sizeof( _peer_port );
+                }
+
+                pthread_mutex_unlock( &known_peers_mutex );
+
+                *out_packet = _out_packet;
+
+            } else if( opcode == 'e' ) {
+
+
+
+            } else if( opcode == 'r' ) {
+
+
+
+            } else if( opcode == 'c' ) {
+
+
+
+            } else if( opcode == 'i' ) {
+
+
+
+            } else if( opcode == 'x' ) {
+
+
+
+            } else if( opcode == 'h' ) {
+
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
+
+                item -> len = 4;
+                item -> cb = &Client::packet_h_cb1;
+                item -> ctx = NULL;
+                item -> opcode = false;
+
+                push_pending_reads_queue( item );
+
+            } else {
+
+                printf( "Unknown packet header: 0x%.2X\n", opcode );
+            }
+        }
+
         void read_cb() {
 
             while( read_queue_length > 0 ) {
@@ -194,139 +300,85 @@ class Client {
 
                     auto _item = pending_reads.front();
                     auto item = *_item;
-                    --in_packet_len;
 
-                    if( read_queue_length >= item -> len ) {
+                    if(
+                        (
+                            ( item -> opcode == true )
+                            && ( ( opcode == 'k' ) || ( opcode == 'f' ) )
+                        )
+                        || ( item -> opcode == false )
+                    ) {
+                        // If pending read waits for opcode, and it is the
+                        // reply opcode we've got here, or if pending read
+                        // does not wait for opcode - process pending read
 
-                        bool stop = false;
+                        --in_packet_len;
 
-                        PendingReadCallbackArgs args = {
-                            .data = read_queue + in_packet_len,
-                            .len = item -> len,
-                            .out_packet = &out_packet,
-                            .out_packet_len = &out_packet_len,
-                            .stop = &stop,
-                            .ctx = item -> ctx
-                        };
+                        if( read_queue_length >= item -> len ) {
 
-                        auto new_item = (this ->* (item -> cb))( &args );
-                        in_packet_len += item -> len;
+                            bool stop = false;
 
-                        free( item );
+                            PendingReadCallbackArgs args = {
+                                .data = read_queue + in_packet_len,
+                                .len = item -> len,
+                                .out_packet = &out_packet,
+                                .out_packet_len = &out_packet_len,
+                                .stop = &stop,
+                                .ctx = item -> ctx
+                            };
 
-                        if( new_item == nullptr ) {
+                            auto new_item = (this ->* (item -> cb))( &args );
+                            in_packet_len += item -> len;
 
-                            // If pending read has received all its data -
-                            // remove it from the queue
-                            pending_reads.pop();
-                            free( _item );
+                            free( item );
+
+                            if( new_item == nullptr ) {
+
+                                // If pending read has received all its data -
+                                // remove it from the queue
+
+                                pending_reads.pop();
+                                free( _item );
+
+                            } else {
+
+                                // If pending read requests more data -
+                                // wait for it
+
+                                *_item = new_item;
+                            }
+
+                            if( stop ) {
+
+                                delete this;
+                                break;
+                            }
 
                         } else {
 
-                            // If pending read requests more data -
-                            // wait for it
-                            *_item = new_item;
-                        }
+                            // If we have a pending read, but requested amount
+                            // of data is still not arrived - we should wait for it
 
-                        if( stop ) {
-
-                            delete this;
                             break;
                         }
 
                     } else {
 
-                        // If we have a pending read, but requested amount
-                        // of data is still not arrived - we should wait for it
-                        break;
+                        // If pending read waits for opcode, and it is not
+                        // the reply opcode we've got here - process data as
+                        // ordinary inbound packet
+
+                        ordinary_packet_cb( opcode, &out_packet, &out_packet_len,
+                            &in_packet_len );
                     }
-
-                } else if( opcode == 'w' ) {
-
-                    out_packet = (char*)malloc( 1 + sizeof( my_hostname_len ) + my_hostname_len );
-
-                    out_packet[ 0 ] = 'k';
-                    out_packet_len += 1;
-
-                    uint32_t _hostname_len = htonl( my_hostname_len );
-                    memcpy( out_packet + out_packet_len, &_hostname_len, sizeof( _hostname_len ) );
-                    out_packet_len += sizeof( _hostname_len );
-
-                    memcpy( out_packet + out_packet_len, my_hostname, my_hostname_len );
-                    out_packet_len += my_hostname_len;
-
-                } else if( opcode == 'l' ) {
-
-                    uint32_t _known_peers_len;
-                    out_packet = (char*)malloc( 1 + sizeof( _known_peers_len ) );
-
-                    out_packet[ 0 ] = 'k';
-                    out_packet_len += 1;
-
-                    pthread_mutex_lock( &known_peers_mutex );
-
-                    _known_peers_len = htonl( known_peers.size() );
-                    memcpy( out_packet + out_packet_len, &_known_peers_len,
-                        sizeof( _known_peers_len ) );
-                    out_packet_len += sizeof( _known_peers_len );
-
-                    for( auto it = known_peers.begin(); it != known_peers.end(); ++it ) {
-
-                        auto peer = it -> second;
-
-                        auto peer_name_len = peer -> get_peer_name_len();
-                        uint32_t _peer_name_len = htonl( peer_name_len );
-                        uint32_t _peer_port = htonl( peer -> get_peer_port() );
-
-                        out_packet = (char*)realloc( out_packet, out_packet_len
-                            + sizeof( _peer_name_len ) + peer_name_len + sizeof( _peer_port ) );
-
-                        memcpy( out_packet + out_packet_len, &_peer_name_len,
-                                sizeof( _peer_name_len ) );
-                        out_packet_len += sizeof( _peer_name_len );
-
-                        memcpy( out_packet + out_packet_len, peer -> get_peer_name(),
-                            peer_name_len );
-                        out_packet_len += peer_name_len;
-
-                        memcpy( out_packet + out_packet_len, &_peer_port, sizeof( _peer_port ) );
-                        out_packet_len += sizeof( _peer_port );
-                    }
-
-                    pthread_mutex_unlock( &known_peers_mutex );
-
-                } else if( opcode == 'e' ) {
-
-
-
-                } else if( opcode == 'r' ) {
-
-
-
-                } else if( opcode == 'c' ) {
-
-
-
-                } else if( opcode == 'i' ) {
-
-
-
-                } else if( opcode == 'x' ) {
-
-
-
-                } else if( opcode == 'h' ) {
-
-                    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
-
-                    item -> len = 4;
-                    item -> cb = &Client::packet_h_cb1;
-
-                    push_pending_reads_queue( item );
 
                 } else {
 
-                    printf( "Unknown packet header: 0x%.2X\n", opcode );
+                    // There is no pending reads, so data should be processed
+                    // as ordinary inbound packet
+
+                    ordinary_packet_cb( opcode, &out_packet, &out_packet_len,
+                        &in_packet_len );
                 }
 
                 read_queue_length -= in_packet_len;
@@ -348,6 +400,8 @@ class Client {
 
             item -> len = len + 4;
             item -> cb = &Client::packet_h_cb2;
+            item -> ctx = NULL;
+            item -> opcode = false;
 
             return item;
         }
@@ -455,6 +509,7 @@ class Client {
             item -> len = len + 4;
             item -> cb = &Client::discovery_cb9;
             item -> ctx = args -> ctx;
+            item -> opcode = false;
 
             return item;
         }
@@ -471,6 +526,7 @@ class Client {
 
                 item -> len = 4;
                 item -> cb = &Client::discovery_cb8;
+                item -> opcode = false;
 
                 _cnt = htonl( cnt - 1 );
 
@@ -507,6 +563,8 @@ class Client {
 
                 item -> len = 4;
                 item -> cb = &Client::discovery_cb7;
+                item -> ctx = NULL;
+                item -> opcode = false;
 
                 return item;
 
@@ -545,6 +603,8 @@ class Client {
 
                     item -> len = 1;
                     item -> cb = &Client::discovery_cb6;
+                    item -> ctx = NULL;
+                    item -> opcode = true;
 
                     push_write_queue( 1, l_req, item );
                 }
@@ -637,6 +697,8 @@ class Client {
 
                 item -> len = 1;
                 item -> cb = &Client::discovery_cb5;
+                item -> ctx = NULL;
+                item -> opcode = true;
 
                 push_write_queue( h_len, h_req, item );
 
@@ -658,6 +720,8 @@ class Client {
 
             item -> len = len;
             item -> cb = &Client::discovery_cb4;
+            item -> ctx = NULL;
+            item -> opcode = false;
 
             return item;
         }
@@ -897,6 +961,8 @@ class Client {
 
                 item -> len = 4;
                 item -> cb = &Client::discovery_cb3;
+                item -> ctx = NULL;
+                item -> opcode = false;
 
                 return item;
 
@@ -1038,6 +1104,8 @@ void discovery_cb1( Client* client ) {
 
     item -> len = 1;
     item -> cb = &Client::discovery_cb2;
+    item -> ctx = NULL;
+    item -> opcode = true;
 
     client -> push_write_queue( 1, w_req, item );
 }
