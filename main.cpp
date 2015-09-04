@@ -1,21 +1,39 @@
+#include <map>
 #include <ev.h>
+#include <list>
 #include <queue>
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <signal.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <kchashdb.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <netinet/tcp.h>
 #include <unordered_map>
 
+// thank you, stackoverflow!
+#ifndef htonll
+#define htonll( x ) ( ( 1 == htonl( 1 ) ) ? ( x ) : ( (uint64_t)htonl( \
+    ( x ) & 0xFFFFFFFF ) << 32 ) | htonl( ( x ) >> 32 ) )
+#endif
+
+#ifndef ntohll
+#define ntohll( x ) ( ( 1 == ntohl( 1 ) ) ? ( x ) : ( (uint64_t)ntohl( \
+    ( x ) & 0xFFFFFFFF ) << 32 ) | ntohl( ( x ) >> 32 ) )
+#endif
+
 size_t read_size = 131072;
 time_t discovery_timeout_milliseconds = 3000;
+
+uint64_t stat_num_inserts;
+pthread_mutex_t stat_mutex;
+
+kyotocabinet::HashDB db;
 
 char* my_hostname;
 uint32_t my_hostname_len;
@@ -61,10 +79,12 @@ struct char_pointer_hasher {
     }
 };
 
-std::unordered_map<char*, Client*, char_pointer_hasher, char_pointer_comparator> known_peers;
+typedef std::unordered_map<char*, Client*, char_pointer_hasher, char_pointer_comparator> known_peers_t;
+known_peers_t known_peers;
 pthread_mutex_t known_peers_mutex;
 
-std::unordered_map<char*, bool, char_pointer_hasher, char_pointer_comparator> me;
+typedef std::unordered_map<char*, bool, char_pointer_hasher, char_pointer_comparator> me_t;
+me_t me;
 pthread_mutex_t me_mutex;
 
 struct peer_to_discover_t {
@@ -73,7 +93,8 @@ struct peer_to_discover_t {
     const char* host;
 };
 
-std::unordered_map<char*, peer_to_discover_t*, char_pointer_hasher, char_pointer_comparator> peers_to_discover;
+typedef std::unordered_map<char*, peer_to_discover_t*, char_pointer_hasher, char_pointer_comparator> peers_to_discover_t;
+peers_to_discover_t peers_to_discover;
 pthread_mutex_t peers_to_discover_mutex;
 
 struct client_bound_ev_io {
@@ -96,8 +117,8 @@ struct PendingReadsQueueItem {
 
     size_t len;
     PendingReadsQueueItem* (Client::*cb) (PendingReadCallbackArgs*);
-    void* ctx = NULL;
-    bool opcode = false;
+    void* ctx;
+    bool opcode;
 };
 
 struct WriteQueueItem {
@@ -106,6 +127,21 @@ struct WriteQueueItem {
     size_t pos;
     char* data;
     PendingReadsQueueItem* cb;
+};
+
+struct in_packet_e_ctx_event {
+
+    uint32_t len;
+    char* data;
+    char* id;
+};
+
+struct in_packet_e_ctx {
+
+    uint32_t event_name_len;
+    char* event_name;
+    std::list<in_packet_e_ctx_event*>* events;
+    uint32_t cnt;
 };
 
 static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events );
@@ -184,7 +220,7 @@ class Client {
 
             if( opcode == 'w' ) {
 
-                auto _out_packet = (char*)malloc( 1 + sizeof( my_hostname_len )
+                char* _out_packet = (char*)malloc( 1 + sizeof( my_hostname_len )
                     + my_hostname_len );
 
                 _out_packet[ 0 ] = 'k';
@@ -203,7 +239,7 @@ class Client {
             } else if( opcode == 'l' ) {
 
                 uint32_t _known_peers_len;
-                auto _out_packet = (char*)malloc( 1 + sizeof( _known_peers_len ) );
+                char* _out_packet = (char*)malloc( 1 + sizeof( _known_peers_len ) );
 
                 _out_packet[ 0 ] = 'k';
                 *out_packet_len += 1;
@@ -215,11 +251,11 @@ class Client {
                     sizeof( _known_peers_len ) );
                 *out_packet_len += sizeof( _known_peers_len );
 
-                for( auto it = known_peers.begin(); it != known_peers.end(); ++it ) {
+                for( known_peers_t::iterator it = known_peers.begin(); it != known_peers.end(); ++it ) {
 
-                    auto peer = it -> second;
+                    Client* peer = it -> second;
 
-                    auto peer_name_len = peer -> get_peer_name_len();
+                    uint32_t peer_name_len = peer -> get_peer_name_len();
                     uint32_t _peer_name_len = htonl( peer_name_len );
                     uint32_t _peer_port = htonl( peer -> get_peer_port() );
 
@@ -246,7 +282,15 @@ class Client {
 
             } else if( opcode == 'e' ) {
 
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
 
+                item -> len = 4;
+                item -> cb = &Client::packet_e_cb1;
+                item -> ctx = NULL;
+                item -> opcode = false;
+
+                push_pending_reads_queue( item );
 
             } else if( opcode == 'r' ) {
 
@@ -298,8 +342,8 @@ class Client {
                     // If there is a pending read - incoming data should
                     // be passed to such a callback
 
-                    auto _item = pending_reads.front();
-                    auto item = *_item;
+                    PendingReadsQueueItem** _item = pending_reads.front();
+                    PendingReadsQueueItem* item = *_item;
 
                     if(
                         (
@@ -327,7 +371,7 @@ class Client {
                                 .ctx = item -> ctx
                             };
 
-                            auto new_item = (this ->* (item -> cb))( &args );
+                            PendingReadsQueueItem* new_item = (this ->* (item -> cb))( &args );
                             in_packet_len += item -> len;
 
                             free( item );
@@ -390,13 +434,334 @@ class Client {
             }
         }
 
+        PendingReadsQueueItem* packet_e_cb1( PendingReadCallbackArgs* args ) {
+
+            uint32_t _len;
+            memcpy( &_len, args -> data, args -> len );
+            uint32_t len = ntohl( _len );
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
+
+            item -> len = len + 4;
+            item -> cb = &Client::packet_e_cb2;
+            item -> ctx = NULL;
+            item -> opcode = false;
+
+            return item;
+        }
+
+        PendingReadsQueueItem* packet_e_cb2( PendingReadCallbackArgs* args ) {
+
+            uint32_t event_name_len = args -> len - 4;
+
+            char* event_name = (char*)malloc( event_name_len );
+            memcpy( event_name, args -> data, event_name_len );
+
+            in_packet_e_ctx* ctx = (in_packet_e_ctx*)malloc( sizeof( *ctx ) );
+
+            ctx -> event_name = event_name;
+            ctx -> event_name_len = event_name_len;
+            ctx -> events = new std::list<in_packet_e_ctx_event*>();
+
+            uint32_t prev_len = args -> len;
+            args -> len = prev_len - event_name_len;
+
+            char* prev_data = args -> data;
+            args -> data = args -> data + event_name_len;
+
+            args -> ctx = (void*)ctx;
+
+            PendingReadsQueueItem* rv = packet_e_cb3( args );
+
+            args -> len = prev_len;
+            args -> data = prev_data;
+
+            return rv;
+        }
+
+        PendingReadsQueueItem* packet_e_cb3( PendingReadCallbackArgs* args ) {
+
+            uint32_t _cnt;
+            memcpy( &_cnt, args -> data, args -> len );
+            uint32_t cnt = ntohl( _cnt );
+
+            if( cnt > 0 ) {
+
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
+
+                item -> len = 4;
+                item -> cb = &Client::packet_e_cb4;
+                item -> opcode = false;
+
+                ((in_packet_e_ctx*)(args -> ctx)) -> cnt = htonl( cnt - 1 );
+
+                item -> ctx = args -> ctx;
+
+                return item;
+
+            } else {
+
+                if( args -> ctx == NULL ) {
+
+                    return nullptr;
+
+                } else {
+
+                    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                        sizeof( *item ) );
+
+                    item -> len = 4;
+                    item -> cb = &Client::packet_e_cb6;
+                    item -> ctx = args -> ctx;
+                    item -> opcode = false;
+
+                    return item;
+                }
+            }
+        }
+
+        PendingReadsQueueItem* packet_e_cb4( PendingReadCallbackArgs* args ) {
+
+            uint32_t _len;
+            memcpy( &_len, args -> data, args -> len );
+            uint32_t len = ntohl( _len );
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
+
+            item -> len = len;
+            item -> cb = &Client::packet_e_cb5;
+            item -> ctx = args -> ctx;
+            item -> opcode = false;
+
+            return item;
+        }
+
+        PendingReadsQueueItem* packet_e_cb5( PendingReadCallbackArgs* args ) {
+
+            uint32_t prev_len = args -> len;
+            char* prev_data = args -> data;
+
+            in_packet_e_ctx_event* event = (in_packet_e_ctx_event*)malloc(
+                sizeof( *event ) );
+
+            event -> len = prev_len;
+            event -> data = (char*)malloc( prev_len );
+            event -> id = NULL;
+
+            memcpy( event -> data, prev_data, prev_len );
+
+            in_packet_e_ctx* ctx = ((in_packet_e_ctx*)(args -> ctx));
+
+            ctx -> events -> push_back( event );
+
+            args -> len = 4;
+            args -> data = (char*)&(ctx -> cnt);
+
+            PendingReadsQueueItem* rv = packet_e_cb3( args );
+
+            args -> len = prev_len;
+            args -> data = prev_data;
+
+            return rv;
+        }
+
+        PendingReadsQueueItem* packet_e_cb6( PendingReadCallbackArgs* args ) {
+
+            uint32_t _replication_factor;
+            memcpy( &_replication_factor, args -> data, args -> len );
+            uint32_t replication_factor = ntohl( _replication_factor );
+
+            in_packet_e_ctx* ctx = (in_packet_e_ctx*)(args -> ctx);
+
+            uint64_t increment_key_len = 6 + ctx -> event_name_len;
+            char* increment_key = (char*)malloc( increment_key_len );
+
+            sprintf( increment_key, "inseq:" );
+            memcpy( increment_key + 6, ctx -> event_name, ctx -> event_name_len );
+
+            char* _out_packet = (char*)malloc( 1 );
+            *(args -> out_packet_len) += 1;
+            *(args -> out_packet) = _out_packet;
+
+            _out_packet[ 0 ] = 'f';
+
+            uint32_t _cnt = htonl( ctx -> events -> size() );
+            size_t r_len = 0;
+            char* r_req = (char*)malloc( 1
+                + sizeof( my_hostname_len )
+                + my_hostname_len
+                + sizeof( my_port )
+                + sizeof( _cnt )
+            );
+
+            r_req[ 0 ] = 'r';
+            r_len += 1;
+
+            uint32_t _hostname_len = htonl( my_hostname_len );
+            memcpy( r_req + r_len, &_hostname_len, sizeof( _hostname_len ) );
+            r_len += sizeof( _hostname_len );
+
+            memcpy( r_req + r_len, my_hostname, my_hostname_len );
+            r_len += my_hostname_len;
+
+            uint32_t _my_port = htonl( my_port );
+            memcpy( r_req + r_len, &_my_port, sizeof( _my_port ) );
+            r_len += sizeof( _my_port );
+
+            uint32_t _event_name_len = htonl( ctx -> event_name_len );
+            memcpy( r_req + r_len, &_event_name_len, sizeof( _event_name_len ) );
+            r_len += sizeof( _event_name_len );
+
+            memcpy( r_req + r_len, ctx -> event_name, ctx -> event_name_len );
+            r_len += ctx -> event_name_len;
+
+            memcpy( r_req + r_len, &_cnt, sizeof( _cnt ) );
+            r_len += sizeof( _cnt );
+
+            uint32_t num_inserted = 0;
+
+            if( db.begin_transaction() ) {
+
+                int64_t max_id = db.increment(
+                    increment_key,
+                    increment_key_len,
+                    ctx -> events -> size(),
+                    0
+                );
+
+                if( max_id == kyotocabinet::INT64MIN ) {
+
+                    if( ! db.end_transaction( false ) ) {
+
+                        fprintf( stderr, "Failed to abort transaction\n" );
+                        exit( 1 );
+                    }
+
+                } else {
+
+                    for(
+                        std::list<in_packet_e_ctx_event*>::iterator it =
+                            ctx -> events -> begin();
+                        it != ctx -> events -> end();
+                        ++it
+                    ) {
+
+                        in_packet_e_ctx_event* event = *it;
+
+                        event -> id = (char*)malloc( 21 );
+                        sprintf( event -> id, "%lld", max_id );
+
+                        uint32_t key_len =
+                            3 // in:
+                            + ctx -> event_name_len
+                            + 1 // :
+                            + strlen( event -> id )
+                        ;
+                        char* key = (char*)malloc( key_len );
+
+                        sprintf( key, "in:" );
+                        memcpy( key + 3, ctx -> event_name, ctx -> event_name_len );
+                        key[ 3 + ctx -> event_name_len ] = ':';
+                        memcpy( key + 3 + ctx -> event_name_len + 1, event -> id,
+                            strlen( event -> id ) );
+
+                        if( db.set( key, key_len, event -> data, event -> len ) ) {
+
+                            free( key );
+                            ++num_inserted;
+
+                        } else {
+
+                            free( key );
+                            break;
+                        }
+
+                        uint64_t _max_id = htonll( max_id );
+
+                        r_req = (char*)realloc( r_req,
+                            r_len
+                            + sizeof( _max_id )
+                            + sizeof( event -> len )
+                            + event -> len
+                        );
+
+                        memcpy( r_req + r_len, &_max_id, sizeof( _max_id ) );
+                        r_len += sizeof( _max_id );
+
+                        memcpy( r_req + r_len, &(event -> len), sizeof( event -> len ) );
+                        r_len += sizeof( event -> len );
+
+                        memcpy( r_req + r_len, event -> data, event -> len );
+                        r_len += event -> len;
+
+                        --max_id;
+                    }
+
+                    if( num_inserted == ctx -> events -> size() ) {
+
+                        if( db.end_transaction( true ) ) {
+
+                            _out_packet[ 0 ] = 'k';
+
+                            pthread_mutex_lock( &stat_mutex );
+                            stat_num_inserts += num_inserted;
+                            pthread_mutex_unlock( &stat_mutex );
+
+                            // r_req
+                            // r_len
+                            // TODO: replication
+
+                        } else {
+
+                            fprintf( stderr, "Failed to commit transaction\n" );
+                            exit( 1 );
+                        }
+
+                    } else {
+
+                        if( ! db.end_transaction( false ) ) {
+
+                            fprintf( stderr, "Failed to abort transaction\n" );
+                            exit( 1 );
+                        }
+                    }
+                }
+            }
+
+            free( increment_key );
+            free( r_req );
+
+            for(
+                std::list<in_packet_e_ctx_event*>::iterator it = ctx -> events -> begin();
+                it != ctx -> events -> end();
+                ++it
+            ) {
+
+                in_packet_e_ctx_event* event = *it;
+
+                free( event -> data );
+                if( event -> id != NULL ) free( event -> id );
+                free( event );
+            }
+
+            free( ctx -> event_name );
+            free( ctx -> events );
+            free( ctx );
+
+            return nullptr;
+        }
+
         PendingReadsQueueItem* packet_h_cb1( PendingReadCallbackArgs* args ) {
 
             uint32_t _len;
             memcpy( &_len, args -> data, args -> len );
             uint32_t len = ntohl( _len );
 
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
 
             item -> len = len + 4;
             item -> cb = &Client::packet_h_cb2;
@@ -421,11 +786,11 @@ class Client {
             *(args -> out_packet) = out_packet;
             *(args -> out_packet_len) = 1;
 
-            auto _peer_id = make_peer_id( host_len, host, port );
+            char* _peer_id = make_peer_id( host_len, host, port );
 
             pthread_mutex_lock( &known_peers_mutex );
 
-            auto known_peer = known_peers.find( _peer_id );
+            known_peers_t::iterator known_peer = known_peers.find( _peer_id );
 
             if( known_peer == known_peers.end() ) {
 
@@ -463,15 +828,16 @@ class Client {
             memcpy( &_port, args -> data + host_len, 4 );
             uint32_t port = ntohl( _port );
 
-            auto _peer_id = make_peer_id( host_len, host, port );
+            char* _peer_id = make_peer_id( host_len, host, port );
 
             pthread_mutex_lock( &peers_to_discover_mutex );
 
-            auto prev_item = peers_to_discover.find( _peer_id );
+            peers_to_discover_t::iterator prev_item = peers_to_discover.find( _peer_id );
 
             if( prev_item == peers_to_discover.end() ) {
 
-                peer_to_discover_t* peer_to_discover = (peer_to_discover_t*)malloc( sizeof( *peer_to_discover ) );
+                peer_to_discover_t* peer_to_discover = (peer_to_discover_t*)malloc(
+                    sizeof( *peer_to_discover ) );
 
                 peer_to_discover -> host = host;
                 peer_to_discover -> port = port;
@@ -486,13 +852,15 @@ class Client {
 
             pthread_mutex_unlock( &peers_to_discover_mutex );
 
+            uint32_t prev_len = args -> len;
             args -> len = 4;
 
-            auto prev_data = args -> data;
+            char* prev_data = args -> data;
             args -> data = (char*)(args -> ctx);
 
-            auto rv = discovery_cb7( args );
+            PendingReadsQueueItem* rv = discovery_cb7( args );
 
+            args -> len = prev_len;
             args -> data = prev_data;
 
             return rv;
@@ -504,7 +872,8 @@ class Client {
             memcpy( &_len, args -> data, args -> len );
             uint32_t len = ntohl( _len );
 
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
 
             item -> len = len + 4;
             item -> cb = &Client::discovery_cb9;
@@ -522,7 +891,8 @@ class Client {
 
             if( cnt > 0 ) {
 
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
 
                 item -> len = 4;
                 item -> cb = &Client::discovery_cb8;
@@ -559,7 +929,8 @@ class Client {
 
             if( args -> data[ 0 ] == 'k' ) {
 
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
 
                 item -> len = 4;
                 item -> cb = &Client::discovery_cb7;
@@ -581,7 +952,7 @@ class Client {
                 pthread_mutex_lock( &known_peers_mutex );
 
                 // peer_id is guaranteed to be set here
-                auto known_peer = known_peers.find( peer_id );
+                known_peers_t::iterator known_peer = known_peers.find( peer_id );
 
                 if( known_peer == known_peers.end() ) {
 
@@ -599,7 +970,8 @@ class Client {
                     char* l_req = (char*)malloc( 1 );
                     l_req[ 0 ] = 'w';
 
-                    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+                    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                        sizeof( *item ) );
 
                     item -> len = 1;
                     item -> cb = &Client::discovery_cb6;
@@ -621,13 +993,13 @@ class Client {
 
         PendingReadsQueueItem* discovery_cb4( PendingReadCallbackArgs* args ) {
 
-            auto port = get_conn_port();
-            auto _peer_id = make_peer_id( args -> len, args -> data, port );
+            uint32_t port = get_conn_port();
+            char* _peer_id = make_peer_id( args -> len, args -> data, port );
             bool accepted = false;
 
             pthread_mutex_lock( &known_peers_mutex );
 
-            auto known_peer = known_peers.find( _peer_id );
+            known_peers_t::iterator known_peer = known_peers.find( _peer_id );
 
             if( known_peer == known_peers.end() ) {
 
@@ -635,11 +1007,11 @@ class Client {
 
                     pthread_mutex_lock( &me_mutex );
 
-                    auto it = me.find( _peer_id );
+                    me_t::iterator it = me.find( _peer_id );
 
                     if( it == me.end() ) {
 
-                        auto _conn_peer_id = get_conn_id();
+                        char* _conn_peer_id = get_conn_id();
 
                         me[ _peer_id ] = true;
                         me[ strdup( _conn_peer_id ) ] = true;
@@ -693,7 +1065,8 @@ class Client {
                 memcpy( h_req + h_len, &_my_port, sizeof( _my_port ) );
                 h_len += sizeof( _my_port );
 
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
 
                 item -> len = 1;
                 item -> cb = &Client::discovery_cb5;
@@ -716,7 +1089,8 @@ class Client {
             memcpy( &_len, args -> data, args -> len );
             uint32_t len = ntohl( _len );
 
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
 
             item -> len = len;
             item -> cb = &Client::discovery_cb4;
@@ -758,7 +1132,7 @@ class Client {
 
             if( peer_id != NULL ) {
 
-                auto known_peer = known_peers.find( peer_id );
+                known_peers_t::iterator known_peer = known_peers.find( peer_id );
 
                 if( known_peer != known_peers.end() )
                     known_peers.erase( known_peer );
@@ -770,8 +1144,8 @@ class Client {
 
             while( ! pending_reads.empty() ) {
 
-                auto _item = pending_reads.front();
-                auto item = *_item;
+                PendingReadsQueueItem** _item = pending_reads.front();
+                PendingReadsQueueItem* item = *_item;
 
                 free( item );
                 free( _item );
@@ -781,7 +1155,7 @@ class Client {
 
             while( ! write_queue.empty() ) {
 
-                auto item = write_queue.front();
+                WriteQueueItem* item = write_queue.front();
                 write_queue.pop();
 
                 free( item -> data );
@@ -858,7 +1232,7 @@ class Client {
             if( conn_id != NULL )
                 return conn_id;
 
-            auto _conn_name = get_conn_name();
+            char* _conn_name = get_conn_name();
 
             conn_id = make_peer_id( conn_name_len, _conn_name, get_conn_port() );
 
@@ -867,7 +1241,7 @@ class Client {
 
         void push_read_queue( size_t len, char* data ) {
 
-            auto offset = read_queue_length;
+            size_t offset = read_queue_length;
 
             if( read_queue == NULL ) {
 
@@ -902,7 +1276,7 @@ class Client {
 
             while( ! write_queue.empty() ) {
 
-                auto item = write_queue.front();
+                WriteQueueItem* item = write_queue.front();
 
                 if( ( item -> len > 0 ) && ( item -> pos < item -> len ) ) {
 
@@ -947,7 +1321,8 @@ class Client {
 
         void push_pending_reads_queue( PendingReadsQueueItem* item ) {
 
-            PendingReadsQueueItem** _item = (PendingReadsQueueItem**)malloc( sizeof( *_item ) );
+            PendingReadsQueueItem** _item = (PendingReadsQueueItem**)malloc(
+                sizeof( *_item ) );
             *_item = item;
 
             pending_reads.push( _item );
@@ -957,7 +1332,8 @@ class Client {
 
             if( args -> data[ 0 ] == 'k' ) {
 
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc( sizeof( *item ) );
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
 
                 item -> len = 4;
                 item -> cb = &Client::discovery_cb3;
@@ -978,7 +1354,7 @@ class Client {
 static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
     struct client_bound_ev_io* watcher = (struct client_bound_ev_io*)_watcher;
-    auto client = watcher -> client;
+    Client* client = watcher -> client;
 
     if( events & EV_ERROR ) {
 
@@ -1022,7 +1398,7 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
     if( events & EV_WRITE ) {
 
-        auto item = client -> get_pending_write();
+        WriteQueueItem* item = client -> get_pending_write();
 
         if( item != NULL ) {
 
@@ -1068,12 +1444,12 @@ void* client_thread( void* args ) {
 
             if( ! new_clients.empty() ) {
 
-                auto new_client = new_clients.front();
+                new_client_t* new_client = new_clients.front();
                 new_clients.pop();
 
                 pthread_mutex_unlock( &new_clients_mutex );
 
-                auto client = new Client(
+                Client* client = new Client(
                     new_client -> fh,
                     loop,
                     new_client -> s_in,
@@ -1114,9 +1490,13 @@ void* discovery_thread( void* args ) {
 
     while( true ) {
 
-        for( auto it = peers_to_discover.begin(); it != peers_to_discover.end(); ++it ) {
+        for(
+            peers_to_discover_t::iterator it = peers_to_discover.begin();
+            it != peers_to_discover.end();
+            ++it
+        ) {
 
-            auto peer_to_discover = it -> second;
+            peer_to_discover_t* peer_to_discover = it -> second;
 
             addrinfo hints;
             addrinfo* service_info;
@@ -1143,7 +1523,7 @@ void* discovery_thread( void* args ) {
             socklen_t addr_len;
             bool connected = false;
 
-            for( auto ai_it = service_info; ai_it != NULL; ai_it = ai_it -> ai_next ) {
+            for( addrinfo* ai_it = service_info; ai_it != NULL; ai_it = ai_it -> ai_next ) {
 
                 if( ( fh = socket( ai_it -> ai_family, ai_it -> ai_socktype, ai_it -> ai_protocol ) ) == -1 ) {
 
@@ -1214,16 +1594,16 @@ void* discovery_thread( void* args ) {
 
                 } else {
 
-                    auto conn_name = get_host_from_sockaddr_in( addr );
-                    auto conn_port = get_port_from_sockaddr_in( addr );
-                    auto conn_id = make_peer_id( strlen( conn_name ), conn_name, conn_port );
+                    char* conn_name = get_host_from_sockaddr_in( addr );
+                    uint32_t conn_port = get_port_from_sockaddr_in( addr );
+                    char* conn_id = make_peer_id( strlen( conn_name ), conn_name, conn_port );
 
                     free( conn_name );
                     bool found = false;
 
                     pthread_mutex_lock( &me_mutex );
 
-                    auto it = me.find( conn_id );
+                    me_t::iterator it = me.find( conn_id );
 
                     if( it != me.end() )
                         found = true;
@@ -1240,7 +1620,8 @@ void* discovery_thread( void* args ) {
 
                     } else {
 
-                        new_client_t* new_client = (new_client_t*)malloc( sizeof( *new_client ) );
+                        new_client_t* new_client = (new_client_t*)malloc(
+                            sizeof( *new_client ) );
 
                         new_client -> fh = fh;
                         new_client -> cb = discovery_cb1;
@@ -1294,10 +1675,40 @@ static void socket_cb( struct ev_loop* loop, ev_io* watcher, int events ) {
     return;
 }
 
+void* synchronization_thread( void* args ) {
+
+    while( true ) {
+
+        sleep( 1 );
+        db.synchronize();
+
+        pthread_mutex_lock( &stat_mutex );
+
+        printf( "number of inserts for last second: %llu\n", stat_num_inserts );
+        stat_num_inserts = 0;
+
+        pthread_mutex_unlock( &stat_mutex );
+    }
+
+    return NULL;
+}
+
 int main() {
 
     printf("k\n");
     signal( SIGPIPE, SIG_IGN );
+
+    if( ! db.open(
+        "/Users/gennadiy/kch/skree.kch",
+        kyotocabinet::HashDB::OWRITER
+        | kyotocabinet::HashDB::OCREATE
+        | kyotocabinet::HashDB::ONOLOCK
+        | kyotocabinet::HashDB::OAUTOTRAN
+    ) ) {
+
+        printf( "db.open: %s\n", db.error().name() );
+        return 1;
+    }
 
     my_hostname = (char*)"muhhost\0";
     my_hostname_len = strlen( my_hostname );
@@ -1339,6 +1750,7 @@ int main() {
     pthread_mutex_init( &known_peers_mutex, NULL );
     pthread_mutex_init( &me_mutex, NULL );
     pthread_mutex_init( &peers_to_discover_mutex, NULL );
+    pthread_mutex_init( &stat_mutex, NULL );
 
     std::queue<pthread_t*> threads;
 
@@ -1352,12 +1764,14 @@ int main() {
     }
 
     {
-        peer_to_discover_t* localhost7654 = (peer_to_discover_t*)malloc( sizeof( *localhost7654 ) );
+        peer_to_discover_t* localhost7654 = (peer_to_discover_t*)malloc(
+            sizeof( *localhost7654 ) );
 
         localhost7654 -> host = "127.0.0.1\0";
         localhost7654 -> port = 7654;
 
-        peer_to_discover_t* localhost8765 = (peer_to_discover_t*)malloc( sizeof( *localhost8765 ) );
+        peer_to_discover_t* localhost8765 = (peer_to_discover_t*)malloc(
+            sizeof( *localhost8765 ) );
 
         localhost8765 -> host = "127.0.0.1\0";
         localhost8765 -> port = 8765;
@@ -1377,6 +1791,9 @@ int main() {
         ) ] = localhost8765;
     }
 
+    pthread_t synchronization;
+    pthread_create( &synchronization, NULL, synchronization_thread, NULL );
+
     pthread_t discovery;
     pthread_create( &discovery, NULL, discovery_thread, NULL );
 
@@ -1386,17 +1803,20 @@ int main() {
 
     while( ! threads.empty() ) {
 
-        auto thread = threads.front();
+        pthread_t* thread = threads.front();
         threads.pop();
 
         pthread_join( *thread, NULL );
         free( thread );
     }
 
+    pthread_join( synchronization, NULL );
+
     pthread_mutex_destroy( &known_peers_mutex );
     pthread_mutex_destroy( &new_clients_mutex );
     pthread_mutex_destroy( &me_mutex );
     pthread_mutex_destroy( &peers_to_discover_mutex );
+    pthread_mutex_destroy( &stat_mutex );
 
     return 0;
 }
