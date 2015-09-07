@@ -2,12 +2,14 @@
 #include <ev.h>
 #include <list>
 #include <queue>
+#include <vector>
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <algorithm>
 #include <pthread.h>
 #include <kchashdb.h>
 #include <arpa/inet.h>
@@ -29,6 +31,7 @@
 
 size_t read_size = 131072;
 time_t discovery_timeout_milliseconds = 3000;
+uint32_t max_replication_factor = 3;
 
 uint64_t stat_num_inserts;
 pthread_mutex_t stat_mutex;
@@ -106,8 +109,8 @@ struct client_bound_ev_io {
 struct PendingReadCallbackArgs {
 
     size_t len;
-    char* data;
     size_t* out_packet_len;
+    char* data;
     char** out_packet;
     bool* stop;
     void* ctx;
@@ -138,10 +141,22 @@ struct in_packet_e_ctx_event {
 
 struct in_packet_e_ctx {
 
+    uint32_t cnt;
     uint32_t event_name_len;
     char* event_name;
     std::list<in_packet_e_ctx_event*>* events;
-    uint32_t cnt;
+};
+
+struct out_packet_r_ctx {
+
+    uint32_t replication_factor;
+    uint32_t pending;
+    Client* client;
+    std::vector<char*>* candidate_peer_ids;
+    std::list<char*>* accepted_peer_ids;
+    char* r_req;
+    size_t r_len;
+    bool sync;
 };
 
 static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events );
@@ -189,6 +204,8 @@ static inline uint32_t get_port_from_sockaddr_in( const sockaddr_in* s_in ) {
         return ntohs( ((sockaddr_in6*)s_in) -> sin6_port );
     }
 }
+
+void begin_replication( out_packet_r_ctx*& r_ctx );
 
 class Client {
 
@@ -251,7 +268,11 @@ class Client {
                     sizeof( _known_peers_len ) );
                 *out_packet_len += sizeof( _known_peers_len );
 
-                for( known_peers_t::iterator it = known_peers.begin(); it != known_peers.end(); ++it ) {
+                for(
+                    known_peers_t::iterator it = known_peers.begin();
+                    it != known_peers.end();
+                    ++it
+                ) {
 
                     Client* peer = it -> second;
 
@@ -348,7 +369,10 @@ class Client {
                     if(
                         (
                             ( item -> opcode == true )
-                            && ( ( opcode == 'k' ) || ( opcode == 'f' ) )
+                            && (
+                                ( opcode == 'k' ) || ( opcode == 'f' )
+                                || ( opcode == 'a' )
+                            )
                         )
                         || ( item -> opcode == false )
                     ) {
@@ -574,6 +598,9 @@ class Client {
             memcpy( &_replication_factor, args -> data, args -> len );
             uint32_t replication_factor = ntohl( _replication_factor );
 
+            if( replication_factor > max_replication_factor )
+                replication_factor = max_replication_factor;
+
             in_packet_e_ctx* ctx = (in_packet_e_ctx*)(args -> ctx);
 
             uint64_t increment_key_len = 6 + ctx -> event_name_len;
@@ -622,6 +649,7 @@ class Client {
             r_len += sizeof( _cnt );
 
             uint32_t num_inserted = 0;
+            bool replication_began = false;
 
             if( db.begin_transaction() ) {
 
@@ -704,15 +732,61 @@ class Client {
 
                         if( db.end_transaction( true ) ) {
 
-                            _out_packet[ 0 ] = 'k';
-
                             pthread_mutex_lock( &stat_mutex );
                             stat_num_inserts += num_inserted;
                             pthread_mutex_unlock( &stat_mutex );
 
-                            // r_req
-                            // r_len
-                            // TODO: replication
+                            if( replication_factor > 0 ) {
+
+                                out_packet_r_ctx* r_ctx = (out_packet_r_ctx*)
+                                    malloc( sizeof( *r_ctx ) );
+
+                                r_ctx -> sync = true;
+                                r_ctx -> replication_factor = replication_factor;
+                                r_ctx -> pending = 0;
+                                r_ctx -> client = this;
+                                r_ctx -> candidate_peer_ids = new std::vector<char*>();
+                                r_ctx -> accepted_peer_ids = new std::list<char*>();
+
+                                pthread_mutex_lock( &known_peers_mutex );
+
+                                for(
+                                    known_peers_t::iterator it = known_peers.begin();
+                                    it != known_peers.end();
+                                    ++it
+                                ) {
+
+                                    r_ctx -> candidate_peer_ids -> push_back( it -> first );
+                                }
+
+                                pthread_mutex_unlock( &known_peers_mutex );
+
+                                if( r_ctx -> candidate_peer_ids -> size() > 0 ) {
+
+                                    free( _out_packet );
+                                    *(args -> out_packet) = NULL;
+                                    *(args -> out_packet_len) = 0;
+
+                                    std::random_shuffle(
+                                        r_ctx -> candidate_peer_ids -> begin(),
+                                        r_ctx -> candidate_peer_ids -> end()
+                                    );
+
+                                    r_ctx -> r_req = r_req;
+                                    r_ctx -> r_len = r_len;
+
+                                    begin_replication( r_ctx );
+                                    replication_began = true;
+
+                                } else {
+
+                                    _out_packet[ 0 ] = 'a';
+                                }
+
+                            } else {
+
+                                _out_packet[ 0 ] = 'k';
+                            }
 
                         } else {
 
@@ -732,7 +806,7 @@ class Client {
             }
 
             free( increment_key );
-            free( r_req );
+            if( ! replication_began ) free( r_req );
 
             for(
                 std::list<in_packet_e_ctx_event*>::iterator it = ctx -> events -> begin();
@@ -1349,7 +1423,133 @@ class Client {
                 return nullptr;
             }
         }
+
+        PendingReadsQueueItem* replication_cb( PendingReadCallbackArgs* args ) {
+
+            out_packet_r_ctx* ctx = (out_packet_r_ctx*)(args -> ctx);
+            --(ctx -> pending);
+
+            if( args -> data[ 0 ] == 'k' )
+                ctx -> accepted_peer_ids -> push_back( get_peer_id() );
+
+            begin_replication( ctx );
+
+            return nullptr;
+        }
 };
+
+void begin_replication( out_packet_r_ctx*& r_ctx ) {
+
+    Client* peer = NULL;
+
+    while( ( peer == NULL ) && ( r_ctx -> candidate_peer_ids -> size() > 0 ) ) {
+
+        char* peer_id = r_ctx -> candidate_peer_ids -> back();
+        r_ctx -> candidate_peer_ids -> pop_back();
+
+        pthread_mutex_lock( &known_peers_mutex );
+
+        known_peers_t::iterator it = known_peers.find( peer_id );
+
+        if( it != known_peers.end() )
+            peer = it -> second;
+
+        pthread_mutex_unlock( &known_peers_mutex );
+    }
+
+    if( peer == NULL ) {
+
+        if( r_ctx -> sync ) {
+
+            uint32_t accepted_peers_count = r_ctx -> accepted_peer_ids -> size();
+
+            if( accepted_peers_count >= r_ctx -> replication_factor ) {
+
+                char* r_ans = (char*)malloc( 1 );
+                r_ans[ 0 ] = 'k';
+                r_ctx -> client -> push_write_queue( 1, r_ans, NULL );
+                r_ctx -> sync = false;
+
+            } else if( r_ctx -> pending == 0 ) {
+
+                char* r_ans = (char*)malloc( 1 );
+                r_ans[ 0 ] = 'a';
+                r_ctx -> client -> push_write_queue( 1, r_ans, NULL );
+                r_ctx -> sync = false;
+            }
+        }
+
+        if( r_ctx -> pending == 0 ) {
+
+            free( r_ctx -> accepted_peer_ids );
+            free( r_ctx -> candidate_peer_ids );
+            free( r_ctx -> r_req );
+            free( r_ctx );
+        }
+
+    } else {
+
+        uint32_t accepted_peers_count = r_ctx -> accepted_peer_ids -> size();
+
+        if(
+            r_ctx -> sync
+            && ( accepted_peers_count >= r_ctx -> replication_factor )
+        ) {
+
+            char* r_ans = (char*)malloc( 1 );
+            r_ans[ 0 ] = 'k';
+            r_ctx -> client -> push_write_queue( 1, r_ans, NULL );
+            r_ctx -> sync = false;
+        }
+
+        if( accepted_peers_count >= max_replication_factor ) {
+
+            free( r_ctx -> accepted_peer_ids );
+            free( r_ctx -> candidate_peer_ids );
+            free( r_ctx -> r_req );
+            free( r_ctx );
+
+        } else {
+
+            size_t r_len = 0;
+            char* r_req = (char*)malloc( r_ctx -> r_len + sizeof( accepted_peers_count ) );
+
+            memcpy( r_req + r_len, r_ctx -> r_req, r_ctx -> r_len );
+            r_len += r_ctx -> r_len;
+
+            memcpy( r_req + r_len, &accepted_peers_count, sizeof( accepted_peers_count ) );
+            r_len += sizeof( accepted_peers_count );
+
+            for(
+                std::list<char*>::iterator it = r_ctx -> accepted_peer_ids -> begin();
+                it != r_ctx -> accepted_peer_ids -> end();
+                ++it
+            ) {
+
+                uint32_t len = strlen( *it );
+                r_req = (char*)realloc( r_req, r_len + sizeof( len ) + len );
+
+                memcpy( r_req + r_len, &len, sizeof( len ) );
+                r_len += sizeof( len );
+
+                memcpy( r_req + r_len, *it, len );
+                r_len += len;
+            }
+
+            ++(r_ctx -> pending);
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
+
+            item -> len = 1;
+            item -> cb = &Client::replication_cb;
+            item -> ctx = (void*)r_ctx;
+            item -> opcode = true;
+
+            peer -> push_write_queue( r_len, r_req, item );
+        }
+    }
+}
 
 static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
