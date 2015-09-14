@@ -125,7 +125,8 @@ struct PendingReadCallbackArgs {
 struct PendingReadsQueueItem {
 
     size_t len;
-    PendingReadsQueueItem* (Client::*cb) (PendingReadCallbackArgs*);
+    PendingReadsQueueItem* (Client::* cb) (PendingReadCallbackArgs*);
+    void (*err) (void*);
     void* ctx;
     bool opcode;
 };
@@ -342,6 +343,7 @@ class Client {
                 item -> len = 4;
                 item -> cb = &Client::packet_e_cb1;
                 item -> ctx = NULL;
+                item -> err = NULL;
                 item -> opcode = false;
 
                 push_pending_reads_queue( item );
@@ -354,6 +356,7 @@ class Client {
                 item -> len = 4;
                 item -> cb = &Client::packet_r_cb1;
                 item -> ctx = NULL;
+                item -> err = NULL;
                 item -> opcode = false;
 
                 push_pending_reads_queue( item );
@@ -378,6 +381,7 @@ class Client {
                 item -> len = 4;
                 item -> cb = &Client::packet_h_cb1;
                 item -> ctx = NULL;
+                item -> err = NULL;
                 item -> opcode = false;
 
                 push_pending_reads_queue( item );
@@ -511,6 +515,7 @@ class Client {
             item -> len = len + 4 + 4;
             item -> cb = &Client::packet_r_cb2;
             item -> ctx = NULL;
+            item -> err = NULL;
             item -> opcode = false;
 
             return item;
@@ -543,6 +548,7 @@ class Client {
             item -> len = ctx -> event_name_len + 4;
             item -> cb = &Client::packet_r_cb3;
             item -> ctx = (void*)ctx;
+            item -> err = &Client::replication_skip_peer;
             item -> opcode = false;
 
             return item;
@@ -587,6 +593,7 @@ class Client {
                 ((in_packet_r_ctx*)(args -> ctx)) -> cnt = htonl( cnt - 1 );
 
                 item -> ctx = args -> ctx;
+                item -> err = &Client::replication_skip_peer;
 
                 return item;
 
@@ -598,6 +605,7 @@ class Client {
                 item -> len = 4;
                 item -> cb = &Client::packet_r_cb7;
                 item -> ctx = args -> ctx;
+                item -> err = &Client::replication_skip_peer;
                 item -> opcode = false;
 
                 return item;
@@ -627,6 +635,7 @@ class Client {
             item -> len = event -> len;
             item -> cb = &Client::packet_r_cb6;
             item -> ctx = args -> ctx;
+            item -> err = &Client::replication_skip_peer;
             item -> opcode = false;
 
             return item;
@@ -674,6 +683,7 @@ class Client {
                 ((in_packet_r_ctx*)(args -> ctx)) -> cnt = htonl( cnt - 1 );
 
                 item -> ctx = args -> ctx;
+                item -> err = &Client::replication_skip_peer;
 
                 return item;
 
@@ -960,6 +970,7 @@ class Client {
             item -> len = peer -> hostname_len + 4;
             item -> cb = &Client::packet_r_cb9;
             item -> ctx = args -> ctx;
+            item -> err = &Client::replication_skip_peer;
             item -> opcode = false;
 
             return item;
@@ -1004,9 +1015,32 @@ class Client {
             item -> len = len + 4;
             item -> cb = &Client::packet_e_cb2;
             item -> ctx = NULL;
+            item -> err = NULL;
             item -> opcode = false;
 
             return item;
+        }
+
+        static void free_in_packet_e_ctx( void* _ctx ) {
+
+            in_packet_e_ctx* ctx = (in_packet_e_ctx*)_ctx;
+
+            for(
+                std::list<in_packet_e_ctx_event*>::iterator it = ctx -> events -> begin();
+                it != ctx -> events -> end();
+                ++it
+            ) {
+
+                in_packet_e_ctx_event* event = *it;
+
+                free( event -> data );
+                if( event -> id != NULL ) free( event -> id );
+                free( event );
+            }
+
+            free( ctx -> event_name );
+            free( ctx -> events );
+            free( ctx );
         }
 
         PendingReadsQueueItem* packet_e_cb2( PendingReadCallbackArgs* args ) {
@@ -1056,6 +1090,7 @@ class Client {
                 ((in_packet_e_ctx*)(args -> ctx)) -> cnt = htonl( cnt - 1 );
 
                 item -> ctx = args -> ctx;
+                item -> err = &Client::free_in_packet_e_ctx;
 
                 return item;
 
@@ -1067,6 +1102,7 @@ class Client {
                 item -> len = 4;
                 item -> cb = &Client::packet_e_cb6;
                 item -> ctx = args -> ctx;
+                item -> err = &Client::free_in_packet_e_ctx;
                 item -> opcode = false;
 
                 return item;
@@ -1085,6 +1121,7 @@ class Client {
             item -> len = len;
             item -> cb = &Client::packet_e_cb5;
             item -> ctx = args -> ctx;
+            item -> err = &Client::free_in_packet_e_ctx;
             item -> opcode = false;
 
             return item;
@@ -1349,22 +1386,7 @@ class Client {
             free( increment_key );
             if( ! replication_began ) free( r_req );
 
-            for(
-                std::list<in_packet_e_ctx_event*>::iterator it = ctx -> events -> begin();
-                it != ctx -> events -> end();
-                ++it
-            ) {
-
-                in_packet_e_ctx_event* event = *it;
-
-                free( event -> data );
-                if( event -> id != NULL ) free( event -> id );
-                free( event );
-            }
-
-            free( ctx -> event_name );
-            free( ctx -> events );
-            free( ctx );
+            Client::free_in_packet_e_ctx( (void*)ctx );
 
             return nullptr;
         }
@@ -1381,6 +1403,7 @@ class Client {
             item -> len = len + 4;
             item -> cb = &Client::packet_h_cb2;
             item -> ctx = NULL;
+            item -> err = NULL;
             item -> opcode = false;
 
             return item;
@@ -1482,6 +1505,13 @@ class Client {
             return rv;
         }
 
+        static void free_discovery_ctx( void* _ctx ) {
+
+            uint32_t* ctx = (uint32_t*)_ctx;
+
+            free( ctx );
+        }
+
         PendingReadsQueueItem* discovery_cb8( PendingReadCallbackArgs* args ) {
 
             uint32_t _len;
@@ -1494,6 +1524,7 @@ class Client {
             item -> len = len + 4;
             item -> cb = &Client::discovery_cb9;
             item -> ctx = args -> ctx;
+            item -> err = &Client::free_discovery_ctx;
             item -> opcode = false;
 
             return item;
@@ -1522,12 +1553,14 @@ class Client {
                     memcpy( ctx, &_cnt, args -> len );
 
                     item -> ctx = (void*)ctx;
+                    item -> err = &Client::free_discovery_ctx;
 
                 } else {
 
                     memcpy( args -> ctx, &_cnt, args -> len );
 
                     item -> ctx = args -> ctx;
+                    item -> err = &Client::free_discovery_ctx;
                 }
 
                 return item;
@@ -1551,6 +1584,7 @@ class Client {
                 item -> len = 4;
                 item -> cb = &Client::discovery_cb7;
                 item -> ctx = NULL;
+                item -> err = NULL;
                 item -> opcode = false;
 
                 return item;
@@ -1593,6 +1627,7 @@ class Client {
                     item -> len = 1;
                     item -> cb = &Client::discovery_cb6;
                     item -> ctx = NULL;
+                    item -> err = NULL;
                     item -> opcode = true;
 
                     push_write_queue( 1, l_req, item );
@@ -1688,6 +1723,7 @@ class Client {
                 item -> len = 1;
                 item -> cb = &Client::discovery_cb5;
                 item -> ctx = NULL;
+                item -> err = NULL;
                 item -> opcode = true;
 
                 push_write_queue( h_len, h_req, item );
@@ -1712,6 +1748,7 @@ class Client {
             item -> len = len;
             item -> cb = &Client::discovery_cb4;
             item -> ctx = NULL;
+            item -> err = NULL;
             item -> opcode = false;
 
             return item;
@@ -1774,6 +1811,18 @@ class Client {
                 PendingReadsQueueItem** _item = pending_reads.front();
                 PendingReadsQueueItem* item = *_item;
 
+                if( item -> ctx != NULL ) {
+
+                    if( item -> err == NULL ) {
+
+                        fprintf( stderr, "Don't known how to free pending read context\n" );
+
+                    } else {
+
+                        item -> err( item -> ctx );
+                    }
+                }
+
                 free( item );
                 free( _item );
 
@@ -1785,8 +1834,24 @@ class Client {
                 WriteQueueItem* item = write_queue.front();
                 write_queue.pop();
 
+                if( item -> cb != NULL ) {
+
+                    if( item -> cb -> ctx != NULL ) {
+
+                        if( item -> cb -> err == NULL ) {
+
+                            fprintf( stderr, "Don't known how to free pending read context\n" );
+
+                        } else {
+
+                            item -> cb -> err( item -> cb -> ctx );
+                        }
+                    }
+
+                    free( item -> cb );
+                }
+
                 free( item -> data );
-                if( item -> cb != NULL ) free( item -> cb );
                 free( item );
             }
 
@@ -1964,6 +2029,7 @@ class Client {
                 item -> len = 4;
                 item -> cb = &Client::discovery_cb3;
                 item -> ctx = NULL;
+                item -> err = NULL;
                 item -> opcode = false;
 
                 return item;
@@ -1996,6 +2062,14 @@ class Client {
             begin_replication( ctx );
 
             return nullptr;
+        }
+
+        static void replication_skip_peer( void* _ctx ) {
+
+            out_packet_r_ctx* ctx = (out_packet_r_ctx*)_ctx;
+            --(ctx -> pending);
+
+            begin_replication( ctx );
         }
 };
 
@@ -2111,6 +2185,7 @@ void begin_replication( out_packet_r_ctx*& r_ctx ) {
             item -> len = 1;
             item -> cb = &Client::replication_cb;
             item -> ctx = (void*)r_ctx;
+            item -> err = &Client::replication_skip_peer;
             item -> opcode = true;
 
             peer -> push_write_queue( r_len, r_req, item );
@@ -2266,6 +2341,7 @@ void discovery_cb1( Client* client ) {
     item -> len = 1;
     item -> cb = &Client::discovery_cb2;
     item -> ctx = NULL;
+    item -> err = NULL;
     item -> opcode = true;
 
     client -> push_write_queue( 1, w_req, item );
@@ -2388,14 +2464,14 @@ void* discovery_thread( void* args ) {
                     bool found = false;
 
                     {
-                        pthread_mutex_lock( &me_mutex );
+                        pthread_mutex_lock( &known_peers_mutex );
 
-                        me_t::iterator it = me.find( conn_id );
+                        known_peers_t::iterator it = known_peers_by_conn_id.find( conn_id );
 
-                        if( it != me.end() )
+                        if( it != known_peers_by_conn_id.end() )
                             found = true;
 
-                        pthread_mutex_unlock( &me_mutex );
+                        pthread_mutex_unlock( &known_peers_mutex );
                     }
 
                     if( ! found ) {
@@ -2408,6 +2484,18 @@ void* discovery_thread( void* args ) {
                             found = true;
 
                         pthread_mutex_unlock( &known_peers_mutex );
+                    }
+
+                    if( ! found ) {
+
+                        pthread_mutex_lock( &me_mutex );
+
+                        me_t::iterator it = me.find( conn_id );
+
+                        if( it != me.end() )
+                            found = true;
+
+                        pthread_mutex_unlock( &me_mutex );
                     }
 
                     free( conn_id );
@@ -2606,6 +2694,9 @@ int main( int argc, char** argv ) {
     pthread_mutex_init( &peers_to_discover_mutex, NULL );
     pthread_mutex_init( &stat_mutex, NULL );
 
+    pthread_t synchronization;
+    pthread_create( &synchronization, NULL, synchronization_thread, NULL );
+
     std::queue<pthread_t*> threads;
 
     for( int i = 0; i < max_client_threads; ++i ) {
@@ -2644,9 +2735,6 @@ int main( int argc, char** argv ) {
 
         ) ] = localhost8765;
     }
-
-    pthread_t synchronization;
-    pthread_create( &synchronization, NULL, synchronization_thread, NULL );
 
     pthread_t discovery;
     pthread_create( &discovery, NULL, discovery_thread, NULL );
