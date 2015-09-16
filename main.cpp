@@ -20,6 +20,7 @@
 #include <netinet/tcp.h>
 #include <unordered_map>
 #include "tclap/CmdLine.h"
+#include "yaml-cpp/yaml.h"
 
 // thank you, stackoverflow!
 #ifndef htonll
@@ -86,6 +87,36 @@ struct char_pointer_hasher {
         return ( hash & 0x7FFFFFFF );
     }
 };
+
+struct skree_module_t {
+
+    size_t path_len;
+    char* path;
+    const void* config;
+};
+
+struct event_group_t {
+
+    size_t name_len;
+    char* name;
+    skree_module_t* module;
+};
+
+struct known_event_t {
+
+    size_t id_len;
+    char* id;
+    event_group_t* group;
+};
+
+typedef std::unordered_map<char*, skree_module_t*, char_pointer_hasher, char_pointer_comparator> skree_modules_t;
+skree_modules_t skree_modules;
+
+typedef std::unordered_map<char*, event_group_t*, char_pointer_hasher, char_pointer_comparator> event_groups_t;
+event_groups_t event_groups;
+
+typedef std::unordered_map<char*, known_event_t*, char_pointer_hasher, char_pointer_comparator> known_events_t;
+known_events_t known_events;
 
 typedef std::unordered_map<char*, Client*, char_pointer_hasher, char_pointer_comparator> known_peers_t;
 known_peers_t known_peers;
@@ -1047,8 +1078,9 @@ class Client {
 
             uint32_t event_name_len = args -> len - 4;
 
-            char* event_name = (char*)malloc( event_name_len );
+            char* event_name = (char*)malloc( event_name_len + 1 );
             memcpy( event_name, args -> data, event_name_len );
+            event_name[ event_name_len ] = '\0';
 
             in_packet_e_ctx* ctx = (in_packet_e_ctx*)malloc( sizeof( *ctx ) );
 
@@ -1158,6 +1190,24 @@ class Client {
 
         PendingReadsQueueItem* packet_e_cb6( PendingReadCallbackArgs* args ) {
 
+            char* _out_packet = (char*)malloc( 1 );
+            *(args -> out_packet_len) += 1;
+            *(args -> out_packet) = _out_packet;
+
+            _out_packet[ 0 ] = 'f';
+
+            in_packet_e_ctx* ctx = (in_packet_e_ctx*)(args -> ctx);
+
+            known_events_t::iterator it = known_events.find( ctx -> event_name );
+
+            if( it == known_events.end() ) {
+
+                fprintf( stderr, "Got unknown event: %s\n", ctx -> event_name );
+                Client::free_in_packet_e_ctx( (void*)ctx );
+
+                return nullptr;
+            }
+
             uint32_t _replication_factor;
             memcpy( &_replication_factor, args -> data, args -> len );
             uint32_t replication_factor = ntohl( _replication_factor );
@@ -1165,19 +1215,11 @@ class Client {
             if( replication_factor > max_replication_factor )
                 replication_factor = max_replication_factor;
 
-            in_packet_e_ctx* ctx = (in_packet_e_ctx*)(args -> ctx);
-
             uint64_t increment_key_len = 6 + ctx -> event_name_len;
             char* increment_key = (char*)malloc( increment_key_len );
 
             sprintf( increment_key, "inseq:" );
             memcpy( increment_key + 6, ctx -> event_name, ctx -> event_name_len );
-
-            char* _out_packet = (char*)malloc( 1 );
-            *(args -> out_packet_len) += 1;
-            *(args -> out_packet) = _out_packet;
-
-            _out_packet[ 0 ] = 'f';
 
             uint32_t _cnt = htonl( ctx -> events -> size() );
             size_t r_len = 0;
@@ -2347,6 +2389,13 @@ void discovery_cb1( Client* client ) {
     client -> push_write_queue( 1, w_req, item );
 }
 
+void* replication_thread( void* args ) {
+
+    // TODO: hosts list
+
+    return NULL;
+}
+
 void* discovery_thread( void* args ) {
 
     while( true ) {
@@ -2591,6 +2640,7 @@ void* synchronization_thread( void* args ) {
 int main( int argc, char** argv ) {
 
     std::string db_file_name;
+    std::string known_events_file_name;
 
     try {
 
@@ -2623,19 +2673,134 @@ int main( int argc, char** argv ) {
             "file"
         );
 
+        TCLAP::ValueArg<std::string> _known_events_file_name(
+            "",
+            "events",
+            "Known events file",
+            true,
+            "",
+            "file"
+        );
+
         cmd.add( _port );
         cmd.add( _max_client_threads );
         cmd.add( _db_file_name );
+        cmd.add( _known_events_file_name );
 
         cmd.parse( argc, argv );
 
         my_port = _port.getValue();
         max_client_threads = _max_client_threads.getValue();
         db_file_name = _db_file_name.getValue();
+        known_events_file_name = _known_events_file_name.getValue();
 
     } catch( TCLAP::ArgException& e ) {
 
         printf( "%s %s\n", e.error().c_str(), e.argId().c_str() );
+    }
+
+    YAML::Node config = YAML::LoadFile( known_events_file_name );
+
+    {
+        if( config.Type() != YAML::NodeType::Sequence ) {
+
+            fprintf( stderr, "Known events file should contain a sequence of event groups\n" );
+        }
+
+        for( YAML::const_iterator group = config.begin(); group != config.end(); ++group ) {
+
+            if( group -> Type() != YAML::NodeType::Map ) {
+
+                fprintf( stderr, "Each event group should be a map\n" );
+                exit( 1 );
+            }
+
+            const YAML::Node _name = (*group)[ "name" ];
+            std::string group_name;
+
+            if( _name && ( _name.Type() == YAML::NodeType::Scalar ) ) {
+
+                group_name = _name.as<std::string>();
+
+            } else {
+
+                fprintf( stderr, "Every event group should have a name\n" );
+                exit( 1 );
+            }
+
+            const YAML::Node _events = (*group)[ "events" ];
+
+            if( ! _events || ( _events.Type() != YAML::NodeType::Sequence ) ) {
+
+                fprintf( stderr, "Every event group should have an event list\n" );
+                exit( 1 );
+            }
+
+            event_group_t* event_group = (event_group_t*)malloc( sizeof( *event_group ) );
+
+            event_group -> name_len = group_name.length();
+
+            char* group_name_ = (char*)malloc( event_group -> name_len + 1 );
+            memcpy( group_name_, group_name.c_str(), event_group -> name_len );
+            group_name_[ event_group -> name_len ] = '\0';
+
+            event_group -> name = group_name_;
+            // event_group -> module = skree_module; // TODO
+
+            event_groups_t::iterator it = event_groups.find( group_name_ );
+
+            if( it == event_groups.end() ) {
+
+                event_groups[ group_name_ ] = event_group;
+
+            } else {
+
+                fprintf( stderr, "Duplicate group name: %s\n", group_name_ );
+                exit( 1 );
+            }
+
+            for( YAML::const_iterator event = _events.begin(); event != _events.end(); ++event ) {
+
+                if( event -> Type() != YAML::NodeType::Map ) {
+
+                    fprintf( stderr, "Every event should be a map\n" );
+                    exit( 1 );
+                }
+
+                const YAML::Node _id = (*event)[ "id" ];
+
+                if( _id && ( _id.Type() == YAML::NodeType::Scalar ) ) {
+
+                    std::string id = _id.as<std::string>();
+
+                    printf( "id: %s, group: %s\n", id.c_str(), group_name.c_str() );
+
+                    known_event_t* known_event = (known_event_t*)malloc(
+                        sizeof( *known_event ) );
+
+                    known_event -> id_len = id.length();
+
+                    char* id_ = (char*)malloc( known_event -> id_len + 1 );
+                    memcpy( id_, id.c_str(), known_event -> id_len );
+                    id_[ known_event -> id_len ] = '\0';
+
+                    known_event -> id = id_;
+                    known_event -> group = event_group;
+
+                    known_events_t::iterator it = known_events.find( id_ );
+
+                    if( it == known_events.end() ) {
+
+                        known_events[ id_ ] = known_event;
+
+                    } else {
+
+                        fprintf( stderr, "Duplicate event id: %s\n", id_ );
+                        exit( 1 );
+                    }
+                }
+            }
+        }
     }
 
     printf( "Running on port: %u\n", my_port );
