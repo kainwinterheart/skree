@@ -1,26 +1,92 @@
 #include <map>
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wundef"
+#pragma clang diagnostic ignored "-Wold-style-cast"
+#pragma clang diagnostic ignored "-Wc++98-compat"
+#pragma clang diagnostic ignored "-Wpadded"
 #include <ev.h>
+#pragma clang diagnostic pop
+
 #include <list>
 #include <ctime>
 #include <queue>
 #include <string>
+
 #include <vector>
 #include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <utility>
 #include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <algorithm>
 #include <pthread.h>
+#include <strings.h>
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreserved-id-macro"
+#pragma clang diagnostic ignored "-Wc++98-compat-pedantic"
+#pragma clang diagnostic ignored "-Wold-style-cast"
+#pragma clang diagnostic ignored "-Wconversion"
+#pragma clang diagnostic ignored "-Wshorten-64-to-32"
+#pragma clang diagnostic ignored "-Wsign-conversion"
+#pragma clang diagnostic ignored "-Wimplicit-fallthrough"
+#pragma clang diagnostic ignored "-Wfloat-equal"
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#pragma clang diagnostic ignored "-Wextra-semi"
+#pragma clang diagnostic ignored "-Wunused-parameter"
+#pragma clang diagnostic ignored "-Wdocumentation"
+#pragma clang diagnostic ignored "-Wcast-align"
+#pragma clang diagnostic ignored "-Wshadow"
+#pragma clang diagnostic ignored "-Wpadded"
+#pragma clang diagnostic ignored "-Wswitch-enum"
+#pragma clang diagnostic ignored "-Warray-bounds-pointer-arithmetic"
+#pragma clang diagnostic ignored "-Wweak-vtables"
 #include <kchashdb.h>
+#pragma clang diagnostic pop
+
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <netinet/tcp.h>
 #include <unordered_map>
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated"
+#pragma clang diagnostic ignored "-Wexit-time-destructors"
+#pragma clang diagnostic ignored "-Wold-style-cast"
+#pragma clang diagnostic ignored "-Wsign-conversion"
+#pragma clang diagnostic ignored "-Wpadded"
+#pragma clang diagnostic ignored "-Wdocumentation-unknown-command"
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
+#pragma clang diagnostic ignored "-Wweak-vtables"
 #include "tclap/CmdLine.h"
+#pragma clang diagnostic pop
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc++98-compat"
+#pragma clang diagnostic ignored "-Wsign-conversion"
+#pragma clang diagnostic ignored "-Wc++98-compat-pedantic"
+#pragma clang diagnostic ignored "-Wdeprecated"
+#pragma clang diagnostic ignored "-Wreserved-id-macro"
+#pragma clang diagnostic ignored "-Wextra-semi"
+#pragma clang diagnostic ignored "-Wundef"
+#pragma clang diagnostic ignored "-Wold-style-cast"
+#pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
+#pragma clang diagnostic ignored "-Wpadded"
+#pragma clang diagnostic ignored "-Wweak-vtables"
 #include "yaml-cpp/yaml.h"
+#pragma clang diagnostic pop
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc++98-compat-pedantic"
+#pragma clang diagnostic ignored "-Wc++98-compat"
+#pragma clang diagnostic ignored "-Wexit-time-destructors"
+#pragma clang diagnostic ignored "-Wglobal-constructors"
+#pragma clang diagnostic ignored "-Wshadow"
+#pragma clang diagnostic ignored "-Wold-style-cast"
 
 // thank you, stackoverflow!
 #ifndef htonll
@@ -33,21 +99,34 @@
     ( x ) & 0xFFFFFFFF ) << 32 ) | ntohl( ( x ) >> 32 ) )
 #endif
 
-size_t read_size = 131072;
-time_t discovery_timeout_milliseconds = 3000;
-uint32_t max_replication_factor = 3;
-uint32_t max_client_threads = 1;
+#define SAVE_EVENT_RESULT_F 0
+#define SAVE_EVENT_RESULT_A 1
+#define SAVE_EVENT_RESULT_K 2
+#define SAVE_EVENT_RESULT_NULL 3
 
-uint64_t stat_num_inserts;
-uint64_t stat_num_replications;
-pthread_mutex_t stat_mutex;
+#define REPL_SAVE_RESULT_F 0
+#define REPL_SAVE_RESULT_K 1
 
-kyotocabinet::HashDB db;
+static size_t read_size = 131072;
+static uint64_t no_failover_time = 10 * 60;
+static time_t discovery_timeout_milliseconds = 3000;
+static uint32_t max_replication_factor = 3;
+static uint32_t max_client_threads = 1;
+static uint64_t job_time = 10 * 60;
 
-char* my_hostname;
-uint32_t my_hostname_len;
-uint32_t my_port;
-char* my_peer_id;
+static uint64_t stat_num_inserts;
+static uint64_t stat_num_replications;
+static pthread_mutex_t stat_mutex;
+
+static kyotocabinet::HashDB db;
+
+static char* my_hostname;
+static uint32_t my_hostname_len;
+static uint32_t my_port;
+static char* my_peer_id;
+static uint32_t my_peer_id_len;
+static uint32_t my_peer_id_len_net;
+static size_t my_peer_id_len_size;
 
 class Client;
 
@@ -59,8 +138,8 @@ struct new_client_t {
     socklen_t s_in_len;
 };
 
-std::queue<new_client_t*> new_clients;
-pthread_mutex_t new_clients_mutex;
+static std::queue<new_client_t*> new_clients;
+static pthread_mutex_t new_clients_mutex;
 
 struct char_pointer_comparator : public std::binary_function<char*, char*, bool> {
 
@@ -105,37 +184,49 @@ struct event_group_t {
 struct known_event_t {
 
     size_t id_len;
+    size_t id_len_net;
     char* id;
     event_group_t* group;
+    uint32_t ttl;
+    uint32_t id_len_size;
 };
 
 typedef std::unordered_map<char*, skree_module_t*, char_pointer_hasher, char_pointer_comparator> skree_modules_t;
-skree_modules_t skree_modules;
+static skree_modules_t skree_modules;
 
 typedef std::unordered_map<char*, event_group_t*, char_pointer_hasher, char_pointer_comparator> event_groups_t;
-event_groups_t event_groups;
+static event_groups_t event_groups;
 
 typedef std::unordered_map<char*, known_event_t*, char_pointer_hasher, char_pointer_comparator> known_events_t;
-known_events_t known_events;
+static known_events_t known_events;
+
+typedef std::unordered_map<char*, uint64_t, char_pointer_hasher, char_pointer_comparator> failover_t;
+static failover_t failover;
+
+typedef std::unordered_map<uint64_t, uint64_t> wip_t;
+static wip_t wip;
+
+typedef std::unordered_map<char*, uint64_t, char_pointer_hasher, char_pointer_comparator> no_failover_t;
+static no_failover_t no_failover;
 
 typedef std::unordered_map<char*, Client*, char_pointer_hasher, char_pointer_comparator> known_peers_t;
-known_peers_t known_peers;
-known_peers_t known_peers_by_conn_id;
-pthread_mutex_t known_peers_mutex;
+static known_peers_t known_peers;
+static known_peers_t known_peers_by_conn_id;
+static pthread_mutex_t known_peers_mutex;
 
 typedef std::unordered_map<char*, bool, char_pointer_hasher, char_pointer_comparator> me_t;
-me_t me;
-pthread_mutex_t me_mutex;
+static me_t me;
+static pthread_mutex_t me_mutex;
 
 struct peer_to_discover_t {
 
-    uint32_t port;
     const char* host;
+    uint32_t port;
 };
 
 typedef std::unordered_map<char*, peer_to_discover_t*, char_pointer_hasher, char_pointer_comparator> peers_to_discover_t;
-peers_to_discover_t peers_to_discover;
-pthread_mutex_t peers_to_discover_mutex;
+static peers_to_discover_t peers_to_discover;
+static pthread_mutex_t peers_to_discover_mutex;
 
 struct client_bound_ev_io {
 
@@ -206,9 +297,9 @@ struct out_packet_r_ctx {
 
 struct in_packet_r_ctx_event {
 
-    uint32_t len;
     char* data;
     char* id;
+    uint32_t len;
 };
 
 struct in_packet_r_ctx {
@@ -217,12 +308,58 @@ struct in_packet_r_ctx {
     uint32_t port;
     char* hostname;
     uint32_t event_name_len;
-    uint32_t count;
+    uint32_t cnt;
     char* event_name;
     std::list<in_packet_r_ctx_event*>* events;
-    uint32_t cnt;
     std::list<packet_r_ctx_peer*>* peers;
 };
+
+struct muh_str_t {
+
+    size_t len;
+    char* data;
+};
+
+struct out_packet_i_ctx {
+
+    pthread_mutex_t* mutex;
+    known_event_t* event;
+    muh_str_t* data;
+    muh_str_t* peer_id;
+    uint64_t wrinseq;
+    char* failover_key;
+    uint64_t failover_key_len;
+    uint32_t* count_replicas;
+    uint32_t* pending;
+    uint32_t* acceptances;
+    char* rpr;
+    uint64_t rid;
+    uint32_t peers_cnt;
+};
+
+struct out_packet_c_ctx {
+
+    Client* client;
+    known_event_t* event;
+    muh_str_t* rin;
+    muh_str_t* rpr;
+    uint64_t rid;
+    uint64_t wrinseq;
+    uint64_t failover_key_len;
+    char* failover_key;
+};
+
+struct in_packet_c_ctx {
+
+    size_t event_name_len;
+    char* event_name;
+    uint64_t rid;
+    char* rin;
+    uint32_t rin_len;
+};
+
+static std::queue<out_packet_i_ctx*> replication_exec_queue;
+static pthread_mutex_t replication_exec_queue_mutex;
 
 static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events );
 
@@ -270,7 +407,195 @@ static inline uint32_t get_port_from_sockaddr_in( const sockaddr_in* s_in ) {
     }
 }
 
-void begin_replication( out_packet_r_ctx*& r_ctx );
+static inline void save_peers_to_discover() {
+
+    pthread_mutex_lock( &peers_to_discover_mutex );
+
+    size_t cnt = htonll( peers_to_discover.size() );
+    size_t dump_len = 0;
+    char* dump = (char*)malloc( sizeof( cnt ) );
+
+    memcpy( dump + dump_len, &cnt, sizeof( cnt ) );
+    dump_len += sizeof( cnt );
+
+    for(
+        peers_to_discover_t::const_iterator it = peers_to_discover.cbegin();
+        it != peers_to_discover.cend();
+        ++it
+    ) {
+
+        peer_to_discover_t* peer = it -> second;
+
+        size_t len = strlen( peer -> host );
+        uint32_t port = htonl( peer -> port );
+
+        dump = (char*)realloc( dump,
+            dump_len
+            + sizeof( len )
+            + len
+            + sizeof( port )
+        );
+
+        size_t _len = htonll( len );
+        memcpy( dump + dump_len, &_len, sizeof( _len ) );
+        dump_len += sizeof( _len );
+
+        memcpy( dump + dump_len, peer -> host, len );
+        dump_len += len;
+
+        memcpy( dump + dump_len, &port, sizeof( port ) );
+        dump_len += sizeof( port );
+    }
+
+    pthread_mutex_unlock( &peers_to_discover_mutex );
+
+    const char* key = "peers_to_discover";
+    const size_t key_len = strlen( key );
+
+    if( ! db.set( key, key_len, dump, dump_len ) )
+        fprintf( stderr, "Failed to save peers list: %s\n", db.error().name() );
+}
+
+static inline void load_peers_to_discover() {
+
+    const char* key = "peers_to_discover";
+    const size_t key_len = strlen( key );
+    size_t value_len;
+
+    char* value = db.get( key, key_len, &value_len );
+
+    if( value != NULL ) {
+
+        size_t offset = 0;
+
+        size_t cnt;
+        memcpy( &cnt, value + offset, sizeof( cnt ) );
+        cnt = ntohll( cnt );
+        offset += sizeof( cnt );
+
+        while( cnt > 0 ) {
+
+            size_t hostname_len;
+            memcpy( &hostname_len, value + offset, sizeof( hostname_len ) );
+            hostname_len = ntohll( hostname_len );
+            offset += sizeof( hostname_len );
+
+            char* hostname = (char*)malloc( hostname_len + 1 );
+            memcpy( hostname, value + offset, hostname_len );
+            hostname[ hostname_len ] = '\0';
+            offset += hostname_len;
+
+            uint32_t port;
+            memcpy( &port, value + offset, sizeof( port ) );
+            port = ntohl( port );
+            offset += sizeof( port );
+
+            char* peer_id = make_peer_id( hostname_len, hostname, port );
+
+            peers_to_discover_t::const_iterator it = peers_to_discover.find( peer_id );
+
+            if( it == peers_to_discover.cend() ) {
+
+                peer_to_discover_t* peer = (peer_to_discover_t*)malloc( sizeof( *peer ) );
+
+                peer -> host = hostname;
+                peer -> port = port;
+
+                peers_to_discover[ peer_id ] = peer;
+
+            } else {
+
+                free( peer_id );
+                free( hostname );
+            }
+
+            --cnt;
+        }
+    }
+}
+
+static inline void begin_replication( out_packet_r_ctx*& r_ctx );
+static inline void continue_replication_exec( out_packet_i_ctx*& ctx );
+static inline short save_event(
+    in_packet_e_ctx* ctx,
+    uint32_t replication_factor,
+    Client* client,
+    std::vector<uint64_t>* task_ids
+);
+static inline short repl_save(
+    in_packet_r_ctx* ctx,
+    Client* client
+);
+static inline void repl_clean(
+    size_t failover_key_len,
+    const char* failover_key,
+    uint64_t wrinseq
+);
+
+typedef std::unordered_map<char*, muh_str_t*, char_pointer_hasher, char_pointer_comparator> get_keys_result_t;
+
+template <typename T>
+static inline T* parse_db_value( muh_str_t* _value, size_t* size = NULL ) {
+
+    if( _value == NULL ) return NULL;
+    if( size != NULL ) *size = _value -> len;
+
+    T* value = (T*)malloc( _value -> len );
+    memcpy( &value, _value -> data, _value -> len );
+
+    free( _value -> data );
+    delete _value;
+
+    return value;
+}
+
+template <typename T>
+static inline T* parse_db_value( get_keys_result_t* map, std::string* key, size_t* size = NULL ) {
+
+    get_keys_result_t::iterator it = map -> find( (char*)key -> c_str() );
+
+    if( it == map -> end() ) return NULL;
+
+    return parse_db_value<T>( it -> second, size );
+}
+
+static inline get_keys_result_t* db_get_keys( std::vector<std::string>& keys ) {
+
+    class VisitorImpl : public kyotocabinet::DB::Visitor {
+
+        public:
+            explicit VisitorImpl( get_keys_result_t* _out ) : out(_out) {}
+
+        private:
+            const char* visit_full(
+                const char* _key, size_t key_len,
+                const char* _value, size_t value_len,
+                size_t* sp
+            ) {
+
+                char* key = (char*)malloc( key_len );
+                memcpy( key, _key, key_len );
+
+                char* value = (char*)malloc( value_len );
+                memcpy( value, _value, value_len );
+
+                (*out)[ key ] = (muh_str_t*)malloc( sizeof( muh_str_t ) );
+                (*out)[ key ] -> len = value_len;
+                (*out)[ key ] -> data = value;
+
+                return kyotocabinet::DB::Visitor::NOP;
+            }
+
+            get_keys_result_t* out;
+    };
+
+    get_keys_result_t* out = new get_keys_result_t();
+
+    VisitorImpl visitor( out );
+
+    if( db.accept_bulk( keys, &visitor, false ) ) return out;
+    else return NULL;
+}
 
 class Client {
 
@@ -334,8 +659,8 @@ class Client {
                 *out_packet_len += sizeof( _known_peers_len );
 
                 for(
-                    known_peers_t::iterator it = known_peers.begin();
-                    it != known_peers.end();
+                    known_peers_t::const_iterator it = known_peers.cbegin();
+                    it != known_peers.cend();
                     ++it
                 ) {
 
@@ -394,15 +719,42 @@ class Client {
 
             } else if( opcode == 'c' ) {
 
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
 
+                item -> len = 4;
+                item -> cb = &Client::packet_c_cb1;
+                item -> ctx = NULL;
+                item -> err = NULL;
+                item -> opcode = false;
+
+                push_pending_reads_queue( item );
 
             } else if( opcode == 'i' ) {
 
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
 
+                item -> len = 4;
+                item -> cb = &Client::packet_i_cb1;
+                item -> ctx = NULL;
+                item -> err = NULL;
+                item -> opcode = false;
+
+                push_pending_reads_queue( item );
 
             } else if( opcode == 'x' ) {
 
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
 
+                item -> len = 4;
+                item -> cb = &Client::packet_x_cb1;
+                item -> ctx = NULL;
+                item -> err = NULL;
+                item -> opcode = false;
+
+                push_pending_reads_queue( item );
 
             } else if( opcode == 'h' ) {
 
@@ -534,6 +886,365 @@ class Client {
             }
         }
 
+        PendingReadsQueueItem* packet_i_cb1( PendingReadCallbackArgs* args ) {
+
+            uint32_t _len;
+            memcpy( &_len, args -> data, args -> len );
+            uint32_t len = ntohl( _len );
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
+
+            item -> len = len + 4;
+            item -> cb = &Client::packet_i_cb2;
+            item -> ctx = NULL;
+            item -> err = NULL;
+            item -> opcode = false;
+
+            return item;
+        }
+
+        PendingReadsQueueItem* packet_i_cb2( PendingReadCallbackArgs* args ) {
+
+            muh_str_t* peer_id = (muh_str_t*)malloc( sizeof( *peer_id ) );
+
+            peer_id -> len = args -> len - 4;
+            peer_id -> data = (char*)malloc( peer_id -> len + 1 );
+
+            memcpy( peer_id -> data, args -> data, peer_id -> len );
+            peer_id -> data[ peer_id -> len ] = '\0';
+
+            uint32_t _len;
+            memcpy( &_len, args -> data + peer_id -> len, 4 );
+            uint32_t len = ntohl( _len );
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
+
+            item -> len = len + 8;
+            item -> cb = &Client::packet_i_cb3;
+            item -> ctx = (void*)peer_id;
+            item -> err = NULL;
+            item -> opcode = false;
+
+            return item;
+        }
+
+        PendingReadsQueueItem* packet_i_cb3( PendingReadCallbackArgs* args ) {
+
+            uint32_t event_id_len = args -> len - 8;
+            char* event_id = (char*)malloc( event_id_len + 1 );
+            memcpy( event_id, args -> data, event_id_len );
+            peer_id[ event_id_len ] = '\0';
+
+            uint64_t _rid;
+            memcpy( &_rid, args -> data + event_id_len, 8 );
+            uint64_t rid = ntohll( _rid );
+
+            muh_str_t* peer_id = (muh_str_t*)(args -> ctx);
+
+            char* _out_packet = (char*)malloc( 1 );
+            *(args -> out_packet_len) += 1;
+            *(args -> out_packet) = _out_packet;
+
+            size_t suffix_len =
+                event_id_len
+                + 1 // :
+                + peer_id -> len
+                + 1 // :
+                + 20 // rid
+            ;
+            char* suffix = (char*)malloc(
+                suffix_len
+                + 1 // \0
+            );
+            sprintf( suffix, "%s:%s:%llu", event_id, peer_id -> data, rid );
+
+            failover_t::const_iterator it = failover.find( suffix );
+
+            if( it == failover.cend() ) {
+
+                std::string rre_key( "rre:", 4 );
+                rre_key.append( suffix, suffix_len );
+
+                std::vector<std::string> keys;
+                keys.push_back( rre_key );
+
+                get_keys_result_t* dbdata = db_get_keys( keys );
+
+                uint64_t* _rinseq = parse_db_value<uint64_t>( dbdata, &rre_key );
+
+                if( _rinseq == NULL ) {
+
+                    _out_packet[ 0 ] = 'f';
+
+                } else {
+
+                    free( _rinseq );
+                    _out_packet[ 0 ] = 'k';
+                }
+
+            } else {
+
+                // TODO: It could be 0 here as a special case
+                wip_t::const_iterator wip_it = wip.find( it -> second );
+
+                if( wip_it == wip.cend() ) {
+
+                    // TODO: perl
+                    // if( int( rand( 100 ) + 0.5 ) > 50 ) {
+                    if( false ) {
+
+                        _out_packet[ 0 ] = 'f';
+
+                    } else {
+
+                        _out_packet[ 0 ] = 'k';
+
+                        failover.erase( it );
+                        no_failover[ suffix ] = std::time( nullptr );
+                    }
+
+                } else {
+
+                    _out_packet[ 0 ] = 'f';
+                }
+            }
+
+            return nullptr;
+        }
+
+        PendingReadsQueueItem* packet_x_cb1( PendingReadCallbackArgs* args ) {
+
+            uint32_t _len;
+            memcpy( &_len, args -> data, args -> len );
+            uint32_t len = ntohl( _len );
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
+
+            item -> len = len + 4;
+            item -> cb = &Client::packet_x_cb2;
+            item -> ctx = NULL;
+            item -> err = NULL;
+            item -> opcode = false;
+
+            return item;
+        }
+
+        PendingReadsQueueItem* packet_x_cb2( PendingReadCallbackArgs* args ) {
+
+            muh_str_t* peer_id = (muh_str_t*)malloc( sizeof( *peer_id ) );
+
+            peer_id -> len = args -> len - 4;
+            peer_id -> data = (char*)malloc( peer_id -> len + 1 );
+
+            memcpy( peer_id -> data, args -> data, peer_id -> len );
+            peer_id -> data[ peer_id -> len ] = '\0';
+
+            uint32_t _len;
+            memcpy( &_len, args -> data + peer_id -> len, 4 );
+            uint32_t len = ntohl( _len );
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
+
+            item -> len = len + 8;
+            item -> cb = &Client::packet_x_cb3;
+            item -> ctx = (void*)peer_id;
+            item -> err = NULL;
+            item -> opcode = false;
+
+            return item;
+        }
+
+        PendingReadsQueueItem* packet_x_cb3( PendingReadCallbackArgs* args ) {
+
+            uint32_t event_id_len = args -> len - 8;
+            char* event_id = (char*)malloc( event_id_len + 1 );
+            memcpy( event_id, args -> data, event_id_len );
+            peer_id[ event_id_len ] = '\0';
+
+            uint64_t _rid;
+            memcpy( &_rid, args -> data + event_id_len, 8 );
+            uint64_t rid = ntohll( _rid );
+
+            muh_str_t* peer_id = (muh_str_t*)(args -> ctx);
+
+            size_t suffix_len =
+                event_id_len
+                + 1 // :
+                + peer_id -> len
+                + 1 // :
+                + 20 // rid
+            ;
+            char* suffix = (char*)malloc(
+                suffix_len
+                + 1 // \0
+            );
+            sprintf( suffix, "%s:%s:%llu", event_id, peer_id -> data, rid );
+
+            std::string rre_key( "rre:", 4 );
+            rre_key.append( suffix, suffix_len );
+
+            std::vector<std::string> keys;
+            keys.push_back( rre_key );
+
+            get_keys_result_t* dbdata = db_get_keys( keys );
+
+            uint64_t* _rinseq = parse_db_value<uint64_t>( dbdata, &rre_key );
+
+            if( _rinseq != NULL ) {
+
+                repl_clean( suffix_len, suffix, ntohll( *_rinseq ) );
+                free( _rinseq );
+            }
+
+            delete dbdata;
+
+            return nullptr;
+        }
+
+        PendingReadsQueueItem* packet_c_cb1( PendingReadCallbackArgs* args ) {
+
+            uint32_t _len;
+            memcpy( &_len, args -> data, args -> len );
+            uint32_t len = ntohl( _len );
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
+
+            item -> len = len + 8 + 4;
+            item -> cb = &Client::packet_c_cb2;
+            item -> ctx = NULL;
+            item -> err = NULL;
+            item -> opcode = false;
+
+            return item;
+        }
+
+        PendingReadsQueueItem* packet_c_cb2( PendingReadCallbackArgs* args ) {
+
+            in_packet_c_ctx* ctx = (in_packet_c_ctx*)malloc( sizeof( *ctx ) );
+
+            ctx -> event_name_len = args -> len - 8 - 4;
+            ctx -> event_name = (char*)malloc( ctx -> event_name_len );
+            memcpy( ctx -> event_name, args -> data, ctx -> event_name_len );
+
+            uint64_t _rid;
+            memcpy( &_rid, args -> data + ctx -> event_name_len, 8 );
+            ctx -> rid = ntohll( _rid );
+
+            uint32_t _len;
+            memcpy( &_len, args -> data + ctx -> event_name_len + 8, 4 );
+            ctx -> rin_len = ntohl( _len );
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                sizeof( *item ) );
+
+            item -> len = ctx -> rin_len;
+            item -> cb = &Client::packet_c_cb3;
+            item -> ctx = (void*)ctx;
+            item -> err = NULL;
+            item -> opcode = false;
+
+            return item;
+        }
+
+        PendingReadsQueueItem* packet_c_cb3( PendingReadCallbackArgs* args ) {
+
+            in_packet_c_ctx* ctx = (in_packet_c_ctx*)(args -> ctx);
+
+            ctx -> rin = (char*)malloc( args -> len );
+            memcpy( ctx -> rin, args -> data, args -> len );
+
+            char* _out_packet = (char*)malloc( 1 );
+            *(args -> out_packet_len) += 1;
+            *(args -> out_packet) = _out_packet;
+
+            size_t in_key_len = 3;
+            char* in_key = (char*)malloc(
+                3 // in:
+                + ctx -> event_name_len
+                + 1 // :
+                + 20
+                + 1 // \0
+            );
+
+            in_key[ 0 ] = 'i';
+            in_key[ 1 ] = 'n';
+            in_key[ 2 ] = ':';
+
+            memcpy( in_key + in_key_len, ctx -> event_name,
+                ctx -> event_name_len );
+            in_key_len += ctx -> event_name_len;
+
+            in_key[ in_key_len ] = ':';
+            ++in_key_len;
+
+            sprintf( in_key + in_key_len, "%llu", ctx -> rid );
+
+            bool should_save_event = false;
+
+            wip_t::const_iterator it = wip.find( ctx -> rid );
+
+            if( it == wip.cend() ) {
+
+                if( db.check( in_key, in_key_len ) > 0 )
+                    should_save_event = true;
+
+                _out_packet[ 0 ] = 'k';
+
+            } else {
+
+                // TODO: check for overflow
+                if( ( it -> second + job_time ) <= std::time( nullptr ) ) {
+
+                    should_save_event = true;
+                    _out_packet[ 0 ] = 'k';
+                    wip.erase( it );
+
+                } else {
+
+                    _out_packet[ 0 ] = 'f';
+                }
+            }
+
+            if( should_save_event ) {
+
+                in_packet_e_ctx_event* event = (in_packet_e_ctx_event*)malloc(
+                    sizeof( *event ) );
+
+                event -> len = ctx -> rin_len;
+                event -> data = ctx -> rin;
+
+                in_packet_e_ctx* e_ctx = (in_packet_e_ctx*)malloc( sizeof( *e_ctx ) );
+
+                e_ctx -> cnt = 1;
+                e_ctx -> event_name_len = ctx -> event_name_len;
+                e_ctx -> event_name = ctx -> event_name;
+                e_ctx -> events = new std::list<in_packet_e_ctx_event*>();
+                e_ctx -> events -> push_back( event );
+
+                short result = save_event( e_ctx, 0, NULL, NULL );
+
+                if( result != SAVE_EVENT_RESULT_K ) {
+
+                    fprintf( stderr, "save_event() failed: %s\n", db.error().name() );
+                    exit( 1 );
+                }
+
+                if( ! db.remove( in_key, strlen( in_key ) ) )
+                    fprintf( stderr, "db.remove failed: %s\n", db.error().name() );
+
+                Client::free_in_packet_e_ctx( (void*)e_ctx );
+            }
+
+            free( in_key );
+
+            return nullptr;
+        }
+
         PendingReadsQueueItem* packet_r_cb1( PendingReadCallbackArgs* args ) {
 
             uint32_t _len;
@@ -652,7 +1363,7 @@ class Client {
             memcpy( &_id, args -> data, 8 );
 
             event -> id = (char*)malloc( 21 );
-            sprintf( event -> id, "%lld", ntohll( _id ) );
+            sprintf( event -> id, "%llu", ntohll( _id ) );
 
             uint32_t _len;
             memcpy( &_len, args -> data + 8, 4 );
@@ -720,265 +1431,25 @@ class Client {
 
             } else {
 
-                in_packet_r_ctx* ctx = (in_packet_r_ctx*)(args -> ctx);
-
-                uint64_t increment_key_len = 7 + ctx -> event_name_len;
-                char* increment_key = (char*)malloc( increment_key_len );
-
-                sprintf( increment_key, "rinseq:" );
-                memcpy( increment_key + 7, ctx -> event_name, ctx -> event_name_len );
+                short result = repl_save( (in_packet_r_ctx*)(args -> ctx), this );
 
                 char* _out_packet = (char*)malloc( 1 );
                 *(args -> out_packet_len) += 1;
                 *(args -> out_packet) = _out_packet;
 
-                _out_packet[ 0 ] = 'f';
+                if( result == REPL_SAVE_RESULT_F ) {
 
-                uint32_t num_inserted = 0;
+                    _out_packet[ 0 ] = 'f';
 
-                uint32_t peers_cnt = ctx -> peers -> size();
-                uint32_t _peers_cnt = htonl( peers_cnt );
-                uint64_t serialized_peers_len = sizeof( _peers_cnt );
-                char* serialized_peers = (char*)malloc( serialized_peers_len );
-                memcpy( serialized_peers, &_peers_cnt, serialized_peers_len );
+                } else if( result == REPL_SAVE_RESULT_K ) {
 
-                for(
-                    std::list<packet_r_ctx_peer*>::iterator it =
-                        ctx -> peers -> begin();
-                    it != ctx -> peers -> end();
-                    ++it
-                ) {
+                    _out_packet[ 0 ] = 'k';
 
-                    packet_r_ctx_peer* peer = *it;
-                    char* _peer_id = make_peer_id( peer -> hostname_len,
-                        peer -> hostname, peer -> port );
+                } else {
 
-                    bool keep_peer_id = false;
-                    size_t _peer_id_len = strlen( _peer_id );
-
-                    pthread_mutex_lock( &peers_to_discover_mutex );
-
-                    peers_to_discover_t::iterator prev_item =
-                        peers_to_discover.find( _peer_id );
-
-                    if( prev_item == peers_to_discover.end() ) {
-
-                        peer_to_discover_t* peer_to_discover = (peer_to_discover_t*)malloc(
-                            sizeof( *peer_to_discover ) );
-
-                        peer_to_discover -> host = peer -> hostname;
-                        peer_to_discover -> port = peer -> port;
-
-                        peers_to_discover[ _peer_id ] = peer_to_discover;
-                        keep_peer_id = true;
-                    }
-
-                    pthread_mutex_unlock( &peers_to_discover_mutex );
-
-                    serialized_peers = (char*)realloc( serialized_peers,
-                        serialized_peers_len + _peer_id_len );
-
-                    memcpy( serialized_peers + serialized_peers_len,
-                        _peer_id, _peer_id_len );
-                    serialized_peers_len += _peer_id_len;
-
-                    if( ! keep_peer_id ) free( _peer_id );
+                    fprintf( stderr, "Unexpected repl_save() result: %d\n", result );
+                    exit( 1 );
                 }
-
-                if( db.begin_transaction() ) {
-
-                    int64_t max_id = db.increment(
-                        increment_key,
-                        increment_key_len,
-                        ctx -> events -> size(),
-                        0
-                    );
-
-                    if( max_id == kyotocabinet::INT64MIN ) {
-
-                        if( ! db.end_transaction( false ) ) {
-
-                            fprintf( stderr, "Failed to abort transaction: %s\n", db.error().name() );
-                            exit( 1 );
-                        }
-
-                    } else {
-
-                        uint64_t _now = htonll( std::time( nullptr ) );
-                        size_t now_len = sizeof( _now );
-                        char* now = (char*)malloc( now_len );
-                        memcpy( now, &_now, now_len );
-
-                        for(
-                            std::list<in_packet_r_ctx_event*>::iterator it =
-                                ctx -> events -> begin();
-                            it != ctx -> events -> end();
-                            ++it
-                        ) {
-
-                            in_packet_r_ctx_event* event = *it;
-
-                            char* r_id = (char*)malloc( 21 );
-                            sprintf( r_id, "%lld", max_id );
-
-                            size_t r_id_len = strlen( r_id );
-                            uint32_t key_len =
-                                4 // rin: | rts: | rid: | rpr:
-                                + ctx -> event_name_len
-                                + 1 // :
-                                + r_id_len
-                            ;
-                            char* key = (char*)malloc( key_len );
-
-                            sprintf( key, "rin:" );
-                            memcpy( key + 4, ctx -> event_name, ctx -> event_name_len );
-                            key[ 4 + ctx -> event_name_len ] = ':';
-                            memcpy( key + 4 + ctx -> event_name_len + 1, r_id,
-                                r_id_len );
-
-                            if( db.set( key, key_len, event -> data, event -> len ) ) {
-
-                                key[ 1 ] = 't';
-                                key[ 2 ] = 's';
-
-                                if( db.set( key, key_len, now, now_len ) ) {
-
-                                    key[ 1 ] = 'i';
-                                    key[ 2 ] = 'd';
-
-                                    if( db.set( key, key_len, event -> id,
-                                        strlen( event -> id ) ) ) {
-
-                                        // TODO
-                                        bool rpr_ok = false;
-
-                                        if( peers_cnt > 0 ) {
-
-                                            key[ 1 ] = 'p';
-                                            key[ 2 ] = 'r';
-
-                                            rpr_ok = db.set(
-                                                key, key_len,
-                                                serialized_peers,
-                                                serialized_peers_len
-                                            );
-
-                                        } else {
-
-                                            rpr_ok = true;
-                                        }
-
-                                        if( rpr_ok ) {
-
-                                            key[ 1 ] = 'r';
-                                            key[ 2 ] = 'e';
-
-                                            size_t event_id_len = strlen( event -> id );
-                                            key_len -= r_id_len;
-                                            key = (char*)realloc( key, key_len + event_id_len );
-
-                                            memcpy( key + key_len, event -> id, event_id_len );
-                                            key_len += event_id_len;
-
-                                            if( db.set( key, key_len, r_id, r_id_len ) ) {
-
-                                                free( key );
-                                                free( r_id );
-                                                ++num_inserted;
-                                                --max_id;
-
-                                            } else {
-
-                                                free( key );
-                                                free( r_id );
-                                                break;
-                                            }
-
-                                        } else {
-
-                                            free( key );
-                                            free( r_id );
-                                            break;
-                                        }
-
-                                    } else {
-
-                                        free( key );
-                                        free( r_id );
-                                        break;
-                                    }
-
-                                } else {
-
-                                    free( key );
-                                    free( r_id );
-                                    break;
-                                }
-
-                            } else {
-
-                                free( key );
-                                free( r_id );
-                                break;
-                            }
-                        }
-
-                        if( num_inserted == ctx -> events -> size() ) {
-
-                            if( db.end_transaction( true ) ) {
-
-                                pthread_mutex_lock( &stat_mutex );
-                                stat_num_replications += num_inserted;
-                                pthread_mutex_unlock( &stat_mutex );
-
-                                _out_packet[ 0 ] = 'k';
-
-                            } else {
-
-                                fprintf( stderr, "Failed to commit transaction: %s\n", db.error().name() );
-                                exit( 1 );
-                            }
-
-                        } else {
-
-                            if( ! db.end_transaction( false ) ) {
-
-                                fprintf( stderr, "Failed to abort transaction: %s\n", db.error().name() );
-                                exit( 1 );
-                            }
-                        }
-
-                        free( now );
-                    }
-
-                    free( increment_key );
-                }
-
-                free( serialized_peers );
-
-                while( ! ctx -> peers -> empty() ) {
-
-                    packet_r_ctx_peer* peer = ctx -> peers -> back();
-                    ctx -> peers -> pop_back();
-
-                    free( peer -> hostname );
-                    free( peer );
-                }
-
-                free( ctx -> peers );
-
-                while( ! ctx -> events -> empty() ) {
-
-                    in_packet_r_ctx_event* event = ctx -> events -> back();
-                    ctx -> events -> pop_back();
-
-                    free( event -> data );
-                    free( event );
-                }
-
-                free( ctx -> events );
-                free( ctx -> hostname );
-                free( ctx -> event_name );
 
                 return nullptr;
             }
@@ -1050,28 +1521,6 @@ class Client {
             item -> opcode = false;
 
             return item;
-        }
-
-        static void free_in_packet_e_ctx( void* _ctx ) {
-
-            in_packet_e_ctx* ctx = (in_packet_e_ctx*)_ctx;
-
-            for(
-                std::list<in_packet_e_ctx_event*>::iterator it = ctx -> events -> begin();
-                it != ctx -> events -> end();
-                ++it
-            ) {
-
-                in_packet_e_ctx_event* event = *it;
-
-                free( event -> data );
-                if( event -> id != NULL ) free( event -> id );
-                free( event );
-            }
-
-            free( ctx -> event_name );
-            free( ctx -> events );
-            free( ctx );
         }
 
         PendingReadsQueueItem* packet_e_cb2( PendingReadCallbackArgs* args ) {
@@ -1190,17 +1639,11 @@ class Client {
 
         PendingReadsQueueItem* packet_e_cb6( PendingReadCallbackArgs* args ) {
 
-            char* _out_packet = (char*)malloc( 1 );
-            *(args -> out_packet_len) += 1;
-            *(args -> out_packet) = _out_packet;
-
-            _out_packet[ 0 ] = 'f';
-
             in_packet_e_ctx* ctx = (in_packet_e_ctx*)(args -> ctx);
 
-            known_events_t::iterator it = known_events.find( ctx -> event_name );
+            known_events_t::const_iterator it = known_events.find( ctx -> event_name );
 
-            if( it == known_events.end() ) {
+            if( it == known_events.cend() ) {
 
                 fprintf( stderr, "Got unknown event: %s\n", ctx -> event_name );
                 Client::free_in_packet_e_ctx( (void*)ctx );
@@ -1212,221 +1655,32 @@ class Client {
             memcpy( &_replication_factor, args -> data, args -> len );
             uint32_t replication_factor = ntohl( _replication_factor );
 
-            if( replication_factor > max_replication_factor )
-                replication_factor = max_replication_factor;
+            short result = save_event( ctx, replication_factor, this, NULL );
 
-            uint64_t increment_key_len = 6 + ctx -> event_name_len;
-            char* increment_key = (char*)malloc( increment_key_len );
+            char* _out_packet = (char*)malloc( 1 );
+            *(args -> out_packet_len) += 1;
+            *(args -> out_packet) = _out_packet;
 
-            sprintf( increment_key, "inseq:" );
-            memcpy( increment_key + 6, ctx -> event_name, ctx -> event_name_len );
+            switch( result ) {
 
-            uint32_t _cnt = htonl( ctx -> events -> size() );
-            size_t r_len = 0;
-            char* r_req = (char*)malloc( 1
-                + sizeof( my_hostname_len )
-                + my_hostname_len
-                + sizeof( my_port )
-                + sizeof( ctx -> event_name_len )
-                + ctx -> event_name_len
-                + sizeof( _cnt )
-            );
-
-            r_req[ 0 ] = 'r';
-            r_len += 1;
-
-            uint32_t _hostname_len = htonl( my_hostname_len );
-            memcpy( r_req + r_len, &_hostname_len, sizeof( _hostname_len ) );
-            r_len += sizeof( _hostname_len );
-
-            memcpy( r_req + r_len, my_hostname, my_hostname_len );
-            r_len += my_hostname_len;
-
-            uint32_t _my_port = htonl( my_port );
-            memcpy( r_req + r_len, &_my_port, sizeof( _my_port ) );
-            r_len += sizeof( _my_port );
-
-            uint32_t _event_name_len = htonl( ctx -> event_name_len );
-            memcpy( r_req + r_len, &_event_name_len, sizeof( _event_name_len ) );
-            r_len += sizeof( _event_name_len );
-
-            memcpy( r_req + r_len, ctx -> event_name, ctx -> event_name_len );
-            r_len += ctx -> event_name_len;
-
-            memcpy( r_req + r_len, &_cnt, sizeof( _cnt ) );
-            r_len += sizeof( _cnt );
-
-            uint32_t num_inserted = 0;
-            bool replication_began = false;
-
-            if( db.begin_transaction() ) {
-
-                int64_t max_id = db.increment(
-                    increment_key,
-                    increment_key_len,
-                    ctx -> events -> size(),
-                    0
-                );
-
-                if( max_id == kyotocabinet::INT64MIN ) {
-
-                    fprintf( stderr, "Increment failed: %s\n", db.error().name() );
-
-                    if( ! db.end_transaction( false ) ) {
-
-                        fprintf( stderr, "Failed to abort transaction: %s\n", db.error().name() );
-                        exit( 1 );
-                    }
-
-                } else {
-
-                    for(
-                        std::list<in_packet_e_ctx_event*>::iterator it =
-                            ctx -> events -> begin();
-                        it != ctx -> events -> end();
-                        ++it
-                    ) {
-
-                        in_packet_e_ctx_event* event = *it;
-
-                        event -> id = (char*)malloc( 21 );
-                        sprintf( event -> id, "%lld", max_id );
-
-                        uint32_t key_len =
-                            3 // in:
-                            + ctx -> event_name_len
-                            + 1 // :
-                            + strlen( event -> id )
-                        ;
-                        char* key = (char*)malloc( key_len );
-
-                        sprintf( key, "in:" );
-                        memcpy( key + 3, ctx -> event_name, ctx -> event_name_len );
-                        key[ 3 + ctx -> event_name_len ] = ':';
-                        memcpy( key + 3 + ctx -> event_name_len + 1, event -> id,
-                            strlen( event -> id ) );
-
-                        if( db.set( key, key_len, event -> data, event -> len ) ) {
-
-                            free( key );
-                            ++num_inserted;
-
-                        } else {
-
-                            fprintf( stderr, "db.set() failed: %s\n", db.error().name() );
-                            free( key );
-                            break;
-                        }
-
-                        uint64_t _max_id = htonll( max_id );
-
-                        r_req = (char*)realloc( r_req,
-                            r_len
-                            + sizeof( _max_id )
-                            + sizeof( event -> len )
-                            + event -> len
-                        );
-
-                        memcpy( r_req + r_len, &_max_id, sizeof( _max_id ) );
-                        r_len += sizeof( _max_id );
-
-                        uint32_t _event_len = htonl( event -> len );
-                        memcpy( r_req + r_len, &_event_len, sizeof( _event_len ) );
-                        r_len += sizeof( _event_len );
-
-                        memcpy( r_req + r_len, event -> data, event -> len );
-                        r_len += event -> len;
-
-                        --max_id;
-                    }
-
-                    if( num_inserted == ctx -> events -> size() ) {
-
-                        if( db.end_transaction( true ) ) {
-
-                            pthread_mutex_lock( &stat_mutex );
-                            stat_num_inserts += num_inserted;
-                            pthread_mutex_unlock( &stat_mutex );
-
-                            if( replication_factor > 0 ) {
-
-                                out_packet_r_ctx* r_ctx = (out_packet_r_ctx*)
-                                    malloc( sizeof( *r_ctx ) );
-
-                                r_ctx -> sync = true;
-                                r_ctx -> replication_factor = replication_factor;
-                                r_ctx -> pending = 0;
-                                r_ctx -> client = this;
-                                r_ctx -> candidate_peer_ids = new std::vector<char*>();
-                                r_ctx -> accepted_peers = new std::list<
-                                    packet_r_ctx_peer*>();
-
-                                pthread_mutex_lock( &known_peers_mutex );
-
-                                for(
-                                    known_peers_t::iterator it = known_peers.begin();
-                                    it != known_peers.end();
-                                    ++it
-                                ) {
-
-                                    r_ctx -> candidate_peer_ids -> push_back( it -> first );
-                                }
-
-                                pthread_mutex_unlock( &known_peers_mutex );
-
-                                if( r_ctx -> candidate_peer_ids -> size() > 0 ) {
-
-                                    free( _out_packet );
-                                    *(args -> out_packet) = NULL;
-                                    *(args -> out_packet_len) = 0;
-
-                                    std::random_shuffle(
-                                        r_ctx -> candidate_peer_ids -> begin(),
-                                        r_ctx -> candidate_peer_ids -> end()
-                                    );
-
-                                    r_ctx -> r_req = r_req;
-                                    r_ctx -> r_len = r_len;
-
-                                    begin_replication( r_ctx );
-                                    replication_began = true;
-
-                                } else {
-
-                                    _out_packet[ 0 ] = 'a';
-                                }
-
-                            } else {
-
-                                _out_packet[ 0 ] = 'k';
-                            }
-
-                        } else {
-
-                            fprintf( stderr, "Failed to commit transaction: %s\n", db.error().name() );
-                            exit( 1 );
-                        }
-
-                    } else {
-
-                        fprintf( stderr, "Batch insert failed\n" );
-
-                        if( ! db.end_transaction( false ) ) {
-
-                            fprintf( stderr, "Failed to abort transaction: %s\n", db.error().name() );
-                            exit( 1 );
-                        }
-                    }
-                }
-
-            } else {
-
-                fprintf( stderr, "Failed to start transaction: %s\n", db.error().name() );
-                exit( 1 );
-            }
-
-            free( increment_key );
-            if( ! replication_began ) free( r_req );
+                case SAVE_EVENT_RESULT_F:
+                    _out_packet[ 0 ] = 'f';
+                    break;
+                case SAVE_EVENT_RESULT_A:
+                    _out_packet[ 0 ] = 'a';
+                    break;
+                case SAVE_EVENT_RESULT_K:
+                    _out_packet[ 0 ] = 'k';
+                    break;
+                case SAVE_EVENT_RESULT_NULL:
+                    free( _out_packet );
+                    *(args -> out_packet) = NULL;
+                    *(args -> out_packet_len) = 0;
+                    break;
+                default:
+                    fprintf( stderr, "Unexpected save_event() result: %d\n", result );
+                    exit( 1 );
+            };
 
             Client::free_in_packet_e_ctx( (void*)ctx );
 
@@ -1470,9 +1724,9 @@ class Client {
 
             pthread_mutex_lock( &known_peers_mutex );
 
-            known_peers_t::iterator known_peer = known_peers.find( _peer_id );
+            known_peers_t::const_iterator known_peer = known_peers.find( _peer_id );
 
-            if( known_peer == known_peers.end() ) {
+            if( known_peer == known_peers.cend() ) {
 
                 out_packet[ 0 ] = 'k';
 
@@ -1513,9 +1767,9 @@ class Client {
 
             pthread_mutex_lock( &peers_to_discover_mutex );
 
-            peers_to_discover_t::iterator prev_item = peers_to_discover.find( _peer_id );
+            peers_to_discover_t::const_iterator prev_item = peers_to_discover.find( _peer_id );
 
-            if( prev_item == peers_to_discover.end() ) {
+            if( prev_item == peers_to_discover.cend() ) {
 
                 peer_to_discover_t* peer_to_discover = (peer_to_discover_t*)malloc(
                     sizeof( *peer_to_discover ) );
@@ -1524,6 +1778,7 @@ class Client {
                 peer_to_discover -> port = port;
 
                 peers_to_discover[ _peer_id ] = peer_to_discover;
+                save_peers_to_discover();
 
             } else {
 
@@ -1644,9 +1899,9 @@ class Client {
                 pthread_mutex_lock( &known_peers_mutex );
 
                 // peer_id is guaranteed to be set here
-                known_peers_t::iterator known_peer = known_peers.find( peer_id );
+                known_peers_t::const_iterator known_peer = known_peers.find( peer_id );
 
-                if( known_peer == known_peers.end() ) {
+                if( known_peer == known_peers.cend() ) {
 
                     known_peers[ peer_id ] = this;
                     known_peers_by_conn_id[ get_conn_id() ] = this;
@@ -1693,17 +1948,17 @@ class Client {
 
             pthread_mutex_lock( &known_peers_mutex );
 
-            known_peers_t::iterator known_peer = known_peers.find( _peer_id );
+            known_peers_t::const_iterator known_peer = known_peers.find( _peer_id );
 
-            if( known_peer == known_peers.end() ) {
+            if( known_peer == known_peers.cend() ) {
 
                 if( strcmp( _peer_id, my_peer_id ) == 0 ) {
 
                     pthread_mutex_lock( &me_mutex );
 
-                    me_t::iterator it = me.find( _peer_id );
+                    me_t::const_iterator it = me.find( _peer_id );
 
-                    if( it == me.end() ) {
+                    if( it == me.cend() ) {
 
                         char* _conn_peer_id = get_conn_id();
 
@@ -1828,9 +2083,9 @@ class Client {
 
             if( peer_id != NULL ) {
 
-                known_peers_t::iterator known_peer = known_peers.find( peer_id );
+                known_peers_t::const_iterator known_peer = known_peers.find( peer_id );
 
-                if( known_peer != known_peers.end() )
+                if( known_peer != known_peers.cend() )
                     known_peers.erase( known_peer );
 
                 free( peer_id );
@@ -1838,9 +2093,9 @@ class Client {
 
             if( conn_id != NULL ) {
 
-                known_peers_t::iterator known_peer = known_peers_by_conn_id.find( conn_id );
+                known_peers_t::const_iterator known_peer = known_peers_by_conn_id.find( conn_id );
 
-                if( known_peer != known_peers_by_conn_id.end() )
+                if( known_peer != known_peers_by_conn_id.cend() )
                     known_peers_by_conn_id.erase( known_peer );
 
                 free( conn_id );
@@ -2113,9 +2368,700 @@ class Client {
 
             begin_replication( ctx );
         }
+
+        PendingReadsQueueItem* propose_self_k_cb( PendingReadCallbackArgs* args ) {
+
+            out_packet_i_ctx* ctx = (out_packet_i_ctx*)(args -> ctx);
+
+            pthread_mutex_lock( ctx -> mutex );
+
+            --(*(ctx -> pending));
+
+            if( args -> data[ 0 ] == 'k' )
+                ++(*(ctx -> acceptances));
+
+            continue_replication_exec( ctx );
+
+            pthread_mutex_unlock( ctx -> mutex );
+
+            return nullptr;
+        }
+
+        static void propose_self_f_cb( void* _ctx ) {
+
+            out_packet_i_ctx* ctx = (out_packet_i_ctx*)_ctx;
+
+            pthread_mutex_lock( ctx -> mutex );
+
+            --(*(ctx -> pending));
+
+            continue_replication_exec( ctx );
+
+            pthread_mutex_unlock( ctx -> mutex );
+        }
+
+        static void free_in_packet_e_ctx( void* _ctx ) {
+
+            in_packet_e_ctx* ctx = (in_packet_e_ctx*)_ctx;
+
+            for(
+                std::list<in_packet_e_ctx_event*>::const_iterator it = ctx -> events -> cbegin();
+                it != ctx -> events -> cend();
+                ++it
+            ) {
+
+                in_packet_e_ctx_event* event = *it;
+
+                free( event -> data );
+                if( event -> id != NULL ) free( event -> id );
+                free( event );
+            }
+
+            free( ctx -> event_name );
+            free( ctx -> events );
+            free( ctx );
+        }
+
+        PendingReadsQueueItem* ping_task_k_cb( PendingReadCallbackArgs* args ) {
+
+            out_packet_c_ctx* ctx = (out_packet_c_ctx*)(args -> ctx);
+
+            if( args -> data[ 0 ] == 'k' ) {
+
+                repl_clean(
+                    ctx -> failover_key_len,
+                    ctx -> failover_key,
+                    ctx -> wrinseq
+                );
+
+            } else {
+
+                ping_task_f_cb( (void*)ctx );
+            }
+
+            // TODO: perl
+            // $unfailover -> ();
+
+            // pthread_mutex_lock( ctx -> mutex );
+            //
+            // pthread_mutex_unlock( ctx -> mutex );
+
+            return nullptr;
+        }
+
+        static void ping_task_f_cb( void* _ctx ) {
+
+            out_packet_c_ctx* ctx = (out_packet_c_ctx*)_ctx;
+            in_packet_r_ctx* r_ctx = (in_packet_r_ctx*)malloc( sizeof( *r_ctx ) );
+
+            r_ctx -> hostname_len = ctx -> client -> get_peer_name_len();
+            r_ctx -> port = ctx -> client -> get_peer_port();
+            r_ctx -> hostname = strndup(
+                ctx -> client -> get_peer_name(),
+                r_ctx -> hostname_len
+            );
+            r_ctx -> event_name_len = ctx -> event -> id_len;
+            r_ctx -> event_name = strndup(
+                ctx -> event -> id,
+                r_ctx -> event_name_len
+            );
+            r_ctx -> events = new std::list<in_packet_r_ctx_event*>();
+            r_ctx -> cnt = 0;
+            r_ctx -> peers = new std::list<packet_r_ctx_peer*>();
+
+            in_packet_r_ctx_event* event = (in_packet_r_ctx_event*)malloc(
+                sizeof( *event ) );
+
+            event -> len = ctx -> rin -> len;
+            event -> data = ctx -> rin -> data;
+            event -> id = (char*)malloc( 21 );
+            sprintf( event -> id, "%llu", ctx -> rid );
+
+            r_ctx -> events -> push_back( event );
+
+            size_t rpr_len = ctx -> rpr -> len;
+            size_t rpr_offset = 0;
+
+            while( rpr_offset < rpr_len ) {
+
+                size_t peer_id_len = strlen( ctx -> rpr -> data + rpr_offset );
+                char* peer_id = (char*)malloc( peer_id_len + 1 );
+                memcpy( peer_id, ctx -> rpr -> data + rpr_offset, peer_id_len );
+                peer_id[ peer_id_len ] = '\0';
+                rpr_offset += peer_id_len + 1;
+
+                char* delimiter = rindex( peer_id, ':' );
+
+                if( delimiter == NULL ) {
+
+                    fprintf( stderr, "Invalid peer id: %s\n", peer_id );
+
+                } else {
+
+                    packet_r_ctx_peer* peer = (packet_r_ctx_peer*)malloc(
+                        sizeof( *peer ) );
+
+                    peer -> hostname_len = delimiter - peer_id;
+                    peer -> port = atoi( delimiter + 1 );
+                    peer -> hostname = (char*)malloc( peer -> hostname_len + 1 );
+
+                    memcpy( peer -> hostname, peer_id, peer -> hostname_len );
+                    peer -> hostname[ peer -> hostname_len ] = '\0';
+
+                    r_ctx -> peers -> push_back( peer );
+                }
+            }
+
+            short result = repl_save( r_ctx, ctx -> client );
+
+            if( result == REPL_SAVE_RESULT_K ) {
+
+                repl_clean(
+                    ctx -> failover_key_len,
+                    ctx -> failover_key,
+                    ctx -> wrinseq
+                );
+
+            } else if( result == REPL_SAVE_RESULT_F ) {
+
+                fprintf( stderr, "repl_save() failed\n" );
+                exit( 1 );
+
+            } else {
+
+                fprintf( stderr, "Unexpected repl_save() result: %d\n", result );
+                exit( 1 );
+            }
+
+            // TODO: perl
+            // $unfailover -> ();
+
+            // pthread_mutex_lock( ctx -> mutex );
+            //
+            // pthread_mutex_unlock( ctx -> mutex );
+        }
 };
 
-void begin_replication( out_packet_r_ctx*& r_ctx ) {
+static inline short save_event(
+    in_packet_e_ctx* ctx,
+    uint32_t replication_factor,
+    Client* client,
+    std::vector<uint64_t>* task_ids
+) {
+
+    short result = SAVE_EVENT_RESULT_F;
+
+    if( replication_factor > max_replication_factor )
+        replication_factor = max_replication_factor;
+
+    uint64_t increment_key_len = 6 + ctx -> event_name_len;
+    char* increment_key = (char*)malloc( increment_key_len );
+
+    sprintf( increment_key, "inseq:" );
+    memcpy( increment_key + 6, ctx -> event_name, ctx -> event_name_len );
+
+    uint32_t _cnt = htonl( ctx -> events -> size() );
+    size_t r_len = 0;
+    char* r_req = (char*)malloc( 1
+        + sizeof( my_hostname_len )
+        + my_hostname_len
+        + sizeof( my_port )
+        + sizeof( ctx -> event_name_len )
+        + ctx -> event_name_len
+        + sizeof( _cnt )
+    );
+
+    r_req[ 0 ] = 'r';
+    r_len += 1;
+
+    uint32_t _hostname_len = htonl( my_hostname_len );
+    memcpy( r_req + r_len, &_hostname_len, sizeof( _hostname_len ) );
+    r_len += sizeof( _hostname_len );
+
+    memcpy( r_req + r_len, my_hostname, my_hostname_len );
+    r_len += my_hostname_len;
+
+    uint32_t _my_port = htonl( my_port );
+    memcpy( r_req + r_len, &_my_port, sizeof( _my_port ) );
+    r_len += sizeof( _my_port );
+
+    uint32_t _event_name_len = htonl( ctx -> event_name_len );
+    memcpy( r_req + r_len, &_event_name_len, sizeof( _event_name_len ) );
+    r_len += sizeof( _event_name_len );
+
+    memcpy( r_req + r_len, ctx -> event_name, ctx -> event_name_len );
+    r_len += ctx -> event_name_len;
+
+    memcpy( r_req + r_len, &_cnt, sizeof( _cnt ) );
+    r_len += sizeof( _cnt );
+
+    uint32_t num_inserted = 0;
+    bool replication_began = false;
+
+    if( db.begin_transaction() ) {
+
+        int64_t max_id = db.increment(
+            increment_key,
+            increment_key_len,
+            ctx -> events -> size(),
+            0
+        );
+
+        if( max_id == kyotocabinet::INT64MIN ) {
+
+            fprintf( stderr, "Increment failed: %s\n", db.error().name() );
+
+            if( ! db.end_transaction( false ) ) {
+
+                fprintf( stderr, "Failed to abort transaction: %s\n", db.error().name() );
+                exit( 1 );
+            }
+
+        } else {
+
+            for(
+                std::list<in_packet_e_ctx_event*>::const_iterator it =
+                    ctx -> events -> cbegin();
+                it != ctx -> events -> cend();
+                ++it
+            ) {
+
+                in_packet_e_ctx_event* event = *it;
+
+                event -> id = (char*)malloc( 21 );
+                sprintf( event -> id, "%llu", max_id );
+
+                if( task_ids != NULL )
+                    task_ids -> push_back( max_id );
+
+                uint32_t key_len =
+                    3 // in:
+                    + ctx -> event_name_len
+                    + 1 // :
+                    + strlen( event -> id )
+                ;
+                char* key = (char*)malloc( key_len );
+
+                sprintf( key, "in:" );
+                memcpy( key + 3, ctx -> event_name, ctx -> event_name_len );
+                key[ 3 + ctx -> event_name_len ] = ':';
+                memcpy( key + 3 + ctx -> event_name_len + 1, event -> id,
+                    strlen( event -> id ) );
+
+                if( db.add( key, key_len, event -> data, event -> len ) ) {
+
+                    free( key );
+                    ++num_inserted;
+
+                } else {
+
+                    fprintf( stderr, "db.add() failed: %s\n", db.error().name() );
+                    free( key );
+                    break;
+                }
+
+                uint64_t _max_id = htonll( max_id );
+
+                r_req = (char*)realloc( r_req,
+                    r_len
+                    + sizeof( _max_id )
+                    + sizeof( event -> len )
+                    + event -> len
+                );
+
+                memcpy( r_req + r_len, &_max_id, sizeof( _max_id ) );
+                r_len += sizeof( _max_id );
+
+                uint32_t _event_len = htonl( event -> len );
+                memcpy( r_req + r_len, &_event_len, sizeof( _event_len ) );
+                r_len += sizeof( _event_len );
+
+                memcpy( r_req + r_len, event -> data, event -> len );
+                r_len += event -> len;
+
+                --max_id;
+            }
+
+            if( num_inserted == ctx -> events -> size() ) {
+
+                if( db.end_transaction( true ) ) {
+
+                    pthread_mutex_lock( &stat_mutex );
+                    stat_num_inserts += num_inserted;
+                    pthread_mutex_unlock( &stat_mutex );
+
+                    if( replication_factor > 0 ) {
+
+                        out_packet_r_ctx* r_ctx = (out_packet_r_ctx*)
+                            malloc( sizeof( *r_ctx ) );
+
+                        r_ctx -> sync = true;
+                        r_ctx -> replication_factor = replication_factor;
+                        r_ctx -> pending = 0;
+                        r_ctx -> client = client;
+                        r_ctx -> candidate_peer_ids = new std::vector<char*>();
+                        r_ctx -> accepted_peers = new std::list<
+                            packet_r_ctx_peer*>();
+
+                        pthread_mutex_lock( &known_peers_mutex );
+
+                        for(
+                            known_peers_t::const_iterator it = known_peers.cbegin();
+                            it != known_peers.cend();
+                            ++it
+                        ) {
+
+                            r_ctx -> candidate_peer_ids -> push_back( it -> first );
+                        }
+
+                        pthread_mutex_unlock( &known_peers_mutex );
+
+                        if( r_ctx -> candidate_peer_ids -> size() > 0 ) {
+
+                            result = SAVE_EVENT_RESULT_NULL;
+
+                            std::random_shuffle(
+                                r_ctx -> candidate_peer_ids -> begin(),
+                                r_ctx -> candidate_peer_ids -> end()
+                            );
+
+                            r_ctx -> r_req = r_req;
+                            r_ctx -> r_len = r_len;
+
+                            begin_replication( r_ctx );
+                            replication_began = true;
+
+                        } else {
+
+                            result = SAVE_EVENT_RESULT_A;
+                        }
+
+                    } else {
+
+                        result = SAVE_EVENT_RESULT_K;
+                    }
+
+                } else {
+
+                    fprintf( stderr, "Failed to commit transaction: %s\n",
+                        db.error().name() );
+                    exit( 1 );
+                }
+
+            } else {
+
+                fprintf( stderr, "Batch insert failed\n" );
+
+                if( ! db.end_transaction( false ) ) {
+
+                    fprintf( stderr, "Failed to abort transaction: %s\n",
+                        db.error().name() );
+                    exit( 1 );
+                }
+            }
+        }
+
+    } else {
+
+        fprintf( stderr, "Failed to start transaction: %s\n", db.error().name() );
+        exit( 1 );
+    }
+
+    free( increment_key );
+    if( ! replication_began ) free( r_req );
+
+    return result;
+}
+
+static inline short repl_save(
+    in_packet_r_ctx* ctx,
+    Client* client
+) {
+
+    short result = REPL_SAVE_RESULT_F;
+
+    char* _peer_id = client -> get_peer_id();
+    size_t _peer_id_len = strlen( _peer_id );
+
+    uint64_t increment_key_len = 7 + ctx -> event_name_len;
+    char* increment_key = (char*)malloc( increment_key_len + 1 + _peer_id_len );
+
+    sprintf( increment_key, "rinseq:" );
+    memcpy( increment_key + 7, ctx -> event_name, ctx -> event_name_len );
+    increment_key[ increment_key_len ] = ':';
+    ++increment_key_len;
+    memcpy( increment_key + increment_key_len, _peer_id, _peer_id_len );
+    increment_key_len += _peer_id_len;
+
+    uint32_t num_inserted = 0;
+
+    uint32_t peers_cnt = ctx -> peers -> size();
+    uint32_t _peers_cnt = htonl( peers_cnt );
+    uint64_t serialized_peers_len = sizeof( _peers_cnt );
+    char* serialized_peers = (char*)malloc( serialized_peers_len );
+    memcpy( serialized_peers, &_peers_cnt, serialized_peers_len );
+
+    for(
+        std::list<packet_r_ctx_peer*>::const_iterator it =
+            ctx -> peers -> cbegin();
+        it != ctx -> peers -> cend();
+        ++it
+    ) {
+
+        packet_r_ctx_peer* peer = *it;
+        char* _peer_id = make_peer_id( peer -> hostname_len,
+            peer -> hostname, peer -> port );
+
+        bool keep_peer_id = false;
+        size_t _peer_id_len = strlen( _peer_id );
+
+        pthread_mutex_lock( &peers_to_discover_mutex );
+
+        peers_to_discover_t::const_iterator prev_item =
+            peers_to_discover.find( _peer_id );
+
+        if( prev_item == peers_to_discover.cend() ) {
+
+            peer_to_discover_t* peer_to_discover = (peer_to_discover_t*)malloc(
+                sizeof( *peer_to_discover ) );
+
+            peer_to_discover -> host = peer -> hostname;
+            peer_to_discover -> port = peer -> port;
+
+            peers_to_discover[ _peer_id ] = peer_to_discover;
+            keep_peer_id = true;
+            save_peers_to_discover();
+        }
+
+        pthread_mutex_unlock( &peers_to_discover_mutex );
+
+        serialized_peers = (char*)realloc( serialized_peers,
+            serialized_peers_len + _peer_id_len );
+
+        memcpy( serialized_peers + serialized_peers_len,
+            _peer_id, _peer_id_len );
+        serialized_peers_len += _peer_id_len;
+
+        if( ! keep_peer_id ) free( _peer_id );
+    }
+
+    if( db.begin_transaction() ) {
+
+        int64_t max_id = db.increment(
+            increment_key,
+            increment_key_len,
+            ctx -> events -> size(),
+            0
+        );
+
+        if( max_id == kyotocabinet::INT64MIN ) {
+
+            if( ! db.end_transaction( false ) ) {
+
+                fprintf( stderr, "Failed to abort transaction: %s\n", db.error().name() );
+                exit( 1 );
+            }
+
+        } else {
+
+            uint64_t _now = htonll( std::time( nullptr ) );
+            size_t now_len = sizeof( _now );
+            char* now = (char*)malloc( now_len );
+            memcpy( now, &_now, now_len );
+
+            for(
+                std::list<in_packet_r_ctx_event*>::const_iterator it =
+                    ctx -> events -> cbegin();
+                it != ctx -> events -> cend();
+                ++it
+            ) {
+
+                in_packet_r_ctx_event* event = *it;
+
+                char* r_id = (char*)malloc( 21 );
+                sprintf( r_id, "%llu", max_id );
+
+                size_t r_id_len = strlen( r_id );
+                uint32_t key_len =
+                    4 // rin: | rts: | rid: | rpr:
+                    + ctx -> event_name_len
+                    + 1 // :
+                    + _peer_id_len
+                    + 1 // :
+                    + r_id_len
+                ;
+                char* key = (char*)malloc( key_len );
+
+                sprintf( key, "rin:" );
+                memcpy( key + 4, ctx -> event_name, ctx -> event_name_len );
+                key[ 4 + ctx -> event_name_len ] = ':';
+
+                memcpy( key + 4 + ctx -> event_name_len + 1, _peer_id,
+                    _peer_id_len );
+                key[ 4 + ctx -> event_name_len + 1 + _peer_id_len ] = ':';
+
+                memcpy( key + 4 + ctx -> event_name_len + 1 + _peer_id_len,
+                    r_id, r_id_len );
+
+                if( db.add( key, key_len, event -> data, event -> len ) ) {
+
+                    key[ 1 ] = 't';
+                    key[ 2 ] = 's';
+
+                    if( db.add( key, key_len, now, now_len ) ) {
+
+                        key[ 1 ] = 'i';
+                        key[ 2 ] = 'd';
+
+                        if( db.add( key, key_len, event -> id,
+                            strlen( event -> id ) ) ) {
+
+                            bool rpr_ok = false;
+
+                            if( peers_cnt > 0 ) {
+
+                                key[ 1 ] = 'p';
+                                key[ 2 ] = 'r';
+
+                                rpr_ok = db.add(
+                                    key, key_len,
+                                    serialized_peers,
+                                    serialized_peers_len
+                                );
+
+                            } else {
+
+                                rpr_ok = true;
+                            }
+
+                            if( rpr_ok ) {
+
+                                key[ 1 ] = 'r';
+                                key[ 2 ] = 'e';
+
+                                size_t event_id_len = strlen( event -> id );
+                                key_len -= r_id_len;
+                                key = (char*)realloc( key, key_len + event_id_len );
+
+                                memcpy( key + key_len, event -> id, event_id_len );
+                                key_len += event_id_len;
+
+                                if( db.add( key, key_len, r_id, r_id_len ) ) {
+
+                                    free( key );
+                                    free( r_id );
+                                    ++num_inserted;
+                                    --max_id;
+
+                                } else {
+
+                                    free( key );
+                                    free( r_id );
+                                    break;
+                                }
+
+                            } else {
+
+                                free( key );
+                                free( r_id );
+                                break;
+                            }
+
+                        } else {
+
+                            free( key );
+                            free( r_id );
+                            break;
+                        }
+
+                    } else {
+
+                        free( key );
+                        free( r_id );
+                        break;
+                    }
+
+                } else {
+
+                    free( key );
+                    free( r_id );
+                    break;
+                }
+            }
+
+            if( num_inserted == ctx -> events -> size() ) {
+
+                if( db.end_transaction( true ) ) {
+
+                    pthread_mutex_lock( &stat_mutex );
+                    stat_num_replications += num_inserted;
+                    pthread_mutex_unlock( &stat_mutex );
+
+                    result = REPL_SAVE_RESULT_K;
+
+                } else {
+
+                    fprintf( stderr, "Failed to commit transaction: %s\n", db.error().name() );
+                    exit( 1 );
+                }
+
+            } else {
+
+                if( ! db.end_transaction( false ) ) {
+
+                    fprintf( stderr, "Failed to abort transaction: %s\n", db.error().name() );
+                    exit( 1 );
+                }
+            }
+
+            free( now );
+        }
+
+        free( increment_key );
+    }
+
+    free( serialized_peers );
+
+    while( ! ctx -> peers -> empty() ) {
+
+        packet_r_ctx_peer* peer = ctx -> peers -> back();
+        ctx -> peers -> pop_back();
+
+        free( peer -> hostname );
+        free( peer );
+    }
+
+    free( ctx -> peers );
+
+    while( ! ctx -> events -> empty() ) {
+
+        in_packet_r_ctx_event* event = ctx -> events -> back();
+        ctx -> events -> pop_back();
+
+        free( event -> data );
+        free( event );
+    }
+
+    free( ctx -> events );
+    free( ctx -> hostname );
+    free( ctx -> event_name );
+
+    return result;
+}
+
+static inline void continue_replication_exec( out_packet_i_ctx*& ctx ) {
+
+    if( *(ctx -> pending) == 0 ) {
+
+        pthread_mutex_lock( &replication_exec_queue_mutex );
+
+        replication_exec_queue.push( ctx );
+
+        pthread_mutex_unlock( &replication_exec_queue_mutex );
+    }
+}
+
+static inline void begin_replication( out_packet_r_ctx*& r_ctx ) {
 
     Client* peer = NULL;
 
@@ -2126,9 +3072,9 @@ void begin_replication( out_packet_r_ctx*& r_ctx ) {
 
         pthread_mutex_lock( &known_peers_mutex );
 
-        known_peers_t::iterator it = known_peers.find( peer_id );
+        known_peers_t::const_iterator it = known_peers.find( peer_id );
 
-        if( it != known_peers.end() )
+        if( it != known_peers.cend() )
             peer = it -> second;
 
         pthread_mutex_unlock( &known_peers_mutex );
@@ -2144,16 +3090,24 @@ void begin_replication( out_packet_r_ctx*& r_ctx ) {
 
             if( accepted_peers_count >= r_ctx -> replication_factor ) {
 
-                char* r_ans = (char*)malloc( 1 );
-                r_ans[ 0 ] = 'k';
-                r_ctx -> client -> push_write_queue( 1, r_ans, NULL );
+                if( r_ctx -> client != NULL ) {
+
+                    char* r_ans = (char*)malloc( 1 );
+                    r_ans[ 0 ] = 'k';
+                    r_ctx -> client -> push_write_queue( 1, r_ans, NULL );
+                }
+
                 r_ctx -> sync = false;
 
             } else if( r_ctx -> pending == 0 ) {
 
-                char* r_ans = (char*)malloc( 1 );
-                r_ans[ 0 ] = 'a';
-                r_ctx -> client -> push_write_queue( 1, r_ans, NULL );
+                if( r_ctx -> client != NULL ) {
+
+                    char* r_ans = (char*)malloc( 1 );
+                    r_ans[ 0 ] = 'a';
+                    r_ctx -> client -> push_write_queue( 1, r_ans, NULL );
+                }
+
                 r_ctx -> sync = false;
             }
         }
@@ -2170,9 +3124,13 @@ void begin_replication( out_packet_r_ctx*& r_ctx ) {
             && ( accepted_peers_count >= r_ctx -> replication_factor )
         ) {
 
-            char* r_ans = (char*)malloc( 1 );
-            r_ans[ 0 ] = 'k';
-            r_ctx -> client -> push_write_queue( 1, r_ans, NULL );
+            if( r_ctx -> client != NULL ) {
+
+                char* r_ans = (char*)malloc( 1 );
+                r_ans[ 0 ] = 'k';
+                r_ctx -> client -> push_write_queue( 1, r_ans, NULL );
+            }
+
             r_ctx -> sync = false;
         }
 
@@ -2193,9 +3151,9 @@ void begin_replication( out_packet_r_ctx*& r_ctx ) {
             r_len += sizeof( _accepted_peers_count );
 
             for(
-                std::list<packet_r_ctx_peer*>::iterator it =
-                    r_ctx -> accepted_peers -> begin();
-                it != r_ctx -> accepted_peers -> end();
+                std::list<packet_r_ctx_peer*>::const_iterator it =
+                    r_ctx -> accepted_peers -> cbegin();
+                it != r_ctx -> accepted_peers -> cend();
                 ++it
             ) {
 
@@ -2332,7 +3290,7 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
     return;
 }
 
-void* client_thread( void* args ) {
+static void* client_thread( void* args ) {
 
     struct ev_loop* loop = ev_loop_new( 0 );
 
@@ -2373,7 +3331,7 @@ void* client_thread( void* args ) {
     return NULL;
 }
 
-void discovery_cb1( Client* client ) {
+static void discovery_cb1( Client* client ) {
 
     char* w_req = (char*)malloc( 1 );
     w_req[ 0 ] = 'w';
@@ -2389,20 +3347,628 @@ void discovery_cb1( Client* client ) {
     client -> push_write_queue( 1, w_req, item );
 }
 
-void* replication_thread( void* args ) {
+static inline void repl_clean(
+    size_t failover_key_len,
+    const char* failover_key,
+    uint64_t wrinseq
+) {
 
-    // TODO: hosts list
+    std::vector<std::string> keys;
+
+    std::string rre_key( "rre:", 4 );
+    rre_key.append( failover_key, failover_key_len );
+
+    keys.push_back( rre_key );
+
+    char* suffix = (char*)malloc( failover_key_len );
+    memcpy( suffix, failover_key, failover_key_len );
+    sprintf( suffix + failover_key_len - 20 - 1, "%llu", wrinseq );
+
+    std::string rin_key( "rin:", 4 );
+    rin_key.append( suffix, failover_key_len );
+
+    std::string rts_key( "rts:", 4 );
+    rts_key.append( suffix, failover_key_len );
+
+    std::string rid_key( "rid:", 4 );
+    rid_key.append( suffix, failover_key_len );
+
+    std::string rpr_key( "rpr:", 4 );
+    rpr_key.append( suffix, failover_key_len );
+
+    keys.push_back( rin_key );
+    keys.push_back( rts_key );
+    keys.push_back( rid_key );
+    keys.push_back( rpr_key );
+
+    if( db.remove_bulk( keys ) == -1 )
+        fprintf( stderr, "db.remove_bulk failed: %s\n", db.error().name() );
+}
+
+static void* replication_exec_thread( void* args ) {
+
+    while( true ) {
+
+        if( replication_exec_queue.size() == 0 ) continue;
+
+        pthread_mutex_lock( &replication_exec_queue_mutex );
+
+        out_packet_i_ctx* ctx = replication_exec_queue.front();
+        replication_exec_queue.pop();
+
+        pthread_mutex_unlock( &replication_exec_queue_mutex );
+
+        if( ctx -> acceptances == ctx -> count_replicas ) {
+
+            {
+                failover_t::const_iterator it = failover.find( ctx -> failover_key );
+
+                if( it == failover.cend() ) {
+
+                    // TODO: cleanup
+                    continue;
+                }
+            }
+
+            {
+                no_failover_t::const_iterator it = no_failover.find( ctx -> failover_key );
+
+                if( it != no_failover.cend() ) {
+
+                    if( ( it -> second + no_failover_time ) > std::time( nullptr ) ) {
+
+                        // TODO: cleanup
+                        continue;
+
+                    } else {
+
+                        no_failover.erase( it );
+                    }
+                }
+            }
+
+            in_packet_e_ctx_event* event = (in_packet_e_ctx_event*)malloc(
+                sizeof( *event ) );
+
+            event -> len = ctx -> data -> len;
+            event -> data = ctx -> data -> data;
+
+            in_packet_e_ctx* e_ctx = (in_packet_e_ctx*)malloc( sizeof( *e_ctx ) );
+
+            e_ctx -> cnt = 1;
+            e_ctx -> event_name_len = ctx -> event -> id_len;
+            e_ctx -> event_name = ctx -> event -> id;
+            e_ctx -> events = new std::list<in_packet_e_ctx_event*>();
+            e_ctx -> events -> push_back( event );
+
+            std::vector<uint64_t> task_ids;
+            save_event( e_ctx, 0, NULL, &task_ids );
+
+            Client::free_in_packet_e_ctx( (void*)e_ctx );
+
+            failover[ ctx -> failover_key ] = task_ids.front();
+
+            repl_clean(
+                ctx -> failover_key_len,
+                ctx -> failover_key,
+                ctx -> wrinseq
+            );
+
+            size_t x_req_len = 1;
+            char* x_req = (char*)malloc(
+                x_req_len
+                + sizeof( ctx -> peer_id -> len )
+                + ctx -> peer_id -> len
+                + ctx -> event -> id_len_size
+                + ctx -> event -> id_len
+                + sizeof( ctx -> rid )
+            );
+
+            x_req[ 0 ] = 'x';
+
+            uint32_t peer_id_len_net = htonl( ctx -> peer_id -> len );
+            memcpy( x_req + x_req_len, &peer_id_len_net, sizeof( peer_id_len_net ) );
+            x_req_len += sizeof( peer_id_len_net );
+
+            memcpy( x_req + x_req_len, ctx -> peer_id -> data, ctx -> peer_id -> len );
+            x_req_len += ctx -> peer_id -> len;
+
+            memcpy( x_req + x_req_len, &(ctx -> event -> id_len_net),
+                ctx -> event -> id_len_size );
+            x_req_len += ctx -> event -> id_len_size;
+
+            memcpy( x_req + x_req_len, ctx -> event -> id,
+                ctx -> event -> id_len );
+            x_req_len += ctx -> event -> id_len;
+
+            uint64_t rid_net = htonll( ctx -> rid );
+            memcpy( x_req + x_req_len, &rid_net, sizeof( rid_net ) );
+            x_req_len += sizeof( rid_net );
+
+            size_t offset = 0;
+
+            while( ctx -> peers_cnt > 0 ) {
+
+                size_t peer_id_len = strlen( ctx -> rpr + offset );
+                char* peer_id = (char*)malloc( peer_id_len + 1 );
+                memcpy( peer_id, ctx -> rpr + offset, peer_id_len );
+                peer_id[ peer_id_len ] = '\0';
+                offset += peer_id_len + 1;
+
+                known_peers_t::const_iterator it = known_peers.find( peer_id );
+
+                if( it != known_peers.cend() ) {
+
+                    it -> second -> push_write_queue( x_req_len, x_req, NULL );
+                }
+
+                --(ctx -> peers_cnt);
+            }
+
+        } else {
+
+            // TODO: perl
+            // unless( $clean -> () ) {
+            //
+            //     warn( 'remove_bulk(): ' . $db -> error() );
+            // }
+            //
+            // $unfailover -> ();
+
+            // TODO: think about repl_clean()
+
+            free( ctx -> data -> data );
+            free( ctx -> data );
+        }
+
+        pthread_mutex_destroy( ctx -> mutex );
+
+        free( ctx -> mutex );
+        free( ctx -> acceptances );
+        free( ctx -> pending );
+        free( ctx -> count_replicas );
+        free( ctx );
+    }
 
     return NULL;
 }
 
-void* discovery_thread( void* args ) {
+static void* replication_thread( void* args ) {
+
+    std::vector<muh_str_t*> peer_ids;
+
+    pthread_mutex_lock( &peers_to_discover_mutex );
+
+    for(
+        peers_to_discover_t::const_iterator it = peers_to_discover.cbegin();
+        it != peers_to_discover.cend();
+        ++it
+    ) {
+
+        muh_str_t* item = (muh_str_t*)malloc( sizeof( *item ) );
+
+        item -> len = strlen( it -> first );
+        item -> data = it -> first;
+
+        peer_ids.push_back( item );
+    }
+
+    pthread_mutex_unlock( &peers_to_discover_mutex );
+
+    std::random_shuffle( peer_ids.begin(), peer_ids.end() );
+
+    known_peers_t::const_iterator _peer;
+    Client* peer;
+    get_keys_result_t* dbdata;
+    std::vector<std::string> keys;
+    uint64_t now = std::time( nullptr );
+
+    for(
+        known_events_t::const_iterator _event = known_events.cbegin();
+        _event != known_events.cend();
+        ++_event
+    ) {
+
+        known_event_t* event = _event -> second;
+
+        for(
+            std::vector<muh_str_t*>::const_iterator _peer_id = peer_ids.begin();
+            _peer_id != peer_ids.end();
+            ++_peer_id
+        ) {
+
+            size_t suffix_len =
+                event -> id_len
+                + 1 // :
+                + (*_peer_id) -> len
+            ;
+            char* suffix = (char*)malloc(
+                suffix_len
+                + 1 // :
+                + 20 // wrinseq
+                + 1 // \0
+            );
+            sprintf( suffix, "%s:%s", event -> id, (*_peer_id) -> data );
+
+            std::string wrinseq_key( "wrinseq:", 8 );
+            wrinseq_key.append( suffix, suffix_len );
+
+            std::string rinseq_key( "rinseq:", 7 );
+            rinseq_key.append( suffix, suffix_len );
+
+            keys.push_back( wrinseq_key );
+            keys.push_back( rinseq_key );
+
+            dbdata = db_get_keys( keys );
+            keys.clear();
+
+            if( dbdata == NULL ) {
+
+                fprintf( stderr, "db.accept_bulk failed: %s\n", db.error().name() );
+                exit( 1 );
+            }
+
+            uint64_t rinseq;
+            uint64_t wrinseq;
+
+            {
+                uint64_t* _rinseq = parse_db_value<uint64_t>( dbdata, &rinseq_key );
+                uint64_t* _wrinseq = parse_db_value<uint64_t>( dbdata, &wrinseq_key );
+
+                if( _rinseq == NULL ) rinseq = 0;
+                else {
+
+                    rinseq = ntohll( *_rinseq );
+                    free( _rinseq );
+                }
+
+                if( _wrinseq == NULL ) wrinseq = 0;
+                else {
+
+                    wrinseq = ntohll( *_wrinseq );
+                    free( _wrinseq );
+                }
+            }
+
+            delete dbdata;
+
+            if( wrinseq >= rinseq ) {
+
+                free( suffix );
+                continue;
+            }
+
+            suffix[ suffix_len ] = ':';
+            ++suffix_len;
+
+            sprintf( suffix + suffix_len, "%llu", wrinseq );
+            suffix_len += 20;
+
+            std::string rin_key( "rin:", 4 );
+            rin_key.append( suffix, suffix_len );
+
+            std::string rts_key( "rts:", 4 );
+            rts_key.append( suffix, suffix_len );
+
+            std::string rid_key( "rid:", 4 );
+            rid_key.append( suffix, suffix_len );
+
+            std::string rpr_key( "rpr:", 4 );
+            rpr_key.append( suffix, suffix_len );
+
+            keys.push_back( rin_key );
+            keys.push_back( rts_key );
+            keys.push_back( rid_key );
+            keys.push_back( rpr_key );
+
+            dbdata = db_get_keys( keys );
+            keys.clear();
+
+            if( dbdata == NULL ) {
+
+                fprintf( stderr, "db.accept_bulk failed: %s\n", db.error().name() );
+                exit( 1 );
+            }
+
+            size_t rin_len;
+            char* rin = parse_db_value<char>( dbdata, &rin_key, &rin_len );
+
+            if( rin == NULL ) {
+
+                fprintf( stderr, "No data for replicated event\n" );
+                exit( 1 );
+            }
+
+            uint64_t rts;
+            uint64_t rid;
+            uint64_t rid_net;
+
+            {
+                uint64_t* _rts = parse_db_value<uint64_t>( dbdata, &rts_key );
+                uint64_t* _rid = parse_db_value<uint64_t>( dbdata, &rts_key );
+
+                if( _rts == NULL ) {
+
+                    fprintf( stderr, "No timestamp for replicated event\n" );
+                    exit( 1 );
+
+                } else {
+
+                    rts = ntohll( *_rts );
+                    free( _rts );
+                }
+
+                if( _rid == NULL ) {
+
+                    fprintf( stderr, "No remote id for replicated event\n" );
+                    exit( 1 );
+
+                } else {
+
+                    rid_net = *_rid;
+                    free( _rid );
+                    rid = ntohll( rid_net );
+                }
+            }
+
+            size_t rpr_len;
+            char* rpr = parse_db_value<char>( dbdata, &rpr_key, &rpr_len );
+
+            delete dbdata;
+
+            if( ( rts + event -> ttl ) > now ) {
+
+                free( rin );
+                free( rpr );
+                free( suffix );
+                continue;
+            }
+
+            char* failover_key = suffix;
+            sprintf( failover_key + suffix_len - 20 - 1, "%llu", rid );
+
+            {
+                failover_t::const_iterator it = failover.find( failover_key );
+
+                if( it != failover.cend() ) {
+
+                    free( rin );
+                    free( rpr );
+                    // free( suffix );
+                    free( failover_key );
+                    continue;
+                }
+            }
+
+            {
+                no_failover_t::const_iterator it = no_failover.find( failover_key );
+
+                if( it != no_failover.cend() ) {
+
+                    if( ( it -> second + no_failover_time ) > now ) {
+
+                        free( rin );
+                        free( rpr );
+                        // free( suffix );
+                        free( failover_key );
+                        continue;
+
+                    } else {
+
+                        no_failover.erase( it );
+                    }
+                }
+            }
+
+            failover[ failover_key ] = 0;
+
+            pthread_mutex_lock( &known_peers_mutex );
+
+            _peer = known_peers.find( (*_peer_id) -> data );
+
+            if( _peer == known_peers.cend() ) peer = NULL;
+            else peer = _peer -> second;
+
+            pthread_mutex_unlock( &known_peers_mutex );
+
+            if( peer == NULL ) {
+
+                size_t offset = 0;
+
+                uint32_t _peers_cnt;
+                memcpy( &_peers_cnt, rpr + offset, sizeof( _peers_cnt ) );
+                uint32_t peers_cnt = ntohl( _peers_cnt );
+
+                uint32_t* count_replicas = (uint32_t*)malloc( sizeof(
+                    *count_replicas ) );
+                uint32_t* acceptances = (uint32_t*)malloc( sizeof(
+                    *acceptances ) );
+                uint32_t* pending = (uint32_t*)malloc( sizeof(
+                    *pending ) );
+
+                *count_replicas = peers_cnt;
+                *acceptances = 0;
+                *pending = 0;
+
+                pthread_mutex_t* mutex = (pthread_mutex_t*)malloc( sizeof( mutex ) );
+                pthread_mutex_init( mutex, NULL );
+
+                size_t i_req_len = 1;
+                char* i_req = (char*)malloc(
+                    i_req_len
+                    + sizeof( (*_peer_id) -> len )
+                    + (*_peer_id) -> len
+                    + event -> id_len_size
+                    + event -> id_len
+                    + sizeof( rid )
+                );
+
+                i_req[ 0 ] = 'i';
+
+                uint32_t _peer_id_len_net = htonl( (*_peer_id) -> len );
+                memcpy( i_req + i_req_len, &_peer_id_len_net,
+                    sizeof( _peer_id_len_net ) );
+                i_req_len += sizeof( _peer_id_len_net );
+
+                memcpy( i_req + i_req_len, (*_peer_id) -> data, (*_peer_id) -> len );
+                i_req_len += (*_peer_id) -> len;
+
+                memcpy( i_req + i_req_len, &(event -> id_len_net),
+                    event -> id_len_size );
+                i_req_len += event -> id_len_size;
+
+                memcpy( i_req + i_req_len, event -> id,
+                    event -> id_len );
+                i_req_len += event -> id_len;
+
+                memcpy( i_req + i_req_len, &rid_net, sizeof( rid_net ) );
+                i_req_len += sizeof( rid_net );
+
+                muh_str_t* data_str = (muh_str_t*)malloc( sizeof( *data_str ) );
+
+                data_str -> len = rin_len;
+                data_str -> data = rin;
+
+                while( peers_cnt > 0 ) {
+
+                    size_t peer_id_len = strlen( rpr + offset );
+                    char* peer_id = (char*)malloc( peer_id_len + 1 );
+                    memcpy( peer_id, rpr + offset, peer_id_len );
+                    peer_id[ peer_id_len ] = '\0';
+                    offset += peer_id_len + 1;
+
+                    known_peers_t::const_iterator it = known_peers.find( peer_id );
+
+                    if( it == known_peers.cend() ) {
+
+                        ++(*acceptances);
+
+                    } else {
+
+                        ++(*pending);
+
+                        out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(
+                            sizeof( *ctx ) );
+
+                        ctx -> count_replicas = count_replicas;
+                        ctx -> pending = pending;
+                        ctx -> acceptances = acceptances;
+                        ctx -> mutex = mutex;
+                        ctx -> event = event;
+                        ctx -> data = data_str;
+                        ctx -> peer_id = *_peer_id;
+                        ctx -> wrinseq = wrinseq;
+                        ctx -> failover_key = failover_key;
+                        ctx -> failover_key_len = suffix_len;
+                        ctx -> rpr = rpr;
+                        ctx -> peers_cnt = peers_cnt;
+                        ctx -> rid = rid;
+
+                        PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                            sizeof( *item ) );
+
+                        item -> len = 1;
+                        item -> cb = &Client::propose_self_k_cb;
+                        item -> ctx = (void*)ctx;
+                        item -> err = &Client::propose_self_f_cb;
+                        item -> opcode = true;
+
+                        it -> second -> push_write_queue( i_req_len, i_req, item );
+                    }
+
+                    --peers_cnt;
+                }
+
+            } else {
+
+                size_t c_req_len = 1;
+                char* c_req = (char*)malloc( c_req_len
+                    + event -> id_len_size
+                    + event -> id_len
+                    + sizeof( rid_net )
+                    + sizeof( rin_len )
+                    + rin_len
+                );
+
+                c_req[ 0 ] = 'c';
+
+                memcpy( c_req + c_req_len, &(event -> id_len_net),
+                    event -> id_len_size );
+                c_req_len += event -> id_len_size;
+
+                memcpy( c_req + c_req_len, event -> id, event -> id_len );
+                c_req_len += event -> id_len;
+
+                memcpy( c_req + c_req_len, &rid_net, sizeof( rid_net ) );
+                c_req_len += sizeof( rid_net );
+
+                uint32_t rin_len_net = htonl( rin_len );
+                memcpy( c_req + c_req_len, &rin_len_net, sizeof( rin_len_net ) );
+                c_req_len += sizeof( rin_len_net );
+
+                memcpy( c_req + c_req_len, &rin, rin_len );
+                c_req_len += rin_len;
+
+                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                    sizeof( *item ) );
+
+                muh_str_t* rin_str = (muh_str_t*)malloc( sizeof( *rin_str ) );
+
+                rin_str -> len = rin_len;
+                rin_str -> data = rin;
+
+                muh_str_t* rpr_str = (muh_str_t*)malloc( sizeof( *rpr_str ) );
+
+                rpr_str -> len = strlen( rpr );
+                rpr_str -> data = rpr;
+
+                out_packet_c_ctx* ctx = (out_packet_c_ctx*)malloc( sizeof( *ctx ) );
+
+                ctx -> client = peer;
+                ctx -> event = event;
+                ctx -> rin = rin_str;
+                ctx -> rpr = rpr_str;
+                ctx -> rid = rid;
+                ctx -> wrinseq = wrinseq;
+                ctx -> failover_key = failover_key;
+                ctx -> failover_key_len = suffix_len;
+
+                item -> len = 1;
+                item -> cb = &Client::ping_task_k_cb;
+                item -> ctx = (void*)ctx;
+                item -> err = &Client::ping_task_f_cb;
+                item -> opcode = true;
+
+                peer -> push_write_queue( c_req_len, c_req, item );
+            }
+
+            uint64_t next_wrinseq = ( wrinseq + 1 );
+
+            if( ! db.cas(
+                wrinseq_key.c_str(),
+                wrinseq_key.length(),
+                (char*)&wrinseq,
+                sizeof( wrinseq ),
+                (char*)&next_wrinseq,
+                sizeof( next_wrinseq )
+            ) ) {
+
+                fprintf( stderr, "db.cas() failed: %s\n", db.error().name() );
+                exit( 1 );
+            }
+        }
+    }
+
+    return NULL;
+}
+
+static void* discovery_thread( void* args ) {
 
     while( true ) {
 
         for(
-            peers_to_discover_t::iterator it = peers_to_discover.begin();
-            it != peers_to_discover.end();
+            peers_to_discover_t::const_iterator it = peers_to_discover.cbegin();
+            it != peers_to_discover.cend();
             ++it
         ) {
 
@@ -2515,9 +4081,9 @@ void* discovery_thread( void* args ) {
                     {
                         pthread_mutex_lock( &known_peers_mutex );
 
-                        known_peers_t::iterator it = known_peers_by_conn_id.find( conn_id );
+                        known_peers_t::const_iterator it = known_peers_by_conn_id.find( conn_id );
 
-                        if( it != known_peers_by_conn_id.end() )
+                        if( it != known_peers_by_conn_id.cend() )
                             found = true;
 
                         pthread_mutex_unlock( &known_peers_mutex );
@@ -2527,9 +4093,9 @@ void* discovery_thread( void* args ) {
 
                         pthread_mutex_lock( &known_peers_mutex );
 
-                        known_peers_t::iterator it = known_peers.find( conn_id );
+                        known_peers_t::const_iterator it = known_peers.find( conn_id );
 
-                        if( it != known_peers.end() )
+                        if( it != known_peers.cend() )
                             found = true;
 
                         pthread_mutex_unlock( &known_peers_mutex );
@@ -2539,9 +4105,9 @@ void* discovery_thread( void* args ) {
 
                         pthread_mutex_lock( &me_mutex );
 
-                        me_t::iterator it = me.find( conn_id );
+                        me_t::const_iterator it = me.find( conn_id );
 
-                        if( it != me.end() )
+                        if( it != me.cend() )
                             found = true;
 
                         pthread_mutex_unlock( &me_mutex );
@@ -2612,7 +4178,7 @@ static void socket_cb( struct ev_loop* loop, ev_io* watcher, int events ) {
     return;
 }
 
-void* synchronization_thread( void* args ) {
+static void* synchronization_thread( void* args ) {
 
     while( true ) {
 
@@ -2747,9 +4313,9 @@ int main( int argc, char** argv ) {
             event_group -> name = group_name_;
             // event_group -> module = skree_module; // TODO
 
-            event_groups_t::iterator it = event_groups.find( group_name_ );
+            event_groups_t::const_iterator it = event_groups.find( group_name_ );
 
-            if( it == event_groups.end() ) {
+            if( it == event_groups.cend() ) {
 
                 event_groups[ group_name_ ] = event_group;
 
@@ -2759,7 +4325,11 @@ int main( int argc, char** argv ) {
                 exit( 1 );
             }
 
-            for( YAML::const_iterator event = _events.begin(); event != _events.end(); ++event ) {
+            for(
+                YAML::const_iterator event = _events.begin();
+                event != _events.end();
+                ++event
+            ) {
 
                 if( event -> Type() != YAML::NodeType::Map ) {
 
@@ -2771,14 +4341,29 @@ int main( int argc, char** argv ) {
 
                 if( _id && ( _id.Type() == YAML::NodeType::Scalar ) ) {
 
+                    const YAML::Node _ttl = (*event)[ "ttl" ];
+                    uint32_t ttl;
+
+                    if( _ttl && ( _ttl.Type() == YAML::NodeType::Scalar ) ) {
+
+                        ttl = _ttl.as<uint32_t>();
+
+                    } else {
+
+                        fprintf( stderr, "Every event should have a ttl\n" );
+                        exit( 1 );
+                    }
+
                     std::string id = _id.as<std::string>();
 
-                    printf( "id: %s, group: %s\n", id.c_str(), group_name.c_str() );
+                    printf( "id: %s, group: %s, ttl: %d\n", id.c_str(), group_name.c_str(), ttl );
 
                     known_event_t* known_event = (known_event_t*)malloc(
                         sizeof( *known_event ) );
 
                     known_event -> id_len = id.length();
+                    known_event -> id_len_net = htonl( known_event -> id_len );
+                    known_event -> id_len_size = sizeof( known_event -> id_len );
 
                     char* id_ = (char*)malloc( known_event -> id_len + 1 );
                     memcpy( id_, id.c_str(), known_event -> id_len );
@@ -2786,10 +4371,11 @@ int main( int argc, char** argv ) {
 
                     known_event -> id = id_;
                     known_event -> group = event_group;
+                    known_event -> ttl = ttl;
 
-                    known_events_t::iterator it = known_events.find( id_ );
+                    known_events_t::const_iterator it = known_events.find( id_ );
 
-                    if( it == known_events.end() ) {
+                    if( it == known_events.cend() ) {
 
                         known_events[ id_ ] = known_event;
 
@@ -2798,6 +4384,11 @@ int main( int argc, char** argv ) {
                         fprintf( stderr, "Duplicate event id: %s\n", id_ );
                         exit( 1 );
                     }
+
+                } else {
+
+                    fprintf( stderr, "Every event should have an id\n" );
+                    exit( 1 );
                 }
             }
         }
@@ -2818,9 +4409,14 @@ int main( int argc, char** argv ) {
         return 1;
     }
 
-    my_hostname = (char*)"127.0.0.1\0";
+    load_peers_to_discover();
+
+    my_hostname = (char*)"127.0.0.1";
     my_hostname_len = strlen( my_hostname );
     my_peer_id = make_peer_id( my_hostname_len, my_hostname, my_port );
+    my_peer_id_len = strlen( my_peer_id );
+    my_peer_id_len_net = htonl( my_peer_id_len );
+    my_peer_id_len_size = sizeof( my_peer_id_len_net );
 
     sockaddr_in addr;
 
@@ -2858,6 +4454,7 @@ int main( int argc, char** argv ) {
     pthread_mutex_init( &me_mutex, NULL );
     pthread_mutex_init( &peers_to_discover_mutex, NULL );
     pthread_mutex_init( &stat_mutex, NULL );
+    pthread_mutex_init( &replication_exec_queue_mutex, NULL );
 
     pthread_t synchronization;
     pthread_create( &synchronization, NULL, synchronization_thread, NULL );
@@ -2877,13 +4474,13 @@ int main( int argc, char** argv ) {
         peer_to_discover_t* localhost7654 = (peer_to_discover_t*)malloc(
             sizeof( *localhost7654 ) );
 
-        localhost7654 -> host = "127.0.0.1\0";
+        localhost7654 -> host = "127.0.0.1";
         localhost7654 -> port = 7654;
 
         peer_to_discover_t* localhost8765 = (peer_to_discover_t*)malloc(
             sizeof( *localhost8765 ) );
 
-        localhost8765 -> host = "127.0.0.1\0";
+        localhost8765 -> host = "127.0.0.1";
         localhost8765 -> port = 8765;
 
         peers_to_discover[ make_peer_id(
@@ -2904,6 +4501,12 @@ int main( int argc, char** argv ) {
     pthread_t discovery;
     pthread_create( &discovery, NULL, discovery_thread, NULL );
 
+    pthread_t replication;
+    pthread_create( &replication, NULL, replication_thread, NULL );
+
+    pthread_t replication_exec;
+    pthread_create( &replication_exec, NULL, replication_exec_thread, NULL );
+
     ev_run( loop, 0 );
 
     pthread_join( discovery, NULL );
@@ -2917,6 +4520,8 @@ int main( int argc, char** argv ) {
         free( thread );
     }
 
+    pthread_join( replication, NULL );
+    pthread_join( replication_exec, NULL );
     pthread_join( synchronization, NULL );
 
     pthread_mutex_destroy( &known_peers_mutex );
@@ -2924,6 +4529,9 @@ int main( int argc, char** argv ) {
     pthread_mutex_destroy( &me_mutex );
     pthread_mutex_destroy( &peers_to_discover_mutex );
     pthread_mutex_destroy( &stat_mutex );
+    pthread_mutex_destroy( &replication_exec_queue_mutex );
 
     return 0;
 }
+
+#pragma clang diagnostic pop

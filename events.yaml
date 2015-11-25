@@ -7,4 +7,6 @@
                 - /var/www/muh_kool_project
             package: MuhKooProject::Skree
     events:
-        - id: ExampleEvent
+        -
+            id: ExampleEvent
+            ttl: 60
