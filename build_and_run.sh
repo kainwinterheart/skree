@@ -7,5 +7,6 @@ clang++ ${MORE_FLAGS} -I /usr/local/Cellar/libev/4.20/include/ -I /usr/local/inc
 if [ "$?" -eq "0" ]; then
 
     echo k
-    ./a.out --port=7654 --db=$HOME/kch/7654.kch --events=./events.yaml
+    # ./a.out --port=7654 --db=$HOME/kch/7654.kch --events=./events.yaml
+    ./a.out --port=8765 --db=$HOME/kch/8765.kch --events=./events.yaml
 fi

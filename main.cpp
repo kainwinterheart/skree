@@ -541,7 +541,7 @@ static inline T* parse_db_value( muh_str_t* _value, size_t* size = NULL ) {
     if( size != NULL ) *size = _value -> len;
 
     T* value = (T*)malloc( _value -> len );
-    memcpy( &value, _value -> data, _value -> len );
+    memcpy( value, _value -> data, _value -> len );
 
     free( _value -> data );
     delete _value;
@@ -552,7 +552,7 @@ static inline T* parse_db_value( muh_str_t* _value, size_t* size = NULL ) {
 template <typename T>
 static inline T* parse_db_value( get_keys_result_t* map, std::string* key, size_t* size = NULL ) {
 
-    get_keys_result_t::iterator it = map -> find( (char*)key -> c_str() );
+    get_keys_result_t::iterator it = map -> find( (char*)(key -> c_str()) );
 
     if( it == map -> end() ) return NULL;
 
@@ -573,8 +573,9 @@ static inline get_keys_result_t* db_get_keys( std::vector<std::string>& keys ) {
                 size_t* sp
             ) {
 
-                char* key = (char*)malloc( key_len );
+                char* key = (char*)malloc( key_len + 1 );
                 memcpy( key, _key, key_len );
+                key[ key_len ] = '\0';
 
                 char* value = (char*)malloc( value_len );
                 memcpy( value, _value, value_len );
@@ -2900,7 +2901,7 @@ static inline short repl_save(
                     _peer_id_len );
                 key[ 4 + ctx -> event_name_len + 1 + _peer_id_len ] = ':';
 
-                memcpy( key + 4 + ctx -> event_name_len + 1 + _peer_id_len,
+                memcpy( key + 4 + ctx -> event_name_len + 1 + _peer_id_len + 1,
                     r_id, r_id_len );
 
                 if( db.add( key, key_len, event -> data, event -> len ) ) {
@@ -3398,6 +3399,8 @@ static void* replication_exec_thread( void* args ) {
 
         pthread_mutex_unlock( &replication_exec_queue_mutex );
 
+        printf( "Replication exec thread for task %llu\n", ctx -> rid );
+
         if( ctx -> acceptances == ctx -> count_replicas ) {
 
             {
@@ -3535,426 +3538,465 @@ static void* replication_exec_thread( void* args ) {
 
 static void* replication_thread( void* args ) {
 
-    std::vector<muh_str_t*> peer_ids;
+    while( true ) {
 
-    pthread_mutex_lock( &peers_to_discover_mutex );
+        std::vector<muh_str_t*> peer_ids;
 
-    for(
-        peers_to_discover_t::const_iterator it = peers_to_discover.cbegin();
-        it != peers_to_discover.cend();
-        ++it
-    ) {
-
-        muh_str_t* item = (muh_str_t*)malloc( sizeof( *item ) );
-
-        item -> len = strlen( it -> first );
-        item -> data = it -> first;
-
-        peer_ids.push_back( item );
-    }
-
-    pthread_mutex_unlock( &peers_to_discover_mutex );
-
-    std::random_shuffle( peer_ids.begin(), peer_ids.end() );
-
-    known_peers_t::const_iterator _peer;
-    Client* peer;
-    get_keys_result_t* dbdata;
-    std::vector<std::string> keys;
-    uint64_t now = std::time( nullptr );
-
-    for(
-        known_events_t::const_iterator _event = known_events.cbegin();
-        _event != known_events.cend();
-        ++_event
-    ) {
-
-        known_event_t* event = _event -> second;
+        pthread_mutex_lock( &peers_to_discover_mutex );
 
         for(
-            std::vector<muh_str_t*>::const_iterator _peer_id = peer_ids.begin();
-            _peer_id != peer_ids.end();
-            ++_peer_id
+            peers_to_discover_t::const_iterator it = peers_to_discover.cbegin();
+            it != peers_to_discover.cend();
+            ++it
         ) {
 
-            size_t suffix_len =
-                event -> id_len
-                + 1 // :
-                + (*_peer_id) -> len
-            ;
-            char* suffix = (char*)malloc(
-                suffix_len
-                + 1 // :
-                + 20 // wrinseq
-                + 1 // \0
-            );
-            sprintf( suffix, "%s:%s", event -> id, (*_peer_id) -> data );
+            muh_str_t* item = (muh_str_t*)malloc( sizeof( *item ) );
 
-            std::string wrinseq_key( "wrinseq:", 8 );
-            wrinseq_key.append( suffix, suffix_len );
+            item -> len = strlen( it -> first );
+            item -> data = it -> first;
 
-            std::string rinseq_key( "rinseq:", 7 );
-            rinseq_key.append( suffix, suffix_len );
+            peer_ids.push_back( item );
+        }
 
-            keys.push_back( wrinseq_key );
-            keys.push_back( rinseq_key );
+        pthread_mutex_unlock( &peers_to_discover_mutex );
 
-            dbdata = db_get_keys( keys );
-            keys.clear();
+        std::random_shuffle( peer_ids.begin(), peer_ids.end() );
 
-            if( dbdata == NULL ) {
+        known_peers_t::const_iterator _peer;
+        Client* peer;
+        get_keys_result_t* dbdata;
+        std::vector<std::string> keys;
+        uint64_t now = std::time( nullptr );
 
-                fprintf( stderr, "db.accept_bulk failed: %s\n", db.error().name() );
-                exit( 1 );
-            }
+        for(
+            known_events_t::const_iterator _event = known_events.cbegin();
+            _event != known_events.cend();
+            ++_event
+        ) {
 
-            uint64_t rinseq;
-            uint64_t wrinseq;
+            known_event_t* event = _event -> second;
+            // printf("repl thread: %s\n", event -> id);
 
-            {
-                uint64_t* _rinseq = parse_db_value<uint64_t>( dbdata, &rinseq_key );
-                uint64_t* _wrinseq = parse_db_value<uint64_t>( dbdata, &wrinseq_key );
+            for(
+                std::vector<muh_str_t*>::const_iterator _peer_id = peer_ids.begin();
+                _peer_id != peer_ids.end();
+                ++_peer_id
+            ) {
 
-                if( _rinseq == NULL ) rinseq = 0;
-                else {
+                size_t suffix_len =
+                    event -> id_len
+                    + 1 // :
+                    + (*_peer_id) -> len
+                ;
+                char* suffix = (char*)malloc(
+                    suffix_len
+                    + 1 // :
+                    + 20 // wrinseq
+                    + 1 // \0
+                );
+                sprintf( suffix, "%s:%s", event -> id, (*_peer_id) -> data );
+                // printf("repl thread: %s\n", suffix);
 
-                    rinseq = ntohll( *_rinseq );
-                    free( _rinseq );
-                }
+                std::string wrinseq_key( "wrinseq:", 8 );
+                wrinseq_key.append( suffix, suffix_len );
 
-                if( _wrinseq == NULL ) wrinseq = 0;
-                else {
+                std::string rinseq_key( "rinseq:", 7 );
+                rinseq_key.append( suffix, suffix_len );
 
-                    wrinseq = ntohll( *_wrinseq );
-                    free( _wrinseq );
-                }
-            }
+                keys.push_back( wrinseq_key );
+                keys.push_back( rinseq_key );
 
-            delete dbdata;
+                dbdata = db_get_keys( keys );
+                keys.clear();
 
-            if( wrinseq >= rinseq ) {
+                if( dbdata == NULL ) {
 
-                free( suffix );
-                continue;
-            }
-
-            suffix[ suffix_len ] = ':';
-            ++suffix_len;
-
-            sprintf( suffix + suffix_len, "%llu", wrinseq );
-            suffix_len += 20;
-
-            std::string rin_key( "rin:", 4 );
-            rin_key.append( suffix, suffix_len );
-
-            std::string rts_key( "rts:", 4 );
-            rts_key.append( suffix, suffix_len );
-
-            std::string rid_key( "rid:", 4 );
-            rid_key.append( suffix, suffix_len );
-
-            std::string rpr_key( "rpr:", 4 );
-            rpr_key.append( suffix, suffix_len );
-
-            keys.push_back( rin_key );
-            keys.push_back( rts_key );
-            keys.push_back( rid_key );
-            keys.push_back( rpr_key );
-
-            dbdata = db_get_keys( keys );
-            keys.clear();
-
-            if( dbdata == NULL ) {
-
-                fprintf( stderr, "db.accept_bulk failed: %s\n", db.error().name() );
-                exit( 1 );
-            }
-
-            size_t rin_len;
-            char* rin = parse_db_value<char>( dbdata, &rin_key, &rin_len );
-
-            if( rin == NULL ) {
-
-                fprintf( stderr, "No data for replicated event\n" );
-                exit( 1 );
-            }
-
-            uint64_t rts;
-            uint64_t rid;
-            uint64_t rid_net;
-
-            {
-                uint64_t* _rts = parse_db_value<uint64_t>( dbdata, &rts_key );
-                uint64_t* _rid = parse_db_value<uint64_t>( dbdata, &rts_key );
-
-                if( _rts == NULL ) {
-
-                    fprintf( stderr, "No timestamp for replicated event\n" );
+                    fprintf( stderr, "db.accept_bulk failed: %s\n", db.error().name() );
                     exit( 1 );
-
-                } else {
-
-                    rts = ntohll( *_rts );
-                    free( _rts );
                 }
 
-                if( _rid == NULL ) {
+                uint64_t rinseq;
+                uint64_t wrinseq;
 
-                    fprintf( stderr, "No remote id for replicated event\n" );
+                auto next = [ &wrinseq_key, &wrinseq ](){
+
+                    uint64_t next_wrinseq = htonll( wrinseq + 1 );
+                    uint64_t __wrinseq = htonll( wrinseq );
+
+                    if( ! db.cas(
+                        wrinseq_key.c_str(),
+                        wrinseq_key.length(),
+                        (char*)&__wrinseq,
+                        sizeof( __wrinseq ),
+                        (char*)&next_wrinseq,
+                        sizeof( next_wrinseq )
+                    ) ) {
+
+                        fprintf( stderr, "db.cas() failed: %s, wrinseq_key: %s, wrinseq: %llu\n", db.error().name(), wrinseq_key.c_str(), wrinseq );
+                        exit( 1 );
+                    }
+                };
+
+                {
+                    uint64_t* _rinseq = parse_db_value<uint64_t>( dbdata, &rinseq_key );
+                    uint64_t* _wrinseq = parse_db_value<uint64_t>( dbdata, &wrinseq_key );
+
+                    if( _rinseq == NULL ) rinseq = 0;
+                    else {
+                        rinseq = ntohll( *_rinseq );
+                        free( _rinseq );
+                    }
+
+                    if( _wrinseq == NULL ) {
+
+                        wrinseq = 0;
+                        uint64_t __wrinseq = htonll( wrinseq );
+
+                        if( ! db.add(
+                            wrinseq_key.c_str(),
+                            wrinseq_key.length(),
+                            (char*)&__wrinseq,
+                            sizeof( __wrinseq )
+                        ) ) {
+                            auto error = db.error();
+                            fprintf( stderr, "db.add() failed: %s\n", error.name() );
+
+                            if( error.code() == kyotocabinet::BasicDB::Error::Code::DUPREC ) {
+
+                                next();
+                                continue;
+
+                            } else {
+
+                                exit( 1 );
+                            }
+                        }
+
+                    } else {
+
+                        wrinseq = ntohll( *_wrinseq );
+                        free( _wrinseq );
+                    }
+                }
+
+                delete dbdata;
+
+                if( wrinseq >= rinseq ) {
+
+                    free( suffix );
+                    continue;
+                }
+
+                suffix[ suffix_len ] = ':';
+                ++suffix_len;
+
+                sprintf( suffix + suffix_len, "%llu", wrinseq );
+                suffix_len += 20;
+
+                std::string rin_key( "rin:", 4 );
+                rin_key.append( suffix, suffix_len );
+
+                std::string rts_key( "rts:", 4 );
+                rts_key.append( suffix, suffix_len );
+
+                std::string rid_key( "rid:", 4 );
+                rid_key.append( suffix, suffix_len );
+
+                std::string rpr_key( "rpr:", 4 );
+                rpr_key.append( suffix, suffix_len );
+
+                keys.push_back( rin_key );
+                keys.push_back( rts_key );
+                keys.push_back( rid_key );
+                keys.push_back( rpr_key );
+
+                dbdata = db_get_keys( keys );
+                keys.clear();
+
+                if( dbdata == NULL ) {
+
+                    fprintf( stderr, "db.accept_bulk failed: %s\n", db.error().name() );
                     exit( 1 );
-
-                } else {
-
-                    rid_net = *_rid;
-                    free( _rid );
-                    rid = ntohll( rid_net );
                 }
-            }
 
-            size_t rpr_len;
-            char* rpr = parse_db_value<char>( dbdata, &rpr_key, &rpr_len );
+                size_t rin_len;
+                char* rin = parse_db_value<char>( dbdata, &rin_key, &rin_len );
 
-            delete dbdata;
+                if( rin == NULL ) {
 
-            if( ( rts + event -> ttl ) > now ) {
+                    fprintf( stderr, "No data for replicated event: %s\n", suffix );
+                    next();
+                    continue;
+                }
 
-                free( rin );
-                free( rpr );
-                free( suffix );
-                continue;
-            }
+                uint64_t rts;
+                uint64_t rid;
+                uint64_t rid_net;
 
-            char* failover_key = suffix;
-            sprintf( failover_key + suffix_len - 20 - 1, "%llu", rid );
+                {
+                    uint64_t* _rts = parse_db_value<uint64_t>( dbdata, &rts_key );
+                    uint64_t* _rid = parse_db_value<uint64_t>( dbdata, &rts_key );
 
-            {
-                failover_t::const_iterator it = failover.find( failover_key );
+                    if( _rts == NULL ) {
 
-                if( it != failover.cend() ) {
+                        fprintf( stderr, "No timestamp for replicated event: %s\n", suffix );
+                        next();
+                        continue;
+
+                    } else {
+
+                        rts = ntohll( *_rts );
+                        free( _rts );
+                    }
+
+                    if( _rid == NULL ) {
+
+                        fprintf( stderr, "No remote id for replicated event: %s\n", suffix );
+                        next();
+                        continue;
+
+                    } else {
+
+                        rid_net = *_rid;
+                        free( _rid );
+                        rid = ntohll( rid_net );
+                    }
+                }
+
+                size_t rpr_len;
+                char* rpr = parse_db_value<char>( dbdata, &rpr_key, &rpr_len );
+
+                delete dbdata;
+
+                if( ( rts + event -> ttl ) > now ) {
 
                     free( rin );
                     free( rpr );
-                    // free( suffix );
-                    free( failover_key );
+                    free( suffix );
                     continue;
                 }
-            }
 
-            {
-                no_failover_t::const_iterator it = no_failover.find( failover_key );
+                char* failover_key = suffix;
+                sprintf( failover_key + suffix_len - 20 - 1, "%llu", rid );
 
-                if( it != no_failover.cend() ) {
+                {
+                    failover_t::const_iterator it = failover.find( failover_key );
 
-                    if( ( it -> second + no_failover_time ) > now ) {
+                    if( it != failover.cend() ) {
 
                         free( rin );
                         free( rpr );
                         // free( suffix );
                         free( failover_key );
                         continue;
-
-                    } else {
-
-                        no_failover.erase( it );
                     }
                 }
-            }
 
-            failover[ failover_key ] = 0;
+                {
+                    no_failover_t::const_iterator it = no_failover.find( failover_key );
 
-            pthread_mutex_lock( &known_peers_mutex );
+                    if( it != no_failover.cend() ) {
 
-            _peer = known_peers.find( (*_peer_id) -> data );
+                        if( ( it -> second + no_failover_time ) > now ) {
 
-            if( _peer == known_peers.cend() ) peer = NULL;
-            else peer = _peer -> second;
+                            free( rin );
+                            free( rpr );
+                            // free( suffix );
+                            free( failover_key );
+                            continue;
 
-            pthread_mutex_unlock( &known_peers_mutex );
+                        } else {
 
-            if( peer == NULL ) {
-
-                size_t offset = 0;
-
-                uint32_t _peers_cnt;
-                memcpy( &_peers_cnt, rpr + offset, sizeof( _peers_cnt ) );
-                uint32_t peers_cnt = ntohl( _peers_cnt );
-
-                uint32_t* count_replicas = (uint32_t*)malloc( sizeof(
-                    *count_replicas ) );
-                uint32_t* acceptances = (uint32_t*)malloc( sizeof(
-                    *acceptances ) );
-                uint32_t* pending = (uint32_t*)malloc( sizeof(
-                    *pending ) );
-
-                *count_replicas = peers_cnt;
-                *acceptances = 0;
-                *pending = 0;
-
-                pthread_mutex_t* mutex = (pthread_mutex_t*)malloc( sizeof( mutex ) );
-                pthread_mutex_init( mutex, NULL );
-
-                size_t i_req_len = 1;
-                char* i_req = (char*)malloc(
-                    i_req_len
-                    + sizeof( (*_peer_id) -> len )
-                    + (*_peer_id) -> len
-                    + event -> id_len_size
-                    + event -> id_len
-                    + sizeof( rid )
-                );
-
-                i_req[ 0 ] = 'i';
-
-                uint32_t _peer_id_len_net = htonl( (*_peer_id) -> len );
-                memcpy( i_req + i_req_len, &_peer_id_len_net,
-                    sizeof( _peer_id_len_net ) );
-                i_req_len += sizeof( _peer_id_len_net );
-
-                memcpy( i_req + i_req_len, (*_peer_id) -> data, (*_peer_id) -> len );
-                i_req_len += (*_peer_id) -> len;
-
-                memcpy( i_req + i_req_len, &(event -> id_len_net),
-                    event -> id_len_size );
-                i_req_len += event -> id_len_size;
-
-                memcpy( i_req + i_req_len, event -> id,
-                    event -> id_len );
-                i_req_len += event -> id_len;
-
-                memcpy( i_req + i_req_len, &rid_net, sizeof( rid_net ) );
-                i_req_len += sizeof( rid_net );
-
-                muh_str_t* data_str = (muh_str_t*)malloc( sizeof( *data_str ) );
-
-                data_str -> len = rin_len;
-                data_str -> data = rin;
-
-                while( peers_cnt > 0 ) {
-
-                    size_t peer_id_len = strlen( rpr + offset );
-                    char* peer_id = (char*)malloc( peer_id_len + 1 );
-                    memcpy( peer_id, rpr + offset, peer_id_len );
-                    peer_id[ peer_id_len ] = '\0';
-                    offset += peer_id_len + 1;
-
-                    known_peers_t::const_iterator it = known_peers.find( peer_id );
-
-                    if( it == known_peers.cend() ) {
-
-                        ++(*acceptances);
-
-                    } else {
-
-                        ++(*pending);
-
-                        out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(
-                            sizeof( *ctx ) );
-
-                        ctx -> count_replicas = count_replicas;
-                        ctx -> pending = pending;
-                        ctx -> acceptances = acceptances;
-                        ctx -> mutex = mutex;
-                        ctx -> event = event;
-                        ctx -> data = data_str;
-                        ctx -> peer_id = *_peer_id;
-                        ctx -> wrinseq = wrinseq;
-                        ctx -> failover_key = failover_key;
-                        ctx -> failover_key_len = suffix_len;
-                        ctx -> rpr = rpr;
-                        ctx -> peers_cnt = peers_cnt;
-                        ctx -> rid = rid;
-
-                        PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                            sizeof( *item ) );
-
-                        item -> len = 1;
-                        item -> cb = &Client::propose_self_k_cb;
-                        item -> ctx = (void*)ctx;
-                        item -> err = &Client::propose_self_f_cb;
-                        item -> opcode = true;
-
-                        it -> second -> push_write_queue( i_req_len, i_req, item );
+                            no_failover.erase( it );
+                        }
                     }
-
-                    --peers_cnt;
                 }
 
-            } else {
+                failover[ failover_key ] = 0;
 
-                size_t c_req_len = 1;
-                char* c_req = (char*)malloc( c_req_len
-                    + event -> id_len_size
-                    + event -> id_len
-                    + sizeof( rid_net )
-                    + sizeof( rin_len )
-                    + rin_len
-                );
+                pthread_mutex_lock( &known_peers_mutex );
 
-                c_req[ 0 ] = 'c';
+                _peer = known_peers.find( (*_peer_id) -> data );
 
-                memcpy( c_req + c_req_len, &(event -> id_len_net),
-                    event -> id_len_size );
-                c_req_len += event -> id_len_size;
+                if( _peer == known_peers.cend() ) peer = NULL;
+                else peer = _peer -> second;
 
-                memcpy( c_req + c_req_len, event -> id, event -> id_len );
-                c_req_len += event -> id_len;
+                pthread_mutex_unlock( &known_peers_mutex );
 
-                memcpy( c_req + c_req_len, &rid_net, sizeof( rid_net ) );
-                c_req_len += sizeof( rid_net );
+                printf( "Seems like I need to failover task %llu\n", rid );
 
-                uint32_t rin_len_net = htonl( rin_len );
-                memcpy( c_req + c_req_len, &rin_len_net, sizeof( rin_len_net ) );
-                c_req_len += sizeof( rin_len_net );
+                if( peer == NULL ) {
 
-                memcpy( c_req + c_req_len, &rin, rin_len );
-                c_req_len += rin_len;
+                    size_t offset = 0;
 
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof( *item ) );
+                    uint32_t _peers_cnt;
+                    memcpy( &_peers_cnt, rpr + offset, sizeof( _peers_cnt ) );
+                    uint32_t peers_cnt = ntohl( _peers_cnt );
 
-                muh_str_t* rin_str = (muh_str_t*)malloc( sizeof( *rin_str ) );
+                    uint32_t* count_replicas = (uint32_t*)malloc( sizeof(
+                        *count_replicas ) );
+                    uint32_t* acceptances = (uint32_t*)malloc( sizeof(
+                        *acceptances ) );
+                    uint32_t* pending = (uint32_t*)malloc( sizeof(
+                        *pending ) );
 
-                rin_str -> len = rin_len;
-                rin_str -> data = rin;
+                    *count_replicas = peers_cnt;
+                    *acceptances = 0;
+                    *pending = 0;
 
-                muh_str_t* rpr_str = (muh_str_t*)malloc( sizeof( *rpr_str ) );
+                    pthread_mutex_t* mutex = (pthread_mutex_t*)malloc( sizeof( mutex ) );
+                    pthread_mutex_init( mutex, NULL );
 
-                rpr_str -> len = strlen( rpr );
-                rpr_str -> data = rpr;
+                    size_t i_req_len = 1;
+                    char* i_req = (char*)malloc(
+                        i_req_len
+                        + sizeof( (*_peer_id) -> len )
+                        + (*_peer_id) -> len
+                        + event -> id_len_size
+                        + event -> id_len
+                        + sizeof( rid )
+                    );
 
-                out_packet_c_ctx* ctx = (out_packet_c_ctx*)malloc( sizeof( *ctx ) );
+                    i_req[ 0 ] = 'i';
 
-                ctx -> client = peer;
-                ctx -> event = event;
-                ctx -> rin = rin_str;
-                ctx -> rpr = rpr_str;
-                ctx -> rid = rid;
-                ctx -> wrinseq = wrinseq;
-                ctx -> failover_key = failover_key;
-                ctx -> failover_key_len = suffix_len;
+                    uint32_t _peer_id_len_net = htonl( (*_peer_id) -> len );
+                    memcpy( i_req + i_req_len, &_peer_id_len_net,
+                        sizeof( _peer_id_len_net ) );
+                    i_req_len += sizeof( _peer_id_len_net );
 
-                item -> len = 1;
-                item -> cb = &Client::ping_task_k_cb;
-                item -> ctx = (void*)ctx;
-                item -> err = &Client::ping_task_f_cb;
-                item -> opcode = true;
+                    memcpy( i_req + i_req_len, (*_peer_id) -> data, (*_peer_id) -> len );
+                    i_req_len += (*_peer_id) -> len;
 
-                peer -> push_write_queue( c_req_len, c_req, item );
-            }
+                    memcpy( i_req + i_req_len, &(event -> id_len_net),
+                        event -> id_len_size );
+                    i_req_len += event -> id_len_size;
 
-            uint64_t next_wrinseq = ( wrinseq + 1 );
+                    memcpy( i_req + i_req_len, event -> id,
+                        event -> id_len );
+                    i_req_len += event -> id_len;
 
-            if( ! db.cas(
-                wrinseq_key.c_str(),
-                wrinseq_key.length(),
-                (char*)&wrinseq,
-                sizeof( wrinseq ),
-                (char*)&next_wrinseq,
-                sizeof( next_wrinseq )
-            ) ) {
+                    memcpy( i_req + i_req_len, &rid_net, sizeof( rid_net ) );
+                    i_req_len += sizeof( rid_net );
 
-                fprintf( stderr, "db.cas() failed: %s\n", db.error().name() );
-                exit( 1 );
+                    muh_str_t* data_str = (muh_str_t*)malloc( sizeof( *data_str ) );
+
+                    data_str -> len = rin_len;
+                    data_str -> data = rin;
+
+                    while( peers_cnt > 0 ) {
+
+                        size_t peer_id_len = strlen( rpr + offset );
+                        char* peer_id = (char*)malloc( peer_id_len + 1 );
+                        memcpy( peer_id, rpr + offset, peer_id_len );
+                        peer_id[ peer_id_len ] = '\0';
+                        offset += peer_id_len + 1;
+
+                        known_peers_t::const_iterator it = known_peers.find( peer_id );
+
+                        if( it == known_peers.cend() ) {
+
+                            ++(*acceptances);
+
+                        } else {
+
+                            ++(*pending);
+
+                            out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(
+                                sizeof( *ctx ) );
+
+                            ctx -> count_replicas = count_replicas;
+                            ctx -> pending = pending;
+                            ctx -> acceptances = acceptances;
+                            ctx -> mutex = mutex;
+                            ctx -> event = event;
+                            ctx -> data = data_str;
+                            ctx -> peer_id = *_peer_id;
+                            ctx -> wrinseq = wrinseq;
+                            ctx -> failover_key = failover_key;
+                            ctx -> failover_key_len = suffix_len;
+                            ctx -> rpr = rpr;
+                            ctx -> peers_cnt = peers_cnt;
+                            ctx -> rid = rid;
+
+                            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                                sizeof( *item ) );
+
+                            item -> len = 1;
+                            item -> cb = &Client::propose_self_k_cb;
+                            item -> ctx = (void*)ctx;
+                            item -> err = &Client::propose_self_f_cb;
+                            item -> opcode = true;
+
+                            it -> second -> push_write_queue( i_req_len, i_req, item );
+                        }
+
+                        --peers_cnt;
+                    }
+
+                } else {
+
+                    size_t c_req_len = 1;
+                    char* c_req = (char*)malloc( c_req_len
+                        + event -> id_len_size
+                        + event -> id_len
+                        + sizeof( rid_net )
+                        + sizeof( rin_len )
+                        + rin_len
+                    );
+
+                    c_req[ 0 ] = 'c';
+
+                    memcpy( c_req + c_req_len, &(event -> id_len_net),
+                        event -> id_len_size );
+                    c_req_len += event -> id_len_size;
+
+                    memcpy( c_req + c_req_len, event -> id, event -> id_len );
+                    c_req_len += event -> id_len;
+
+                    memcpy( c_req + c_req_len, &rid_net, sizeof( rid_net ) );
+                    c_req_len += sizeof( rid_net );
+
+                    uint32_t rin_len_net = htonl( rin_len );
+                    memcpy( c_req + c_req_len, &rin_len_net, sizeof( rin_len_net ) );
+                    c_req_len += sizeof( rin_len_net );
+
+                    memcpy( c_req + c_req_len, &rin, rin_len );
+                    c_req_len += rin_len;
+
+                    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                        sizeof( *item ) );
+
+                    muh_str_t* rin_str = (muh_str_t*)malloc( sizeof( *rin_str ) );
+
+                    rin_str -> len = rin_len;
+                    rin_str -> data = rin;
+
+                    muh_str_t* rpr_str = (muh_str_t*)malloc( sizeof( *rpr_str ) );
+
+                    rpr_str -> len = strlen( rpr );
+                    rpr_str -> data = rpr;
+
+                    out_packet_c_ctx* ctx = (out_packet_c_ctx*)malloc( sizeof( *ctx ) );
+
+                    ctx -> client = peer;
+                    ctx -> event = event;
+                    ctx -> rin = rin_str;
+                    ctx -> rpr = rpr_str;
+                    ctx -> rid = rid;
+                    ctx -> wrinseq = wrinseq;
+                    ctx -> failover_key = failover_key;
+                    ctx -> failover_key_len = suffix_len;
+
+                    item -> len = 1;
+                    item -> cb = &Client::ping_task_k_cb;
+                    item -> ctx = (void*)ctx;
+                    item -> err = &Client::ping_task_f_cb;
+                    item -> opcode = true;
+
+                    peer -> push_write_queue( c_req_len, c_req, item );
+                }
+
+                next();
             }
         }
     }
