@@ -10,9 +10,9 @@
 
 #include <list>
 #include <ctime>
+#include <deque>
 #include <queue>
 #include <string>
-
 #include <vector>
 #include <errno.h>
 #include <fcntl.h>
@@ -25,27 +25,7 @@
 #include <pthread.h>
 #include <strings.h>
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wreserved-id-macro"
-#pragma clang diagnostic ignored "-Wc++98-compat-pedantic"
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#pragma clang diagnostic ignored "-Wconversion"
-#pragma clang diagnostic ignored "-Wshorten-64-to-32"
-#pragma clang diagnostic ignored "-Wsign-conversion"
-#pragma clang diagnostic ignored "-Wimplicit-fallthrough"
-#pragma clang diagnostic ignored "-Wfloat-equal"
-#pragma clang diagnostic ignored "-Wformat-nonliteral"
-#pragma clang diagnostic ignored "-Wextra-semi"
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#pragma clang diagnostic ignored "-Wdocumentation"
-#pragma clang diagnostic ignored "-Wcast-align"
-#pragma clang diagnostic ignored "-Wshadow"
-#pragma clang diagnostic ignored "-Wpadded"
-#pragma clang diagnostic ignored "-Wswitch-enum"
-#pragma clang diagnostic ignored "-Warray-bounds-pointer-arithmetic"
-#pragma clang diagnostic ignored "-Wweak-vtables"
-#include <kchashdb.h>
-#pragma clang diagnostic pop
+#include "db_wrapper.hpp"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -118,7 +98,7 @@ static uint64_t stat_num_inserts;
 static uint64_t stat_num_replications;
 static pthread_mutex_t stat_mutex;
 
-static kyotocabinet::HashDB db;
+static DbWrapper db;
 
 static char* my_hostname;
 static uint32_t my_hostname_len;
@@ -183,8 +163,8 @@ struct event_group_t {
 
 struct known_event_t {
 
-    size_t id_len;
-    size_t id_len_net;
+    uint32_t id_len;
+    uint32_t id_len_net;
     char* id;
     event_group_t* group;
     uint32_t ttl;
@@ -299,6 +279,7 @@ struct in_packet_r_ctx_event {
 
     char* data;
     char* id;
+    uint64_t id_net;
     uint32_t len;
 };
 
@@ -543,7 +524,7 @@ static inline T* parse_db_value( muh_str_t* _value, size_t* size = NULL ) {
     T* value = (T*)malloc( _value -> len );
     memcpy( value, _value -> data, _value -> len );
 
-    free( _value -> data );
+    // free( _value -> data );
     delete _value;
 
     return value;
@@ -576,6 +557,8 @@ static inline get_keys_result_t* db_get_keys( std::vector<std::string>& keys ) {
                 char* key = (char*)malloc( key_len + 1 );
                 memcpy( key, _key, key_len );
                 key[ key_len ] = '\0';
+                // if(strncmp(key,"wrinseq",7)!=0)
+                // printf("got %s\n",key);
 
                 char* value = (char*)malloc( value_len );
                 memcpy( value, _value, value_len );
@@ -617,7 +600,7 @@ class Client {
         uint32_t conn_port;
         char* peer_id;
         char* conn_id;
-        std::queue<PendingReadsQueueItem**> pending_reads;
+        std::deque<PendingReadsQueueItem**> pending_reads;
         sockaddr_in* s_in;
         socklen_t s_in_len;
 
@@ -703,7 +686,7 @@ class Client {
                 item -> err = NULL;
                 item -> opcode = false;
 
-                push_pending_reads_queue( item );
+                push_pending_reads_queue( item, true );
 
             } else if( opcode == 'r' ) {
 
@@ -716,10 +699,10 @@ class Client {
                 item -> err = NULL;
                 item -> opcode = false;
 
-                push_pending_reads_queue( item );
+                push_pending_reads_queue( item, true );
 
             } else if( opcode == 'c' ) {
-
+// printf("C\n");
                 PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
                     sizeof( *item ) );
 
@@ -729,7 +712,7 @@ class Client {
                 item -> err = NULL;
                 item -> opcode = false;
 
-                push_pending_reads_queue( item );
+                push_pending_reads_queue( item, true );
 
             } else if( opcode == 'i' ) {
 
@@ -742,7 +725,7 @@ class Client {
                 item -> err = NULL;
                 item -> opcode = false;
 
-                push_pending_reads_queue( item );
+                push_pending_reads_queue( item, true );
 
             } else if( opcode == 'x' ) {
 
@@ -755,7 +738,7 @@ class Client {
                 item -> err = NULL;
                 item -> opcode = false;
 
-                push_pending_reads_queue( item );
+                push_pending_reads_queue( item, true );
 
             } else if( opcode == 'h' ) {
 
@@ -768,7 +751,7 @@ class Client {
                 item -> err = NULL;
                 item -> opcode = false;
 
-                push_pending_reads_queue( item );
+                push_pending_reads_queue( item, true );
 
             } else {
 
@@ -834,7 +817,7 @@ class Client {
                                 // If pending read has received all its data -
                                 // remove it from the queue
 
-                                pending_reads.pop();
+                                pending_reads.pop_front();
                                 free( _item );
 
                             } else {
@@ -865,6 +848,7 @@ class Client {
                         // the reply opcode we've got here - process data as
                         // ordinary inbound packet
 
+                        // printf("ordinary_packet_cb 1\n");
                         ordinary_packet_cb( opcode, &out_packet, &out_packet_len,
                             &in_packet_len );
                     }
@@ -874,6 +858,7 @@ class Client {
                     // There is no pending reads, so data should be processed
                     // as ordinary inbound packet
 
+                    // printf("ordinary_packet_cb 2\n");
                     ordinary_packet_cb( opcode, &out_packet, &out_packet_len,
                         &in_packet_len );
                 }
@@ -948,15 +933,12 @@ class Client {
             *(args -> out_packet_len) += 1;
             *(args -> out_packet) = _out_packet;
 
-            size_t suffix_len =
+            char* suffix = (char*)malloc(
                 event_id_len
                 + 1 // :
                 + peer_id -> len
                 + 1 // :
                 + 20 // rid
-            ;
-            char* suffix = (char*)malloc(
-                suffix_len
                 + 1 // \0
             );
             sprintf( suffix, "%s:%s:%llu", event_id, peer_id -> data, rid );
@@ -966,7 +948,7 @@ class Client {
             if( it == failover.cend() ) {
 
                 std::string rre_key( "rre:", 4 );
-                rre_key.append( suffix, suffix_len );
+                rre_key.append( suffix, strlen( suffix ) );
 
                 std::vector<std::string> keys;
                 keys.push_back( rre_key );
@@ -1086,7 +1068,7 @@ class Client {
             sprintf( suffix, "%s:%s:%llu", event_id, peer_id -> data, rid );
 
             std::string rre_key( "rre:", 4 );
-            rre_key.append( suffix, suffix_len );
+            rre_key.append( suffix, strlen( suffix ) );
 
             std::vector<std::string> keys;
             keys.push_back( rre_key );
@@ -1362,9 +1344,11 @@ class Client {
 
             uint64_t _id;
             memcpy( &_id, args -> data, 8 );
+            event -> id_net = _id;
 
             event -> id = (char*)malloc( 21 );
             sprintf( event -> id, "%llu", ntohll( _id ) );
+            // printf("repl got id: %llu\n", ntohll(event -> id_net));
 
             uint32_t _len;
             memcpy( &_len, args -> data + 8, 4 );
@@ -1393,7 +1377,7 @@ class Client {
             in_packet_r_ctx_event* event = ctx -> events -> back();
 
             event -> data = (char*)malloc( sizeof( prev_len ) + prev_len );
-            memcpy( event -> data, &prev_len, sizeof( prev_len ) );
+            memcpy( event -> data, (char*)&prev_len, sizeof( prev_len ) );
             memcpy( event -> data + sizeof( prev_len ), prev_data, prev_len );
             event -> len += sizeof( prev_len );
 
@@ -2124,7 +2108,7 @@ class Client {
                 free( item );
                 free( _item );
 
-                pending_reads.pop();
+                pending_reads.pop_front();
             }
 
             while( ! write_queue.empty() ) {
@@ -2308,13 +2292,16 @@ class Client {
             pthread_mutex_unlock( &write_queue_mutex );
         }
 
-        void push_pending_reads_queue( PendingReadsQueueItem* item ) {
+        void push_pending_reads_queue( PendingReadsQueueItem* item, bool front = false ) {
 
             PendingReadsQueueItem** _item = (PendingReadsQueueItem**)malloc(
                 sizeof( *_item ) );
             *_item = item;
 
-            pending_reads.push( _item );
+            if(front)
+                pending_reads.push_front( _item );
+            else
+                pending_reads.push_back( _item );
         }
 
         PendingReadsQueueItem* discovery_cb2( PendingReadCallbackArgs* args ) {
@@ -2480,36 +2467,39 @@ class Client {
 
             r_ctx -> events -> push_back( event );
 
-            size_t rpr_len = ctx -> rpr -> len;
-            size_t rpr_offset = 0;
+            if( ctx -> rpr != NULL ) {
 
-            while( rpr_offset < rpr_len ) {
+                size_t rpr_len = ctx -> rpr -> len;
+                size_t rpr_offset = 0;
 
-                size_t peer_id_len = strlen( ctx -> rpr -> data + rpr_offset );
-                char* peer_id = (char*)malloc( peer_id_len + 1 );
-                memcpy( peer_id, ctx -> rpr -> data + rpr_offset, peer_id_len );
-                peer_id[ peer_id_len ] = '\0';
-                rpr_offset += peer_id_len + 1;
+                while( rpr_offset < rpr_len ) {
 
-                char* delimiter = rindex( peer_id, ':' );
+                    size_t peer_id_len = strlen( ctx -> rpr -> data + rpr_offset );
+                    char* peer_id = (char*)malloc( peer_id_len + 1 );
+                    memcpy( peer_id, ctx -> rpr -> data + rpr_offset, peer_id_len );
+                    peer_id[ peer_id_len ] = '\0';
+                    rpr_offset += peer_id_len + 1;
 
-                if( delimiter == NULL ) {
+                    char* delimiter = rindex( peer_id, ':' );
 
-                    fprintf( stderr, "Invalid peer id: %s\n", peer_id );
+                    if( delimiter == NULL ) {
 
-                } else {
+                        fprintf( stderr, "Invalid peer id: %s\n", peer_id );
 
-                    packet_r_ctx_peer* peer = (packet_r_ctx_peer*)malloc(
-                        sizeof( *peer ) );
+                    } else {
 
-                    peer -> hostname_len = delimiter - peer_id;
-                    peer -> port = atoi( delimiter + 1 );
-                    peer -> hostname = (char*)malloc( peer -> hostname_len + 1 );
+                        packet_r_ctx_peer* peer = (packet_r_ctx_peer*)malloc(
+                            sizeof( *peer ) );
 
-                    memcpy( peer -> hostname, peer_id, peer -> hostname_len );
-                    peer -> hostname[ peer -> hostname_len ] = '\0';
+                        peer -> hostname_len = delimiter - peer_id;
+                        peer -> port = atoi( delimiter + 1 );
+                        peer -> hostname = (char*)malloc( peer -> hostname_len + 1 );
 
-                    r_ctx -> peers -> push_back( peer );
+                        memcpy( peer -> hostname, peer_id, peer -> hostname_len );
+                        peer -> hostname[ peer -> hostname_len ] = '\0';
+
+                        r_ctx -> peers -> push_back( peer );
+                    }
                 }
             }
 
@@ -2583,17 +2573,17 @@ static inline short save_event(
     r_len += my_hostname_len;
 
     uint32_t _my_port = htonl( my_port );
-    memcpy( r_req + r_len, &_my_port, sizeof( _my_port ) );
+    memcpy( r_req + r_len, (char*)&_my_port, sizeof( _my_port ) );
     r_len += sizeof( _my_port );
 
     uint32_t _event_name_len = htonl( ctx -> event_name_len );
-    memcpy( r_req + r_len, &_event_name_len, sizeof( _event_name_len ) );
+    memcpy( r_req + r_len, (char*)&_event_name_len, sizeof( _event_name_len ) );
     r_len += sizeof( _event_name_len );
 
     memcpy( r_req + r_len, ctx -> event_name, ctx -> event_name_len );
     r_len += ctx -> event_name_len;
 
-    memcpy( r_req + r_len, &_cnt, sizeof( _cnt ) );
+    memcpy( r_req + r_len, (char*)&_cnt, sizeof( _cnt ) );
     r_len += sizeof( _cnt );
 
     uint32_t num_inserted = 0;
@@ -2656,7 +2646,7 @@ static inline short save_event(
 
                 } else {
 
-                    fprintf( stderr, "db.add() failed: %s\n", db.error().name() );
+                    fprintf( stderr, "db.add(%s) failed: %s\n", key, db.error().name() );
                     free( key );
                     break;
                 }
@@ -2670,11 +2660,11 @@ static inline short save_event(
                     + event -> len
                 );
 
-                memcpy( r_req + r_len, &_max_id, sizeof( _max_id ) );
+                memcpy( r_req + r_len, (char*)&_max_id, sizeof( _max_id ) );
                 r_len += sizeof( _max_id );
 
                 uint32_t _event_len = htonl( event -> len );
-                memcpy( r_req + r_len, &_event_len, sizeof( _event_len ) );
+                memcpy( r_req + r_len, (char*)&_event_len, sizeof( _event_len ) );
                 r_len += sizeof( _event_len );
 
                 memcpy( r_req + r_len, event -> data, event -> len );
@@ -2845,9 +2835,9 @@ static inline short repl_save(
 
         if( ! keep_peer_id ) free( _peer_id );
     }
-
+// printf("repl_save: before begin_transaction\n");
     if( db.begin_transaction() ) {
-
+// printf("repl_save: after begin_transaction\n");
         int64_t max_id = db.increment(
             increment_key,
             increment_key_len,
@@ -2914,8 +2904,10 @@ static inline short repl_save(
                         key[ 1 ] = 'i';
                         key[ 2 ] = 'd';
 
-                        if( db.add( key, key_len, event -> id,
-                            strlen( event -> id ) ) ) {
+                        // printf("about to save rid: %llu\n",ntohll(event -> id_net));
+
+                        if( db.add( key, key_len, (char*)&(event -> id_net),
+                            sizeof( event -> id_net ) ) ) {
 
                             bool rpr_ok = false;
 
@@ -2929,6 +2921,9 @@ static inline short repl_save(
                                     serialized_peers,
                                     serialized_peers_len
                                 );
+
+                                if( ! rpr_ok )
+                                    fprintf( stderr, "db.add(%s) failed: %s\n", key, db.error().name() );
 
                             } else {
 
@@ -2947,7 +2942,9 @@ static inline short repl_save(
                                 memcpy( key + key_len, event -> id, event_id_len );
                                 key_len += event_id_len;
 
-                                if( db.add( key, key_len, r_id, r_id_len ) ) {
+                                auto _max_id = htonll( max_id );
+// printf("repl_save: before db.add(%s)\n", key);
+                                if( db.add( key, key_len, (char*)&_max_id, sizeof( _max_id ) ) ) {
 
                                     free( key );
                                     free( r_id );
@@ -2956,6 +2953,7 @@ static inline short repl_save(
 
                                 } else {
 
+                                    fprintf( stderr, "db.add(%s) failed: %s\n", key, db.error().name() );
                                     free( key );
                                     free( r_id );
                                     break;
@@ -2970,6 +2968,7 @@ static inline short repl_save(
 
                         } else {
 
+                            fprintf( stderr, "db.add(%s) failed: %s\n", key, db.error().name() );
                             free( key );
                             free( r_id );
                             break;
@@ -2977,6 +2976,7 @@ static inline short repl_save(
 
                     } else {
 
+                        fprintf( stderr, "db.add(%s) failed: %s\n", key, db.error().name() );
                         free( key );
                         free( r_id );
                         break;
@@ -2984,6 +2984,7 @@ static inline short repl_save(
 
                 } else {
 
+                    fprintf( stderr, "db.add(%s) failed: %s\n", key, db.error().name() );
                     free( key );
                     free( r_id );
                     break;
@@ -3234,6 +3235,9 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
         if( read > 0 ) {
 
+            // for(int i = 0; i < read; ++i)
+            //     printf("read from %s: 0x%.2X\n", client -> get_peer_id(),buf[i]);
+
             client -> push_read_queue( read, buf );
             free( buf );
 
@@ -3263,7 +3267,11 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
         if( item != NULL ) {
 
-            int written = write( _watcher -> fd, ( item -> data + item -> pos ), item -> len );
+            int written = write(
+                _watcher -> fd,
+                ( item -> data + item -> pos ),
+                ( item -> len - item -> pos )
+            );
 
             if( written < 0 ) {
 
@@ -3277,9 +3285,15 @@ static void client_cb( struct ev_loop* loop, ev_io* _watcher, int events ) {
 
             } else {
 
+                // for(int i = 0; i < written; ++i)
+                //     printf("written to %s: 0x%.2X\n", client -> get_peer_id(),((char*)(item->data + item -> pos))[i]);
+
                 item -> pos += written;
 
-                if( item -> cb != NULL ) {
+                if(
+                    (item -> pos >= item -> len)
+                    && (item -> cb != NULL)
+                ) {
 
                     client -> push_pending_reads_queue( item -> cb );
                     item -> cb = NULL;
@@ -3354,16 +3368,18 @@ static inline void repl_clean(
     uint64_t wrinseq
 ) {
 
+    size_t failover_key_slen = strlen( failover_key );
     std::vector<std::string> keys;
 
     std::string rre_key( "rre:", 4 );
-    rre_key.append( failover_key, failover_key_len );
+    rre_key.append( failover_key, failover_key_slen );
 
     keys.push_back( rre_key );
 
     char* suffix = (char*)malloc( failover_key_len );
     memcpy( suffix, failover_key, failover_key_len );
     sprintf( suffix + failover_key_len - 20 - 1, "%llu", wrinseq );
+    failover_key_slen = strlen( suffix );
 
     std::string rin_key( "rin:", 4 );
     rin_key.append( suffix, failover_key_len );
@@ -3394,6 +3410,7 @@ static void* replication_exec_thread( void* args ) {
 
         pthread_mutex_lock( &replication_exec_queue_mutex );
 
+        // TODO: persistent queue
         out_packet_i_ctx* ctx = replication_exec_queue.front();
         replication_exec_queue.pop();
 
@@ -3457,55 +3474,58 @@ static void* replication_exec_thread( void* args ) {
                 ctx -> wrinseq
             );
 
-            size_t x_req_len = 1;
-            char* x_req = (char*)malloc(
-                x_req_len
-                + sizeof( ctx -> peer_id -> len )
-                + ctx -> peer_id -> len
-                + ctx -> event -> id_len_size
-                + ctx -> event -> id_len
-                + sizeof( ctx -> rid )
-            );
+            if( ctx -> rpr != NULL ) {
 
-            x_req[ 0 ] = 'x';
+                size_t x_req_len = 1;
+                char* x_req = (char*)malloc(
+                    x_req_len
+                    + sizeof( ctx -> peer_id -> len )
+                    + ctx -> peer_id -> len
+                    + ctx -> event -> id_len_size
+                    + ctx -> event -> id_len
+                    + sizeof( ctx -> rid )
+                );
 
-            uint32_t peer_id_len_net = htonl( ctx -> peer_id -> len );
-            memcpy( x_req + x_req_len, &peer_id_len_net, sizeof( peer_id_len_net ) );
-            x_req_len += sizeof( peer_id_len_net );
+                x_req[ 0 ] = 'x';
 
-            memcpy( x_req + x_req_len, ctx -> peer_id -> data, ctx -> peer_id -> len );
-            x_req_len += ctx -> peer_id -> len;
+                uint32_t peer_id_len_net = htonl( ctx -> peer_id -> len );
+                memcpy( x_req + x_req_len, &peer_id_len_net, sizeof( peer_id_len_net ) );
+                x_req_len += sizeof( peer_id_len_net );
 
-            memcpy( x_req + x_req_len, &(ctx -> event -> id_len_net),
-                ctx -> event -> id_len_size );
-            x_req_len += ctx -> event -> id_len_size;
+                memcpy( x_req + x_req_len, ctx -> peer_id -> data, ctx -> peer_id -> len );
+                x_req_len += ctx -> peer_id -> len;
 
-            memcpy( x_req + x_req_len, ctx -> event -> id,
-                ctx -> event -> id_len );
-            x_req_len += ctx -> event -> id_len;
+                memcpy( x_req + x_req_len, &(ctx -> event -> id_len_net),
+                    ctx -> event -> id_len_size );
+                x_req_len += ctx -> event -> id_len_size;
 
-            uint64_t rid_net = htonll( ctx -> rid );
-            memcpy( x_req + x_req_len, &rid_net, sizeof( rid_net ) );
-            x_req_len += sizeof( rid_net );
+                memcpy( x_req + x_req_len, ctx -> event -> id,
+                    ctx -> event -> id_len );
+                x_req_len += ctx -> event -> id_len;
 
-            size_t offset = 0;
+                uint64_t rid_net = htonll( ctx -> rid );
+                memcpy( x_req + x_req_len, &rid_net, sizeof( rid_net ) );
+                x_req_len += sizeof( rid_net );
 
-            while( ctx -> peers_cnt > 0 ) {
+                size_t offset = 0;
 
-                size_t peer_id_len = strlen( ctx -> rpr + offset );
-                char* peer_id = (char*)malloc( peer_id_len + 1 );
-                memcpy( peer_id, ctx -> rpr + offset, peer_id_len );
-                peer_id[ peer_id_len ] = '\0';
-                offset += peer_id_len + 1;
+                while( ctx -> peers_cnt > 0 ) {
 
-                known_peers_t::const_iterator it = known_peers.find( peer_id );
+                    size_t peer_id_len = strlen( ctx -> rpr + offset );
+                    char* peer_id = (char*)malloc( peer_id_len + 1 );
+                    memcpy( peer_id, ctx -> rpr + offset, peer_id_len );
+                    peer_id[ peer_id_len ] = '\0';
+                    offset += peer_id_len + 1;
 
-                if( it != known_peers.cend() ) {
+                    known_peers_t::const_iterator it = known_peers.find( peer_id );
 
-                    it -> second -> push_write_queue( x_req_len, x_req, NULL );
+                    if( it != known_peers.cend() ) {
+
+                        it -> second -> push_write_queue( x_req_len, x_req, NULL );
+                    }
+
+                    --(ctx -> peers_cnt);
                 }
-
-                --(ctx -> peers_cnt);
             }
 
         } else {
@@ -3578,8 +3598,8 @@ static void* replication_thread( void* args ) {
             // printf("repl thread: %s\n", event -> id);
 
             for(
-                std::vector<muh_str_t*>::const_iterator _peer_id = peer_ids.begin();
-                _peer_id != peer_ids.end();
+                std::vector<muh_str_t*>::const_iterator _peer_id = peer_ids.cbegin();
+                _peer_id != peer_ids.cend();
                 ++_peer_id
             ) {
 
@@ -3588,6 +3608,7 @@ static void* replication_thread( void* args ) {
                     + 1 // :
                     + (*_peer_id) -> len
                 ;
+
                 char* suffix = (char*)malloc(
                     suffix_len
                     + 1 // :
@@ -3605,8 +3626,9 @@ static void* replication_thread( void* args ) {
 
                 keys.push_back( wrinseq_key );
                 keys.push_back( rinseq_key );
-
+// printf("replication_thread: before first db_get_keys\n");
                 dbdata = db_get_keys( keys );
+                // printf("replication_thread: after first db_get_keys\n");
                 keys.clear();
 
                 if( dbdata == NULL ) {
@@ -3622,7 +3644,7 @@ static void* replication_thread( void* args ) {
 
                     uint64_t next_wrinseq = htonll( wrinseq + 1 );
                     uint64_t __wrinseq = htonll( wrinseq );
-
+// printf("replication_thread: before db.cas()\n");
                     if( ! db.cas(
                         wrinseq_key.c_str(),
                         wrinseq_key.length(),
@@ -3632,9 +3654,10 @@ static void* replication_thread( void* args ) {
                         sizeof( next_wrinseq )
                     ) ) {
 
-                        fprintf( stderr, "db.cas() failed: %s, wrinseq_key: %s, wrinseq: %llu\n", db.error().name(), wrinseq_key.c_str(), wrinseq );
+                        fprintf( stderr, "db.cas(%s,%llu,%llu) failed: %s\n", wrinseq_key.c_str(), wrinseq, ntohll( next_wrinseq ), db.error().name() );
                         exit( 1 );
                     }
+// printf("replication_thread: after db.cas()\n");
                 };
 
                 {
@@ -3659,7 +3682,7 @@ static void* replication_thread( void* args ) {
                             sizeof( __wrinseq )
                         ) ) {
                             auto error = db.error();
-                            fprintf( stderr, "db.add() failed: %s\n", error.name() );
+                            fprintf( stderr, "db.add(%s) failed: %s\n", wrinseq_key.c_str(), error.name() );
 
                             if( error.code() == kyotocabinet::BasicDB::Error::Code::DUPREC ) {
 
@@ -3683,6 +3706,7 @@ static void* replication_thread( void* args ) {
 
                 if( wrinseq >= rinseq ) {
 
+                    // printf("Skip repl: %llu >= %llu\n", wrinseq, rinseq);
                     free( suffix );
                     continue;
                 }
@@ -3692,23 +3716,33 @@ static void* replication_thread( void* args ) {
 
                 sprintf( suffix + suffix_len, "%llu", wrinseq );
                 suffix_len += 20;
+                size_t suffix_slen = strlen( suffix );
 
                 std::string rin_key( "rin:", 4 );
-                rin_key.append( suffix, suffix_len );
+                rin_key.append( suffix, suffix_slen );
 
                 std::string rts_key( "rts:", 4 );
-                rts_key.append( suffix, suffix_len );
+                rts_key.append( suffix, suffix_slen );
 
                 std::string rid_key( "rid:", 4 );
-                rid_key.append( suffix, suffix_len );
+                rid_key.append( suffix, suffix_slen );
 
                 std::string rpr_key( "rpr:", 4 );
-                rpr_key.append( suffix, suffix_len );
+                rpr_key.append( suffix, suffix_slen );
 
                 keys.push_back( rin_key );
                 keys.push_back( rts_key );
                 keys.push_back( rid_key );
                 keys.push_back( rpr_key );
+
+                // for(
+                //     std::vector<std::string>::const_iterator it = keys.cbegin();
+                //     it != keys.cend();
+                //     ++it
+                // ) {
+                //
+                //     printf( "gotta ask for (%lu bytes) %s\n", it -> size(), it -> c_str() );
+                // }
 
                 dbdata = db_get_keys( keys );
                 keys.clear();
@@ -3719,12 +3753,14 @@ static void* replication_thread( void* args ) {
                     exit( 1 );
                 }
 
-                size_t rin_len;
-                char* rin = parse_db_value<char>( dbdata, &rin_key, &rin_len );
+                uint32_t rin_len;
+                size_t _rin_len;
+                char* rin = parse_db_value<char>( dbdata, &rin_key, &_rin_len );
+                rin_len = _rin_len;
 
                 if( rin == NULL ) {
 
-                    fprintf( stderr, "No data for replicated event: %s\n", suffix );
+                    fprintf( stderr, "No data for replicated event: %s, rin_key: %s\n", suffix, rin_key.c_str() );
                     next();
                     continue;
                 }
@@ -3735,7 +3771,7 @@ static void* replication_thread( void* args ) {
 
                 {
                     uint64_t* _rts = parse_db_value<uint64_t>( dbdata, &rts_key );
-                    uint64_t* _rid = parse_db_value<uint64_t>( dbdata, &rts_key );
+                    uint64_t* _rid = parse_db_value<uint64_t>( dbdata, &rid_key );
 
                     if( _rts == NULL ) {
 
@@ -3746,7 +3782,7 @@ static void* replication_thread( void* args ) {
                     } else {
 
                         rts = ntohll( *_rts );
-                        free( _rts );
+                        // free( _rts );
                     }
 
                     if( _rid == NULL ) {
@@ -3758,7 +3794,7 @@ static void* replication_thread( void* args ) {
                     } else {
 
                         rid_net = *_rid;
-                        free( _rid );
+                        // free( _rid );
                         rid = ntohll( rid_net );
                     }
                 }
@@ -3770,8 +3806,9 @@ static void* replication_thread( void* args ) {
 
                 if( ( rts + event -> ttl ) > now ) {
 
+                    // printf("skip repl: not now\n");
                     free( rin );
-                    free( rpr );
+                    if( rpr != NULL ) free( rpr );
                     free( suffix );
                     continue;
                 }
@@ -3785,7 +3822,7 @@ static void* replication_thread( void* args ) {
                     if( it != failover.cend() ) {
 
                         free( rin );
-                        free( rpr );
+                        if( rpr != NULL ) free( rpr );
                         // free( suffix );
                         free( failover_key );
                         continue;
@@ -3800,7 +3837,7 @@ static void* replication_thread( void* args ) {
                         if( ( it -> second + no_failover_time ) > now ) {
 
                             free( rin );
-                            free( rpr );
+                            if( rpr != NULL ) free( rpr );
                             // free( suffix );
                             free( failover_key );
                             continue;
@@ -3828,10 +3865,8 @@ static void* replication_thread( void* args ) {
                 if( peer == NULL ) {
 
                     size_t offset = 0;
-
-                    uint32_t _peers_cnt;
-                    memcpy( &_peers_cnt, rpr + offset, sizeof( _peers_cnt ) );
-                    uint32_t peers_cnt = ntohl( _peers_cnt );
+                    uint32_t peers_cnt = 0;
+                    bool have_rpr = false;
 
                     uint32_t* count_replicas = (uint32_t*)malloc( sizeof(
                         *count_replicas ) );
@@ -3840,97 +3875,133 @@ static void* replication_thread( void* args ) {
                     uint32_t* pending = (uint32_t*)malloc( sizeof(
                         *pending ) );
 
-                    *count_replicas = peers_cnt;
+                    *count_replicas = 0;
                     *acceptances = 0;
                     *pending = 0;
 
-                    pthread_mutex_t* mutex = (pthread_mutex_t*)malloc( sizeof( mutex ) );
+                    pthread_mutex_t* mutex = (pthread_mutex_t*)malloc( sizeof( *mutex ) );
                     pthread_mutex_init( mutex, NULL );
-
-                    size_t i_req_len = 1;
-                    char* i_req = (char*)malloc(
-                        i_req_len
-                        + sizeof( (*_peer_id) -> len )
-                        + (*_peer_id) -> len
-                        + event -> id_len_size
-                        + event -> id_len
-                        + sizeof( rid )
-                    );
-
-                    i_req[ 0 ] = 'i';
-
-                    uint32_t _peer_id_len_net = htonl( (*_peer_id) -> len );
-                    memcpy( i_req + i_req_len, &_peer_id_len_net,
-                        sizeof( _peer_id_len_net ) );
-                    i_req_len += sizeof( _peer_id_len_net );
-
-                    memcpy( i_req + i_req_len, (*_peer_id) -> data, (*_peer_id) -> len );
-                    i_req_len += (*_peer_id) -> len;
-
-                    memcpy( i_req + i_req_len, &(event -> id_len_net),
-                        event -> id_len_size );
-                    i_req_len += event -> id_len_size;
-
-                    memcpy( i_req + i_req_len, event -> id,
-                        event -> id_len );
-                    i_req_len += event -> id_len;
-
-                    memcpy( i_req + i_req_len, &rid_net, sizeof( rid_net ) );
-                    i_req_len += sizeof( rid_net );
 
                     muh_str_t* data_str = (muh_str_t*)malloc( sizeof( *data_str ) );
 
                     data_str -> len = rin_len;
                     data_str -> data = rin;
 
-                    while( peers_cnt > 0 ) {
+                    if( rpr != NULL ) {
 
-                        size_t peer_id_len = strlen( rpr + offset );
-                        char* peer_id = (char*)malloc( peer_id_len + 1 );
-                        memcpy( peer_id, rpr + offset, peer_id_len );
-                        peer_id[ peer_id_len ] = '\0';
-                        offset += peer_id_len + 1;
+                        uint32_t _peers_cnt;
+                        memcpy( &_peers_cnt, rpr + offset, sizeof( _peers_cnt ) );
+                        peers_cnt = ntohl( _peers_cnt );
 
-                        known_peers_t::const_iterator it = known_peers.find( peer_id );
+                        *count_replicas = peers_cnt;
 
-                        if( it == known_peers.cend() ) {
+                        size_t i_req_len = 1;
+                        char* i_req = (char*)malloc(
+                            i_req_len
+                            + sizeof( (*_peer_id) -> len )
+                            + (*_peer_id) -> len
+                            + event -> id_len_size
+                            + event -> id_len
+                            + sizeof( rid )
+                        );
 
-                            ++(*acceptances);
+                        i_req[ 0 ] = 'i';
 
-                        } else {
+                        uint32_t _peer_id_len_net = htonl( (*_peer_id) -> len );
+                        memcpy( i_req + i_req_len, &_peer_id_len_net,
+                            sizeof( _peer_id_len_net ) );
+                        i_req_len += sizeof( _peer_id_len_net );
 
-                            ++(*pending);
+                        memcpy( i_req + i_req_len, (*_peer_id) -> data, (*_peer_id) -> len );
+                        i_req_len += (*_peer_id) -> len;
 
-                            out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(
-                                sizeof( *ctx ) );
+                        memcpy( i_req + i_req_len, &(event -> id_len_net),
+                            event -> id_len_size );
+                        i_req_len += event -> id_len_size;
 
-                            ctx -> count_replicas = count_replicas;
-                            ctx -> pending = pending;
-                            ctx -> acceptances = acceptances;
-                            ctx -> mutex = mutex;
-                            ctx -> event = event;
-                            ctx -> data = data_str;
-                            ctx -> peer_id = *_peer_id;
-                            ctx -> wrinseq = wrinseq;
-                            ctx -> failover_key = failover_key;
-                            ctx -> failover_key_len = suffix_len;
-                            ctx -> rpr = rpr;
-                            ctx -> peers_cnt = peers_cnt;
-                            ctx -> rid = rid;
+                        memcpy( i_req + i_req_len, event -> id,
+                            event -> id_len );
+                        i_req_len += event -> id_len;
 
-                            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                                sizeof( *item ) );
+                        memcpy( i_req + i_req_len, &rid_net, sizeof( rid_net ) );
+                        i_req_len += sizeof( rid_net );
 
-                            item -> len = 1;
-                            item -> cb = &Client::propose_self_k_cb;
-                            item -> ctx = (void*)ctx;
-                            item -> err = &Client::propose_self_f_cb;
-                            item -> opcode = true;
+                        if( peers_cnt > 0 ) {
 
-                            it -> second -> push_write_queue( i_req_len, i_req, item );
+                            have_rpr = true;
+
+                            while( peers_cnt > 0 ) {
+
+                                size_t peer_id_len = strlen( rpr + offset );
+                                char* peer_id = (char*)malloc( peer_id_len + 1 );
+                                memcpy( peer_id, rpr + offset, peer_id_len );
+                                peer_id[ peer_id_len ] = '\0';
+                                offset += peer_id_len + 1;
+
+                                known_peers_t::const_iterator it = known_peers.find( peer_id );
+
+                                if( it == known_peers.cend() ) {
+
+                                    ++(*acceptances);
+
+                                } else {
+
+                                    ++(*pending);
+
+                                    out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(
+                                        sizeof( *ctx ) );
+
+                                    ctx -> count_replicas = count_replicas;
+                                    ctx -> pending = pending;
+                                    ctx -> acceptances = acceptances;
+                                    ctx -> mutex = mutex;
+                                    ctx -> event = event;
+                                    ctx -> data = data_str;
+                                    ctx -> peer_id = *_peer_id;
+                                    ctx -> wrinseq = wrinseq;
+                                    ctx -> failover_key = failover_key;
+                                    ctx -> failover_key_len = suffix_len;
+                                    ctx -> rpr = rpr;
+                                    ctx -> peers_cnt = peers_cnt;
+                                    ctx -> rid = rid;
+
+                                    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                                        sizeof( *item ) );
+
+                                    item -> len = 1;
+                                    item -> cb = &Client::propose_self_k_cb;
+                                    item -> ctx = (void*)ctx;
+                                    item -> err = &Client::propose_self_f_cb;
+                                    item -> opcode = true;
+
+                                    it -> second -> push_write_queue( i_req_len, i_req, item );
+                                }
+
+                                --peers_cnt;
+                            }
                         }
+                    }
 
-                        --peers_cnt;
+                    if( ! have_rpr ) {
+
+                        out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(
+                            sizeof( *ctx ) );
+
+                        ctx -> count_replicas = count_replicas;
+                        ctx -> pending = pending;
+                        ctx -> acceptances = acceptances;
+                        ctx -> mutex = mutex;
+                        ctx -> event = event;
+                        ctx -> data = data_str;
+                        ctx -> peer_id = *_peer_id;
+                        ctx -> wrinseq = wrinseq;
+                        ctx -> failover_key = failover_key;
+                        ctx -> failover_key_len = suffix_len;
+                        ctx -> rpr = rpr;
+                        ctx -> peers_cnt = 0;
+                        ctx -> rid = rid;
+
+                        replication_exec_queue.push( ctx );
                     }
 
                 } else {
@@ -3946,21 +4017,21 @@ static void* replication_thread( void* args ) {
 
                     c_req[ 0 ] = 'c';
 
-                    memcpy( c_req + c_req_len, &(event -> id_len_net),
+                    memcpy( c_req + c_req_len, (char*)&(event -> id_len_net),
                         event -> id_len_size );
                     c_req_len += event -> id_len_size;
 
                     memcpy( c_req + c_req_len, event -> id, event -> id_len );
                     c_req_len += event -> id_len;
 
-                    memcpy( c_req + c_req_len, &rid_net, sizeof( rid_net ) );
+                    memcpy( c_req + c_req_len, (char*)&rid_net, sizeof( rid_net ) );
                     c_req_len += sizeof( rid_net );
 
                     uint32_t rin_len_net = htonl( rin_len );
-                    memcpy( c_req + c_req_len, &rin_len_net, sizeof( rin_len_net ) );
+                    memcpy( c_req + c_req_len, (char*)&rin_len_net, sizeof( rin_len_net ) );
                     c_req_len += sizeof( rin_len_net );
 
-                    memcpy( c_req + c_req_len, &rin, rin_len );
+                    memcpy( c_req + c_req_len, rin, rin_len );
                     c_req_len += rin_len;
 
                     PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
@@ -3971,10 +4042,14 @@ static void* replication_thread( void* args ) {
                     rin_str -> len = rin_len;
                     rin_str -> data = rin;
 
-                    muh_str_t* rpr_str = (muh_str_t*)malloc( sizeof( *rpr_str ) );
+                    muh_str_t* rpr_str = NULL;
 
-                    rpr_str -> len = strlen( rpr );
-                    rpr_str -> data = rpr;
+                    if( rpr != NULL ) {
+
+                        rpr_str = (muh_str_t*)malloc( sizeof( *rpr_str ) );
+                        rpr_str -> len = strlen( rpr );
+                        rpr_str -> data = rpr;
+                    }
 
                     out_packet_c_ctx* ctx = (out_packet_c_ctx*)malloc( sizeof( *ctx ) );
 
