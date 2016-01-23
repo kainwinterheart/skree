@@ -5,7 +5,7 @@
         config:
             lib:
                 - /var/www/muh_kool_project
-            package: MuhKooProject::Skree
+            package: MuhKoolProject::Skree
     events:
         -
             id: ExampleEvent

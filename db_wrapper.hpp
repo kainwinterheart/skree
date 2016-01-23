@@ -107,8 +107,8 @@ private:
     pthread_mutex_t mutex;
     pthread_mutexattr_t mutexattr;
 
-    void lock() { pthread_mutex_lock(&mutex); }
-    void unlock() { pthread_mutex_unlock(&mutex); }
+    void lock() { } //pthread_mutex_lock(&mutex); }
+    void unlock() { } //pthread_mutex_unlock(&mutex); }
 };
 
 #endif
