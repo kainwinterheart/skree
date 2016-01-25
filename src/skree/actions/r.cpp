@@ -85,7 +85,18 @@ namespace Skree {
                 peers[cnt] = peer;
             }
 
-            short result = server->repl_save((in_packet_r_ctx*)(args->ctx), client);
+            in_packet_r_ctx ctx {
+                .hostname_len = hostname_len,
+                .port = port,
+                .hostname = hostname,
+                .event_name_len = event_name_len,
+                .events_count = events_count,
+                .peers_count = peers_count,
+                .events = events,
+                .peers = peers
+            };
+
+            short result = server->repl_save(&ctx, client);
 
             char* _out_data = (char*)malloc(1);
             *(args->out_len) += 1;

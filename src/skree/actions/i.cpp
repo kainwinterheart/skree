@@ -1,8 +1,8 @@
-#include "c.hpp"
+#include "i.hpp"
 
 namespace Skree {
     namespace Actions {
-        void C::in(
+        void I::in(
             uint64_t in_len, char* in_data,
             uint64_t* out_len, char** out_data
         ) {
@@ -76,7 +76,7 @@ namespace Skree {
 
                 if(wip_it == server->wip->cend()) {
                     // TODO: perl
-                    // if(int(rand(100) + 0.5) > 50) {
+                    // if(int(rand(100) + 0.5) > 50) { // }
                     if(false) {
                         _out_data[0] = SKREE_META_OPCODE_F;
 
