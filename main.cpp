@@ -205,9 +205,9 @@ struct client_bound_ev_io {
 
 struct PendingReadCallbackArgs {
     size_t len;
-    size_t* out_packet_len;
+    size_t* out_len;
     char* data;
-    char** out_packet;
+    char** out_data;
     bool* stop;
     void* ctx;
 };
@@ -246,7 +246,7 @@ struct packet_r_ctx_peer {
     char* hostname;
 };
 
-struct out_packet_r_ctx {
+struct out_data_r_ctx {
     uint32_t replication_factor;
     uint32_t pending;
     Client* client;
@@ -280,7 +280,7 @@ struct muh_str_t {
     char* data;
 };
 
-struct out_packet_i_ctx {
+struct out_data_i_ctx {
     pthread_mutex_t* mutex;
     known_event_t* event;
     muh_str_t* data;
@@ -296,7 +296,7 @@ struct out_packet_i_ctx {
     uint32_t peers_cnt;
 };
 
-struct out_packet_c_ctx {
+struct out_data_c_ctx {
     Client* client;
     known_event_t* event;
     muh_str_t* rin;
@@ -315,7 +315,7 @@ struct in_packet_c_ctx {
     uint32_t rin_len;
 };
 
-static std::queue<out_packet_i_ctx*> replication_exec_queue;
+static std::queue<out_data_i_ctx*> replication_exec_queue;
 static pthread_mutex_t replication_exec_queue_mutex;
 
 static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events);
@@ -457,8 +457,8 @@ static inline void load_peers_to_discover() {
     }
 }
 
-static inline void begin_replication(out_packet_r_ctx*& r_ctx);
-static inline void continue_replication_exec(out_packet_i_ctx*& ctx);
+static inline void begin_replication(out_data_r_ctx*& r_ctx);
+static inline void continue_replication_exec(out_data_i_ctx*& ctx);
 static inline short save_event(
     in_packet_e_ctx* ctx,
     uint32_t replication_factor,
@@ -577,120 +577,23 @@ class Client {
         socklen_t s_in_len;
 
         void ordinary_packet_cb(
-            const char& opcode, char** out_packet,
-            size_t* out_packet_len, size_t* in_packet_len
+            const char& opcode, char** out_data,
+            size_t* out_len, size_t* in_packet_len
         ) {
             if(opcode == 'w') {
-                char* _out_packet = (char*)malloc(1 + sizeof(my_hostname_len)
-                    + my_hostname_len);
 
-                _out_packet[0] = 'k';
-                *out_packet_len += 1;
-
-                uint32_t _hostname_len = htonl(my_hostname_len);
-                memcpy(_out_packet + *out_packet_len, &_hostname_len,
-                        sizeof(_hostname_len));
-                *out_packet_len += sizeof(_hostname_len);
-
-                memcpy(_out_packet + *out_packet_len, my_hostname, my_hostname_len);
-                *out_packet_len += my_hostname_len;
-
-                *out_packet = _out_packet;
 
             } else if(opcode == 'l') {
-                uint32_t _known_peers_len;
-                char* _out_packet = (char*)malloc(1 + sizeof(_known_peers_len));
 
-                _out_packet[0] = 'k';
-                *out_packet_len += 1;
-
-                pthread_mutex_lock(&known_peers_mutex);
-
-                _known_peers_len = htonl(known_peers.size());
-                memcpy(_out_packet + *out_packet_len, &_known_peers_len,
-                    sizeof(_known_peers_len));
-                *out_packet_len += sizeof(_known_peers_len);
-
-                for(
-                    known_peers_t::const_iterator it = known_peers.cbegin();
-                    it != known_peers.cend();
-                    ++it
-                ) {
-                    Client* peer = it->second;
-
-                    uint32_t peer_name_len = peer->get_peer_name_len();
-                    uint32_t _peer_name_len = htonl(peer_name_len);
-                    uint32_t _peer_port = htonl(peer->get_peer_port());
-
-                    _out_packet = (char*)realloc(_out_packet, *out_packet_len
-                        + sizeof(_peer_name_len) + peer_name_len
-                        + sizeof(_peer_port));
-
-                    memcpy(_out_packet + *out_packet_len, &_peer_name_len,
-                            sizeof(_peer_name_len));
-                    *out_packet_len += sizeof(_peer_name_len);
-
-                    memcpy(_out_packet + *out_packet_len, peer->get_peer_name(),
-                        peer_name_len);
-                    *out_packet_len += peer_name_len;
-
-                    memcpy(_out_packet + *out_packet_len, &_peer_port,
-                        sizeof(_peer_port));
-                    *out_packet_len += sizeof(_peer_port);
-                }
-
-                pthread_mutex_unlock(&known_peers_mutex);
-
-                *out_packet = _out_packet;
 
             } else if(opcode == 'e') {
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof(*item));
-
-                item->len = 4;
-                item->cb = &Client::packet_e_cb1;
-                item->ctx = NULL;
-                item->err = NULL;
-                item->opcode = false;
-
-                push_pending_reads_queue(item, true);
 
             } else if(opcode == 'r') {
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof(*item));
-
-                item->len = 4;
-                item->cb = &Client::packet_r_cb1;
-                item->ctx = NULL;
-                item->err = NULL;
-                item->opcode = false;
-
-                push_pending_reads_queue(item, true);
 
             } else if(opcode == 'c') {
-// printf("C\n");
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof(*item));
-
-                item->len = 4;
-                item->cb = &Client::packet_c_cb1;
-                item->ctx = NULL;
-                item->err = NULL;
-                item->opcode = false;
-
-                push_pending_reads_queue(item, true);
 
             } else if(opcode == 'i') {
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof(*item));
 
-                item->len = 4;
-                item->cb = &Client::packet_i_cb1;
-                item->ctx = NULL;
-                item->err = NULL;
-                item->opcode = false;
-
-                push_pending_reads_queue(item, true);
 
             } else if(opcode == 'x') {
                 PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
@@ -724,10 +627,10 @@ class Client {
         void read_cb() {
             while(read_queue_length > 0) {
                 size_t in_packet_len = 1;
-                size_t out_packet_len = 0;
+                size_t out_len = 0;
 
                 char opcode = read_queue[0];
-                char* out_packet = NULL;
+                char* out_data = NULL;
 
                 if(!pending_reads.empty()) {
                     // Pending reads queue is a top priority callback
@@ -741,8 +644,8 @@ class Client {
                         (
                             (item->opcode == true)
                             && (
-                                (opcode == 'k') || (opcode == 'f')
-                                || (opcode == 'a')
+                                (opcode == SKREE_META_OPCODE_K) || (opcode == SKREE_META_OPCODE_F)
+                                || (opcode == SKREE_META_OPCODE_A)
                             )
                         )
                         || (item->opcode == false)
@@ -759,8 +662,8 @@ class Client {
                             PendingReadCallbackArgs args = {
                                 .data = read_queue + in_packet_len,
                                 .len = item->len,
-                                .out_packet = &out_packet,
-                                .out_packet_len = &out_packet_len,
+                                .out_data = &out_data,
+                                .out_len = &out_len,
                                 .stop = &stop,
                                 .ctx = item->ctx
                             };
@@ -802,7 +705,7 @@ class Client {
                         // ordinary inbound packet
 
                         // printf("ordinary_packet_cb 1\n");
-                        ordinary_packet_cb(opcode, &out_packet, &out_packet_len,
+                        ordinary_packet_cb(opcode, &out_data, &out_len,
                             &in_packet_len);
                     }
 
@@ -811,7 +714,7 @@ class Client {
                     // as ordinary inbound packet
 
                     // printf("ordinary_packet_cb 2\n");
-                    ordinary_packet_cb(opcode, &out_packet, &out_packet_len,
+                    ordinary_packet_cb(opcode, &out_data, &out_len,
                         &in_packet_len);
                 }
 
@@ -819,123 +722,21 @@ class Client {
                 if(read_queue_length > 0)
                     memmove(read_queue, read_queue + in_packet_len, read_queue_length);
 
-                if(out_packet_len > 0)
-                    push_write_queue(out_packet_len, out_packet, NULL);
+                if(out_len > 0)
+                    push_write_queue(out_len, out_data, NULL);
             }
         }
 
         PendingReadsQueueItem* packet_i_cb1(PendingReadCallbackArgs* args) {
-            uint32_t _len;
-            memcpy(&_len, args->data, args->len);
-            uint32_t len = ntohl(_len);
 
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = len + 4;
-            item->cb = &Client::packet_i_cb2;
-            item->ctx = NULL;
-            item->err = NULL;
-            item->opcode = false;
-
-            return item;
         }
 
         PendingReadsQueueItem* packet_i_cb2(PendingReadCallbackArgs* args) {
-            muh_str_t* peer_id = (muh_str_t*)malloc(sizeof(*peer_id));
 
-            peer_id->len = args->len - 4;
-            peer_id->data = (char*)malloc(peer_id->len + 1);
-
-            memcpy(peer_id->data, args->data, peer_id->len);
-            peer_id->data[peer_id->len] = '\0';
-
-            uint32_t _len;
-            memcpy(&_len, args->data + peer_id->len, 4);
-            uint32_t len = ntohl(_len);
-
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = len + 8;
-            item->cb = &Client::packet_i_cb3;
-            item->ctx = (void*)peer_id;
-            item->err = NULL;
-            item->opcode = false;
-
-            return item;
         }
 
         PendingReadsQueueItem* packet_i_cb3(PendingReadCallbackArgs* args) {
-            uint32_t event_id_len = args->len - 8;
-            char* event_id = (char*)malloc(event_id_len + 1);
-            memcpy(event_id, args->data, event_id_len);
-            peer_id[event_id_len] = '\0';
-
-            uint64_t _rid;
-            memcpy(&_rid, args->data + event_id_len, 8);
-            uint64_t rid = ntohll(_rid);
-
-            muh_str_t* peer_id = (muh_str_t*)(args->ctx);
-
-            char* _out_packet = (char*)malloc(1);
-            *(args->out_packet_len) += 1;
-            *(args->out_packet) = _out_packet;
-
-            char* suffix = (char*)malloc(
-                event_id_len
-                + 1 // :
-                + peer_id->len
-                + 1 // :
-                + 20 // rid
-                + 1 // \0
-            );
-            sprintf(suffix, "%s:%s:%llu", event_id, peer_id->data, rid);
-
-            failover_t::const_iterator it = failover.find(suffix);
-
-            if(it == failover.cend()) {
-                std::string rre_key("rre:", 4);
-                rre_key.append(suffix, strlen(suffix));
-
-                std::vector<std::string> keys;
-                keys.push_back(rre_key);
-
-                get_keys_result_t* dbdata = db_get_keys(keys);
-
-                uint64_t* _rinseq = parse_db_value<uint64_t>(dbdata, &rre_key);
-
-                if(_rinseq == NULL) {
-                    _out_packet[0] = 'f';
-
-                } else {
-                    free(_rinseq);
-                    _out_packet[0] = 'k';
-                }
-
-            } else {
-                // TODO: It could be 0 here as a special case
-                wip_t::const_iterator wip_it = wip.find(it->second);
-
-                if(wip_it == wip.cend()) {
-                    // TODO: perl
-                    // if(int(rand(100) + 0.5) > 50) {
-                    if(false) {
-                        _out_packet[0] = 'f';
-
-                    } else {
-                        _out_packet[0] = 'k';
-
-                        failover.erase(it);
-                        no_failover[suffix] = std::time(nullptr);
-                    }
-
-                } else {
-                    _out_packet[0] = 'f';
-                }
-            }
-
-            return nullptr;
+            
         }
 
         PendingReadsQueueItem* packet_x_cb1(PendingReadCallbackArgs* args) {
@@ -1026,552 +827,75 @@ class Client {
         }
 
         PendingReadsQueueItem* packet_c_cb1(PendingReadCallbackArgs* args) {
-            uint32_t _len;
-            memcpy(&_len, args->data, args->len);
-            uint32_t len = ntohl(_len);
 
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = len + 8 + 4;
-            item->cb = &Client::packet_c_cb2;
-            item->ctx = NULL;
-            item->err = NULL;
-            item->opcode = false;
-
-            return item;
         }
 
         PendingReadsQueueItem* packet_c_cb2(PendingReadCallbackArgs* args) {
-            in_packet_c_ctx* ctx = (in_packet_c_ctx*)malloc(sizeof(*ctx));
 
-            ctx->event_name_len = args->len - 8 - 4;
-            ctx->event_name = (char*)malloc(ctx->event_name_len);
-            memcpy(ctx->event_name, args->data, ctx->event_name_len);
-
-            uint64_t _rid;
-            memcpy(&_rid, args->data + ctx->event_name_len, 8);
-            ctx->rid = ntohll(_rid);
-
-            uint32_t _len;
-            memcpy(&_len, args->data + ctx->event_name_len + 8, 4);
-            ctx->rin_len = ntohl(_len);
-
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = ctx->rin_len;
-            item->cb = &Client::packet_c_cb3;
-            item->ctx = (void*)ctx;
-            item->err = NULL;
-            item->opcode = false;
-
-            return item;
         }
 
         PendingReadsQueueItem* packet_c_cb3(PendingReadCallbackArgs* args) {
-            in_packet_c_ctx* ctx = (in_packet_c_ctx*)(args->ctx);
 
-            ctx->rin = (char*)malloc(args->len);
-            memcpy(ctx->rin, args->data, args->len);
-
-            char* _out_packet = (char*)malloc(1);
-            *(args->out_packet_len) += 1;
-            *(args->out_packet) = _out_packet;
-
-            size_t in_key_len = 3;
-            char* in_key = (char*)malloc(
-                3 // in:
-                + ctx->event_name_len
-                + 1 // :
-                + 20
-                + 1 // \0
-            );
-
-            in_key[0] = 'i';
-            in_key[1] = 'n';
-            in_key[2] = ':';
-
-            memcpy(in_key + in_key_len, ctx->event_name,
-                ctx->event_name_len);
-            in_key_len += ctx->event_name_len;
-
-            in_key[in_key_len] = ':';
-            ++in_key_len;
-
-            sprintf(in_key + in_key_len, "%llu", ctx->rid);
-
-            bool should_save_event = false;
-
-            wip_t::const_iterator it = wip.find(ctx->rid);
-
-            if(it == wip.cend()) {
-                if(db.check(in_key, in_key_len) > 0)
-                    should_save_event = true;
-
-                _out_packet[0] = 'k';
-
-            } else {
-                // TODO: check for overflow
-                if((it->second + job_time) <= std::time(nullptr)) {
-                    should_save_event = true;
-                    _out_packet[0] = 'k';
-                    wip.erase(it);
-
-                } else {
-                    _out_packet[0] = 'f';
-                }
-            }
-
-            if(should_save_event) {
-                in_packet_e_ctx_event* event = (in_packet_e_ctx_event*)malloc(
-                    sizeof(*event));
-
-                event->len = ctx->rin_len;
-                event->data = ctx->rin;
-
-                in_packet_e_ctx* e_ctx = (in_packet_e_ctx*)malloc(sizeof(*e_ctx));
-
-                e_ctx->cnt = 1;
-                e_ctx->event_name_len = ctx->event_name_len;
-                e_ctx->event_name = ctx->event_name;
-                e_ctx->events = new std::list<in_packet_e_ctx_event*>();
-                e_ctx->events->push_back(event);
-
-                short result = save_event(e_ctx, 0, NULL, NULL);
-
-                if(result != SAVE_EVENT_RESULT_K) {
-                    fprintf(stderr, "save_event() failed: %s\n", db.error().name());
-                    exit(1);
-                }
-
-                if(!db.remove(in_key, strlen(in_key)))
-                    fprintf(stderr, "db.remove failed: %s\n", db.error().name());
-
-                Client::free_in_packet_e_ctx((void*)e_ctx);
-            }
-
-            free(in_key);
-
-            return nullptr;
         }
 
         PendingReadsQueueItem* packet_r_cb1(PendingReadCallbackArgs* args) {
-            uint32_t _len;
-            memcpy(&_len, args->data, args->len);
-            uint32_t len = ntohl(_len);
 
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = len + 4 + 4;
-            item->cb = &Client::packet_r_cb2;
-            item->ctx = NULL;
-            item->err = NULL;
-            item->opcode = false;
-
-            return item;
         }
 
         PendingReadsQueueItem* packet_r_cb2(PendingReadCallbackArgs* args) {
-            in_packet_r_ctx* ctx = (in_packet_r_ctx*)malloc(sizeof(*ctx));
 
-            ctx->events = new std::list<in_packet_r_ctx_event*>();
-            ctx->peers = new std::list<packet_r_ctx_peer*>();
-
-            uint32_t _port;
-            uint32_t _len;
-            ctx->hostname_len = args->len - sizeof(_port) - sizeof(_len);
-
-            ctx->hostname = (char*)malloc(ctx->hostname_len);
-            memcpy(ctx->hostname, args->data, ctx->hostname_len);
-
-            memcpy(&_port, args->data + ctx->hostname_len, sizeof(_port));
-            ctx->port = ntohl(_port);
-
-            memcpy(&_len, args->data + ctx->hostname_len + sizeof(_port),
-                sizeof(_len));
-            ctx->event_name_len = ntohl(_len);
-
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = ctx->event_name_len + 4;
-            item->cb = &Client::packet_r_cb3;
-            item->ctx = (void*)ctx;
-            item->err = &Client::replication_skip_peer;
-            item->opcode = false;
-
-            return item;
         }
 
         PendingReadsQueueItem* packet_r_cb3(PendingReadCallbackArgs* args) {
-            in_packet_r_ctx* ctx = (in_packet_r_ctx*)(args->ctx);
 
-            ctx->event_name = (char*)malloc(ctx->event_name_len);
-            memcpy(ctx->event_name, args->data, ctx->event_name_len);
-
-            uint32_t prev_len = args->len;
-            args->len = prev_len - ctx->event_name_len;
-
-            char* prev_data = args->data;
-            args->data = args->data + ctx->event_name_len;
-
-            PendingReadsQueueItem* rv = packet_r_cb4(args);
-
-            args->len = prev_len;
-            args->data = prev_data;
-
-            return rv;
         }
 
         PendingReadsQueueItem* packet_r_cb4(PendingReadCallbackArgs* args) {
-            uint32_t _cnt;
-            memcpy(&_cnt, args->data, args->len);
-            uint32_t cnt = ntohl(_cnt);
 
-            if(cnt > 0) {
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof(*item));
-
-                item->len = 8 + 4;
-                item->cb = &Client::packet_r_cb5;
-                item->opcode = false;
-
-                ((in_packet_r_ctx*)(args->ctx))->cnt = htonl(cnt - 1);
-
-                item->ctx = args->ctx;
-                item->err = &Client::replication_skip_peer;
-
-                return item;
-
-            } else {
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof(*item));
-
-                item->len = 4;
-                item->cb = &Client::packet_r_cb7;
-                item->ctx = args->ctx;
-                item->err = &Client::replication_skip_peer;
-                item->opcode = false;
-
-                return item;
-            }
         }
 
         PendingReadsQueueItem* packet_r_cb5(PendingReadCallbackArgs* args) {
-            in_packet_r_ctx_event* event = (in_packet_r_ctx_event*)malloc(
-                sizeof(*event));
 
-            uint64_t _id;
-            memcpy(&_id, args->data, 8);
-            event->id_net = _id;
-
-            event->id = (char*)malloc(21);
-            sprintf(event->id, "%llu", ntohll(_id));
-            // printf("repl got id: %llu\n", ntohll(event->id_net));
-
-            uint32_t _len;
-            memcpy(&_len, args->data + 8, 4);
-            event->len = ntohl(_len);
-
-            ((in_packet_r_ctx*)(args->ctx))->events->push_back(event);
-
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = event->len;
-            item->cb = &Client::packet_r_cb6;
-            item->ctx = args->ctx;
-            item->err = &Client::replication_skip_peer;
-            item->opcode = false;
-
-            return item;
         }
 
         PendingReadsQueueItem* packet_r_cb6(PendingReadCallbackArgs* args) {
-            uint32_t prev_len = args->len;
-            char* prev_data = args->data;
 
-            in_packet_r_ctx* ctx = ((in_packet_r_ctx*)(args->ctx));
-            in_packet_r_ctx_event* event = ctx->events->back();
-
-            event->data = (char*)malloc(sizeof(prev_len) + prev_len);
-            memcpy(event->data, (char*)&prev_len, sizeof(prev_len));
-            memcpy(event->data + sizeof(prev_len), prev_data, prev_len);
-            event->len += sizeof(prev_len);
-
-            args->len = 4;
-            args->data = (char*)&(ctx->cnt);
-
-            PendingReadsQueueItem* rv = packet_r_cb4(args);
-
-            args->len = prev_len;
-            args->data = prev_data;
-
-            return rv;
         }
 
         PendingReadsQueueItem* packet_r_cb7(PendingReadCallbackArgs* args) {
-            uint32_t _cnt;
-            memcpy(&_cnt, args->data, args->len);
-            uint32_t cnt = ntohl(_cnt);
 
-            if(cnt > 0) {
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof(*item));
-
-                item->len = 4;
-                item->cb = &Client::packet_r_cb8;
-                item->opcode = false;
-
-                ((in_packet_r_ctx*)(args->ctx))->cnt = htonl(cnt - 1);
-
-                item->ctx = args->ctx;
-                item->err = &Client::replication_skip_peer;
-
-                return item;
-
-            } else {
-                short result = repl_save((in_packet_r_ctx*)(args->ctx), this);
-
-                char* _out_packet = (char*)malloc(1);
-                *(args->out_packet_len) += 1;
-                *(args->out_packet) = _out_packet;
-
-                if(result == REPL_SAVE_RESULT_F) {
-                    _out_packet[0] = 'f';
-
-                } else if(result == REPL_SAVE_RESULT_K) {
-                    _out_packet[0] = 'k';
-
-                } else {
-                    fprintf(stderr, "Unexpected repl_save() result: %d\n", result);
-                    exit(1);
-                }
-
-                return nullptr;
-            }
         }
 
         PendingReadsQueueItem* packet_r_cb8(PendingReadCallbackArgs* args) {
-            packet_r_ctx_peer* peer = (packet_r_ctx_peer*)malloc(
-                sizeof(*peer));
 
-            uint32_t _hostname_len;
-            memcpy(&_hostname_len, args->data, args->len);
-            peer->hostname_len = ntohl(_hostname_len);
-
-            ((in_packet_r_ctx*)(args->ctx))->peers->push_back(peer);
-
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = peer->hostname_len + 4;
-            item->cb = &Client::packet_r_cb9;
-            item->ctx = args->ctx;
-            item->err = &Client::replication_skip_peer;
-            item->opcode = false;
-
-            return item;
         }
 
         PendingReadsQueueItem* packet_r_cb9(PendingReadCallbackArgs* args) {
-            uint32_t prev_len = args->len;
-            char* prev_data = args->data;
 
-            in_packet_r_ctx* ctx = ((in_packet_r_ctx*)(args->ctx));
-            packet_r_ctx_peer* peer = ctx->peers->back();
-
-            peer->hostname = (char*)malloc(peer->hostname_len + 1);
-            memcpy(peer->hostname, prev_data, peer->hostname_len);
-            peer->hostname[peer->hostname_len] = '\0';
-
-            uint32_t _port;
-            memcpy(&_port, prev_data + peer->hostname_len, 4);
-            peer->port = ntohl(_port);
-
-            args->len = 4;
-            args->data = (char*)&(ctx->cnt);
-
-            PendingReadsQueueItem* rv = packet_r_cb7(args);
-
-            args->len = prev_len;
-            args->data = prev_data;
-
-            return rv;
         }
 
         PendingReadsQueueItem* packet_e_cb1(PendingReadCallbackArgs* args) {
-            uint32_t _len;
-            memcpy(&_len, args->data, args->len);
-            uint32_t len = ntohl(_len);
 
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = len + 4;
-            item->cb = &Client::packet_e_cb2;
-            item->ctx = NULL;
-            item->err = NULL;
-            item->opcode = false;
-
-            return item;
         }
 
         PendingReadsQueueItem* packet_e_cb2(PendingReadCallbackArgs* args) {
-            uint32_t event_name_len = args->len - 4;
 
-            char* event_name = (char*)malloc(event_name_len + 1);
-            memcpy(event_name, args->data, event_name_len);
-            event_name[event_name_len] = '\0';
-
-            in_packet_e_ctx* ctx = (in_packet_e_ctx*)malloc(sizeof(*ctx));
-
-            ctx->event_name = event_name;
-            ctx->event_name_len = event_name_len;
-            ctx->events = new std::list<in_packet_e_ctx_event*>();
-
-            uint32_t prev_len = args->len;
-            args->len = prev_len - event_name_len;
-
-            char* prev_data = args->data;
-            args->data = args->data + event_name_len;
-
-            args->ctx = (void*)ctx;
-
-            PendingReadsQueueItem* rv = packet_e_cb3(args);
-
-            args->len = prev_len;
-            args->data = prev_data;
-
-            return rv;
         }
 
         PendingReadsQueueItem* packet_e_cb3(PendingReadCallbackArgs* args) {
-            uint32_t _cnt;
-            memcpy(&_cnt, args->data, args->len);
-            uint32_t cnt = ntohl(_cnt);
 
-            if(cnt > 0) {
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof(*item));
-
-                item->len = 4;
-                item->cb = &Client::packet_e_cb4;
-                item->opcode = false;
-
-                ((in_packet_e_ctx*)(args->ctx))->cnt = htonl(cnt - 1);
-
-                item->ctx = args->ctx;
-                item->err = &Client::free_in_packet_e_ctx;
-
-                return item;
-
-            } else {
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof(*item));
-
-                item->len = 4;
-                item->cb = &Client::packet_e_cb6;
-                item->ctx = args->ctx;
-                item->err = &Client::free_in_packet_e_ctx;
-                item->opcode = false;
-
-                return item;
-            }
         }
 
         PendingReadsQueueItem* packet_e_cb4(PendingReadCallbackArgs* args) {
-            uint32_t _len;
-            memcpy(&_len, args->data, args->len);
-            uint32_t len = ntohl(_len);
 
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = len;
-            item->cb = &Client::packet_e_cb5;
-            item->ctx = args->ctx;
-            item->err = &Client::free_in_packet_e_ctx;
-            item->opcode = false;
-
-            return item;
         }
 
         PendingReadsQueueItem* packet_e_cb5(PendingReadCallbackArgs* args) {
-            uint32_t prev_len = args->len;
-            char* prev_data = args->data;
 
-            in_packet_e_ctx_event* event = (in_packet_e_ctx_event*)malloc(
-                sizeof(*event));
-
-            event->len = prev_len;
-            event->data = (char*)malloc(prev_len);
-            event->id = NULL;
-
-            memcpy(event->data, prev_data, prev_len);
-
-            in_packet_e_ctx* ctx = ((in_packet_e_ctx*)(args->ctx));
-
-            ctx->events->push_back(event);
-
-            args->len = 4;
-            args->data = (char*)&(ctx->cnt);
-
-            PendingReadsQueueItem* rv = packet_e_cb3(args);
-
-            args->len = prev_len;
-            args->data = prev_data;
-
-            return rv;
         }
 
         PendingReadsQueueItem* packet_e_cb6(PendingReadCallbackArgs* args) {
-            in_packet_e_ctx* ctx = (in_packet_e_ctx*)(args->ctx);
 
-            known_events_t::const_iterator it = known_events.find(ctx->event_name);
-
-            if(it == known_events.cend()) {
-                fprintf(stderr, "Got unknown event: %s\n", ctx->event_name);
-                Client::free_in_packet_e_ctx((void*)ctx);
-
-                return nullptr;
-            }
-
-            uint32_t _replication_factor;
-            memcpy(&_replication_factor, args->data, args->len);
-            uint32_t replication_factor = ntohl(_replication_factor);
-
-            short result = save_event(ctx, replication_factor, this, NULL);
-
-            char* _out_packet = (char*)malloc(1);
-            *(args->out_packet_len) += 1;
-            *(args->out_packet) = _out_packet;
-
-            switch(result) {
-                case SAVE_EVENT_RESULT_F:
-                    _out_packet[0] = 'f';
-                    break;
-                case SAVE_EVENT_RESULT_A:
-                    _out_packet[0] = 'a';
-                    break;
-                case SAVE_EVENT_RESULT_K:
-                    _out_packet[0] = 'k';
-                    break;
-                case SAVE_EVENT_RESULT_NULL:
-                    free(_out_packet);
-                    *(args->out_packet) = NULL;
-                    *(args->out_packet_len) = 0;
-                    break;
-                default:
-                    fprintf(stderr, "Unexpected save_event() result: %d\n", result);
-                    exit(1);
-            };
-
-            Client::free_in_packet_e_ctx((void*)ctx);
-
-            return nullptr;
         }
 
         PendingReadsQueueItem* packet_h_cb1(PendingReadCallbackArgs* args) {
@@ -1601,9 +925,9 @@ class Client {
             memcpy(&_port, args->data + host_len, 4);
             uint32_t port = ntohl(_port);
 
-            char* out_packet = (char*)malloc(1);
-            *(args->out_packet) = out_packet;
-            *(args->out_packet_len) = 1;
+            char* out_data = (char*)malloc(1);
+            *(args->out_data) = out_data;
+            *(args->out_len) = 1;
 
             char* _peer_id = make_peer_id(host_len, host, port);
 
@@ -1612,7 +936,7 @@ class Client {
             known_peers_t::const_iterator known_peer = known_peers.find(_peer_id);
 
             if(known_peer == known_peers.cend()) {
-                out_packet[0] = 'k';
+                out_data[0] = SKREE_META_OPCODE_K;
 
                 peer_name = (char*)malloc(host_len);
                 memcpy(peer_name, host, host_len);
@@ -1626,7 +950,7 @@ class Client {
 
             } else {
                 free(_peer_id);
-                out_packet[0] = 'f';
+                out_data[0] = SKREE_META_OPCODE_F;
             }
 
             pthread_mutex_unlock(&known_peers_mutex);
@@ -1745,7 +1069,7 @@ class Client {
         }
 
         PendingReadsQueueItem* discovery_cb6(PendingReadCallbackArgs* args) {
-            if(args->data[0] == 'k') {
+            if(args->data[0] == SKREE_META_OPCODE_K) {
                 PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
                     sizeof(*item));
 
@@ -1763,7 +1087,7 @@ class Client {
         }
 
         PendingReadsQueueItem* discovery_cb5(PendingReadCallbackArgs* args) {
-            if(args->data[0] == 'k') {
+            if(args->data[0] == SKREE_META_OPCODE_K) {
                 pthread_mutex_lock(&known_peers_mutex);
 
                 // peer_id is guaranteed to be set here
@@ -2143,7 +1467,7 @@ class Client {
         }
 
         PendingReadsQueueItem* discovery_cb2(PendingReadCallbackArgs* args) {
-            if(args->data[0] == 'k') {
+            if(args->data[0] == SKREE_META_OPCODE_K) {
                 PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
                     sizeof(*item));
 
@@ -2163,10 +1487,10 @@ class Client {
         }
 
         PendingReadsQueueItem* replication_cb(PendingReadCallbackArgs* args) {
-            out_packet_r_ctx* ctx = (out_packet_r_ctx*)(args->ctx);
+            out_data_r_ctx* ctx = (out_data_r_ctx*)(args->ctx);
             --(ctx->pending);
 
-            if(args->data[0] == 'k') {
+            if(args->data[0] == SKREE_META_OPCODE_K) {
                 packet_r_ctx_peer* peer =
                     (packet_r_ctx_peer*)malloc(sizeof(*peer));
 
@@ -2183,20 +1507,20 @@ class Client {
         }
 
         static void replication_skip_peer(void* _ctx) {
-            out_packet_r_ctx* ctx = (out_packet_r_ctx*)_ctx;
+            out_data_r_ctx* ctx = (out_data_r_ctx*)_ctx;
             --(ctx->pending);
 
             begin_replication(ctx);
         }
 
         PendingReadsQueueItem* propose_self_k_cb(PendingReadCallbackArgs* args) {
-            out_packet_i_ctx* ctx = (out_packet_i_ctx*)(args->ctx);
+            out_data_i_ctx* ctx = (out_data_i_ctx*)(args->ctx);
 
             pthread_mutex_lock(ctx->mutex);
 
             --(*(ctx->pending));
 
-            if(args->data[0] == 'k')
+            if(args->data[0] == SKREE_META_OPCODE_K)
                 ++(*(ctx->acceptances));
 
             continue_replication_exec(ctx);
@@ -2207,7 +1531,7 @@ class Client {
         }
 
         static void propose_self_f_cb(void* _ctx) {
-            out_packet_i_ctx* ctx = (out_packet_i_ctx*)_ctx;
+            out_data_i_ctx* ctx = (out_data_i_ctx*)_ctx;
 
             pthread_mutex_lock(ctx->mutex);
 
@@ -2239,9 +1563,9 @@ class Client {
         }
 
         PendingReadsQueueItem* ping_task_k_cb(PendingReadCallbackArgs* args) {
-            out_packet_c_ctx* ctx = (out_packet_c_ctx*)(args->ctx);
+            out_data_c_ctx* ctx = (out_data_c_ctx*)(args->ctx);
 
-            if(args->data[0] == 'k') {
+            if(args->data[0] == SKREE_META_OPCODE_K) {
                 repl_clean(
                     ctx->failover_key_len,
                     ctx->failover_key,
@@ -2262,7 +1586,7 @@ class Client {
         }
 
         static void ping_task_f_cb(void* _ctx) {
-            out_packet_c_ctx* ctx = (out_packet_c_ctx*)_ctx;
+            out_data_c_ctx* ctx = (out_data_c_ctx*)_ctx;
             in_packet_r_ctx* r_ctx = (in_packet_r_ctx*)malloc(sizeof(*r_ctx));
 
             r_ctx->hostname_len = ctx->client->get_peer_name_len();
@@ -2508,8 +1832,8 @@ static inline short save_event(
                         candidate_peer_ids->end()
                     );
 
-                    out_packet_r_ctx* r_ctx =
-                        (out_packet_r_ctx*)malloc(sizeof(*r_ctx));
+                    out_data_r_ctx* r_ctx =
+                        (out_data_r_ctx*)malloc(sizeof(*r_ctx));
 
                     r_ctx->sync = (replication_factor > 0);
                     r_ctx->replication_factor = replication_factor;
@@ -2830,7 +2154,7 @@ static inline short repl_save(
     return result;
 }
 
-static inline void continue_replication_exec(out_packet_i_ctx*& ctx) {
+static inline void continue_replication_exec(out_data_i_ctx*& ctx) {
     if(*(ctx->pending) == 0) {
         pthread_mutex_lock(&replication_exec_queue_mutex);
 
@@ -2840,7 +2164,7 @@ static inline void continue_replication_exec(out_packet_i_ctx*& ctx) {
     }
 }
 
-static inline void begin_replication(out_packet_r_ctx*& r_ctx) {
+static inline void begin_replication(out_data_r_ctx*& r_ctx) {
     Client* peer = NULL;
 
     while((peer == NULL) && (r_ctx->candidate_peer_ids->size() > 0)) {
@@ -2866,7 +2190,7 @@ static inline void begin_replication(out_packet_r_ctx*& r_ctx) {
             if(accepted_peers_count >= r_ctx->replication_factor) {
                 if(r_ctx->client != NULL) {
                     char* r_ans = (char*)malloc(1);
-                    r_ans[0] = 'k';
+                    r_ans[0] = SKREE_META_OPCODE_K;
                     r_ctx->client->push_write_queue(1, r_ans, NULL);
                 }
 
@@ -2875,7 +2199,7 @@ static inline void begin_replication(out_packet_r_ctx*& r_ctx) {
             } else if(r_ctx->pending == 0) {
                 if(r_ctx->client != NULL) {
                     char* r_ans = (char*)malloc(1);
-                    r_ans[0] = 'a';
+                    r_ans[0] = SKREE_META_OPCODE_A;
                     r_ctx->client->push_write_queue(1, r_ans, NULL);
                 }
 
@@ -2895,7 +2219,7 @@ static inline void begin_replication(out_packet_r_ctx*& r_ctx) {
         ) {
             if(r_ctx->client != NULL) {
                 char* r_ans = (char*)malloc(1);
-                r_ans[0] = 'k';
+                r_ans[0] = SKREE_META_OPCODE_K;
                 r_ctx->client->push_write_queue(1, r_ans, NULL);
             }
 
@@ -3140,7 +2464,7 @@ static void* replication_exec_thread(void* args) {
         pthread_mutex_lock(&replication_exec_queue_mutex);
 
         // TODO: persistent queue
-        out_packet_i_ctx* ctx = replication_exec_queue.front();
+        out_data_i_ctx* ctx = replication_exec_queue.front();
         replication_exec_queue.pop();
 
         pthread_mutex_unlock(&replication_exec_queue_mutex);
@@ -3635,7 +2959,7 @@ static void* replication_thread(void* args) {
                                 } else {
                                     ++(*pending);
 
-                                    out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(
+                                    out_data_i_ctx* ctx = (out_data_i_ctx*)malloc(
                                         sizeof(*ctx));
 
                                     ctx->count_replicas = count_replicas;
@@ -3670,7 +2994,7 @@ static void* replication_thread(void* args) {
                     }
 
                     if(!have_rpr) {
-                        out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(sizeof(*ctx));
+                        out_data_i_ctx* ctx = (out_data_i_ctx*)malloc(sizeof(*ctx));
 
                         ctx->count_replicas = count_replicas;
                         ctx->pending = pending;
@@ -3734,7 +3058,7 @@ static void* replication_thread(void* args) {
                         rpr_str->data = rpr;
                     }
 
-                    out_packet_c_ctx* ctx = (out_packet_c_ctx*)malloc(sizeof(*ctx));
+                    out_data_c_ctx* ctx = (out_data_c_ctx*)malloc(sizeof(*ctx));
 
                     ctx->client = peer;
                     ctx->event = event;
