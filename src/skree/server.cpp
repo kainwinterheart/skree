@@ -266,7 +266,7 @@ namespace Skree {
         in_packet_e_ctx* ctx,
         uint32_t replication_factor,
         Client* client,
-        std::vector<uint64_t>* task_ids
+        uint64_t* task_ids
     ) {
         short result = SAVE_EVENT_RESULT_F;
 
@@ -279,7 +279,7 @@ namespace Skree {
         sprintf(increment_key, "inseq:");
         memcpy(increment_key + 6, ctx->event_name, ctx->event_name_len);
 
-        uint32_t _cnt = htonl(ctx->events->size());
+        uint32_t _cnt = htonl(ctx->cnt);
         size_t r_len = 0;
         char* r_req = (char*)malloc(1
             + sizeof(my_hostname_len)
@@ -314,14 +314,13 @@ namespace Skree {
         memcpy(r_req + r_len, (char*)&_cnt, sizeof(_cnt));
         r_len += sizeof(_cnt);
 
-        uint32_t num_inserted = 0;
         bool replication_began = false;
 
         if(db.begin_transaction()) {
             int64_t max_id = db.increment(
                 increment_key,
                 increment_key_len,
-                ctx->events->size(),
+                ctx->cnt,
                 0
             );
 
@@ -334,19 +333,17 @@ namespace Skree {
                 }
 
             } else {
-                for(
-                    std::list<in_packet_e_ctx_event*>::const_iterator it =
-                        ctx->events->cbegin();
-                    it != ctx->events->cend();
-                    ++it
-                ) {
-                    in_packet_e_ctx_event* event = *it;
+                uint32_t _cnt = ctx->cnt;
+                uint32_t num_inserted = 0;
+
+                while(_cnt-- > 0) {
+                    in_packet_e_ctx_event* event = ctx->events[_cnt];
 
                     event->id = (char*)malloc(21);
                     sprintf(event->id, "%llu", max_id);
 
                     if(task_ids != NULL)
-                        task_ids->push_back(max_id);
+                        task_ids[_cnt] = max_id;
 
                     uint32_t key_len =
                         3 // in:
@@ -394,7 +391,7 @@ namespace Skree {
                     --max_id;
                 }
 
-                if(num_inserted == ctx->events->size()) {
+                if(num_inserted == ctx->cnt) {
                     if(db.end_transaction(true)) {
                         pthread_mutex_lock(&stat_mutex);
                         stat_num_inserts += num_inserted;
@@ -481,5 +478,44 @@ namespace Skree {
         if(!replication_began) free(r_req);
 
         return result;
+    }
+
+    void Server::repl_clean(
+        size_t failover_key_len,
+        const char* failover_key,
+        uint64_t wrinseq
+    ) {
+        size_t failover_key_slen = strlen(failover_key);
+        std::vector<std::string> keys;
+
+        std::string rre_key("rre:", 4);
+        rre_key.append(failover_key, failover_key_slen);
+
+        keys.push_back(rre_key);
+
+        char* suffix = (char*)malloc(failover_key_len);
+        memcpy(suffix, failover_key, failover_key_len);
+        sprintf(suffix + failover_key_len - 20 - 1, "%llu", wrinseq);
+        failover_key_slen = strlen(suffix);
+
+        std::string rin_key("rin:", 4);
+        rin_key.append(suffix, failover_key_len);
+
+        std::string rts_key("rts:", 4);
+        rts_key.append(suffix, failover_key_len);
+
+        std::string rid_key("rid:", 4);
+        rid_key.append(suffix, failover_key_len);
+
+        std::string rpr_key("rpr:", 4);
+        rpr_key.append(suffix, failover_key_len);
+
+        keys.push_back(rin_key);
+        keys.push_back(rts_key);
+        keys.push_back(rid_key);
+        keys.push_back(rpr_key);
+
+        if(db.remove_bulk(keys) == -1)
+            fprintf(stderr, "db.remove_bulk failed: %s\n", db.error().name());
     }
 }

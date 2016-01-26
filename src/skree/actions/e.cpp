@@ -52,7 +52,14 @@ namespace Skree {
             memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
             in_pos += sizeof(_tmp);
 
-            short result = server->save_event(ctx, ntohl(_tmp), client, NULL);
+            in_packet_e_ctx ctx {
+                .cnt = events_count,
+                .event_name_len = event_name_len,
+                .event_name = event_name,
+                .events = events
+            };
+
+            short result = server->save_event(&ctx, ntohl(_tmp), client, NULL);
 
             char* _out_data = (char*)malloc(1);
             *(args->out_len) += 1;
