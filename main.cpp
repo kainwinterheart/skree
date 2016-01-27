@@ -198,17 +198,6 @@ struct WriteQueueItem {
     PendingReadsQueueItem* cb;
 };
 
-struct out_data_r_ctx {
-    uint32_t replication_factor;
-    uint32_t pending;
-    Client* client;
-    std::vector<char*>* candidate_peer_ids;
-    std::list<packet_r_ctx_peer*>* accepted_peers;
-    char* r_req;
-    size_t r_len;
-    bool sync;
-};
-
 struct muh_str_t {
     size_t len;
     char* data;
@@ -391,7 +380,7 @@ static inline void load_peers_to_discover() {
     }
 }
 
-static inline void begin_replication(out_data_r_ctx*& r_ctx);
+static inline void begin_replication(out_packet_r_ctx*& r_ctx);
 static inline void continue_replication_exec(out_data_i_ctx*& ctx);
 static inline short save_event(
     in_packet_e_ctx* ctx,
@@ -432,137 +421,6 @@ static inline void continue_replication_exec(out_data_i_ctx*& ctx) {
         replication_exec_queue.push(ctx);
 
         pthread_mutex_unlock(&replication_exec_queue_mutex);
-    }
-}
-
-static inline void begin_replication(out_data_r_ctx*& r_ctx) {
-    Client* peer = NULL;
-
-    while((peer == NULL) && (r_ctx->candidate_peer_ids->size() > 0)) {
-        char* peer_id = r_ctx->candidate_peer_ids->back();
-        r_ctx->candidate_peer_ids->pop_back();
-
-        pthread_mutex_lock(&known_peers_mutex);
-
-        known_peers_t::const_iterator it = known_peers.find(peer_id);
-
-        if(it != known_peers.cend())
-            peer = it->second;
-
-        pthread_mutex_unlock(&known_peers_mutex);
-    }
-
-    bool done = false;
-
-    if(peer == NULL) {
-        if(r_ctx->sync) {
-            uint32_t accepted_peers_count = r_ctx->accepted_peers->size();
-
-            if(accepted_peers_count >= r_ctx->replication_factor) {
-                if(r_ctx->client != NULL) {
-                    char* r_ans = (char*)malloc(1);
-                    r_ans[0] = SKREE_META_OPCODE_K;
-                    r_ctx->client->push_write_queue(1, r_ans, NULL);
-                }
-
-                r_ctx->sync = false;
-
-            } else if(r_ctx->pending == 0) {
-                if(r_ctx->client != NULL) {
-                    char* r_ans = (char*)malloc(1);
-                    r_ans[0] = SKREE_META_OPCODE_A;
-                    r_ctx->client->push_write_queue(1, r_ans, NULL);
-                }
-
-                r_ctx->sync = false;
-            }
-        }
-
-        if(r_ctx->pending == 0)
-            done = true;
-
-    } else {
-        uint32_t accepted_peers_count = r_ctx->accepted_peers->size();
-
-        if(
-            r_ctx->sync
-            && (accepted_peers_count >= r_ctx->replication_factor)
-        ) {
-            if(r_ctx->client != NULL) {
-                char* r_ans = (char*)malloc(1);
-                r_ans[0] = SKREE_META_OPCODE_K;
-                r_ctx->client->push_write_queue(1, r_ans, NULL);
-            }
-
-            r_ctx->sync = false;
-        }
-
-        if(accepted_peers_count >= max_replication_factor) {
-            done = true;
-
-        } else {
-            size_t r_len = 0;
-            char* r_req = (char*)malloc(r_ctx->r_len + sizeof(accepted_peers_count));
-
-            memcpy(r_req + r_len, r_ctx->r_req, r_ctx->r_len);
-            r_len += r_ctx->r_len;
-
-            uint32_t _accepted_peers_count = htonl(accepted_peers_count);
-            memcpy(r_req + r_len, &_accepted_peers_count, sizeof(_accepted_peers_count));
-            r_len += sizeof(_accepted_peers_count);
-
-            for(
-                std::list<packet_r_ctx_peer*>::const_iterator it =
-                    r_ctx->accepted_peers->cbegin();
-                it != r_ctx->accepted_peers->cend();
-                ++it
-            ) {
-                packet_r_ctx_peer* peer = *it;
-
-                r_req = (char*)realloc(r_req, r_len
-                    + sizeof(peer->hostname_len)
-                    + peer->hostname_len
-                    + sizeof(peer->port)
-                );
-
-                uint32_t _len = htonl(peer->hostname_len);
-                memcpy(r_req + r_len, &_len, sizeof(_len));
-                r_len += sizeof(_len);
-
-                memcpy(r_req + r_len, peer->hostname, peer->hostname_len);
-                r_len += peer->hostname_len;
-
-                memcpy(r_req + r_len, &(peer->port),
-                    sizeof(peer->port));
-                r_len += sizeof(peer->port);
-            }
-
-            ++(r_ctx->pending);
-
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                sizeof(*item));
-
-            item->len = 1;
-            item->cb = &Client::replication_cb;
-            item->ctx = (void*)r_ctx;
-            item->err = &Client::replication_skip_peer;
-            item->opcode = true;
-
-            peer->push_write_queue(r_len, r_req, item);
-        }
-    }
-
-    if(done) {
-        while(!r_ctx->accepted_peers->empty()) {
-            packet_r_ctx_peer* peer = r_ctx->accepted_peers->back();
-            r_ctx->accepted_peers->pop_back();
-            free(peer);
-        }
-
-        free(r_ctx->accepted_peers);
-        free(r_ctx->candidate_peer_ids);
-        free(r_ctx->r_req);
-        free(r_ctx);
     }
 }
 

@@ -11,6 +11,7 @@ namespace Skree {
             printf("Unknown packet header: 0x%.2X\n", opcode);
 
         } else {
+            // TODO: change protocol
             // in(uint64_t in_len, char* in_data,
             // uint64_t* out_len, char** out_data)
             // TODO: it->second->in();
@@ -405,14 +406,14 @@ namespace Skree {
 
         fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
 
-        add_action_handler<Action::W>();
-        add_action_handler<Action::L>();
-        add_action_handler<Action::E>();
-        add_action_handler<Action::R>();
-        add_action_handler<Action::C>();
-        add_action_handler<Action::I>();
-        add_action_handler<Action::X>();
-        add_action_handler<Action::H>();
+        add_action_handler<Actions::W>();
+        add_action_handler<Actions::L>();
+        add_action_handler<Actions::E>();
+        add_action_handler<Actions::R>();
+        add_action_handler<Actions::C>();
+        add_action_handler<Actions::I>();
+        add_action_handler<Actions::X>();
+        add_action_handler<Actions::H>();
 
         watcher.client = this;
         ev_io_init(&watcher.watcher, client_cb, fh, EV_READ | EV_WRITE);
@@ -603,7 +604,7 @@ namespace Skree {
     }
 
     PendingReadsQueueItem* Client::replication_cb(PendingReadCallbackArgs* args) {
-        out_data_r_ctx* ctx = (out_data_r_ctx*)(args->ctx);
+        out_packet_r_ctx* ctx = (out_packet_r_ctx*)(args->ctx);
         --(ctx->pending);
 
         if(args->data[0] == SKREE_META_OPCODE_K) {
@@ -617,16 +618,16 @@ namespace Skree {
             ctx->accepted_peers->push_back(peer);
         }
 
-        begin_replication(ctx);
+        server->begin_replication(ctx);
 
         return nullptr;
     }
 
     static void Client::replication_skip_peer(void* _ctx) {
-        out_data_r_ctx* ctx = (out_data_r_ctx*)_ctx;
+        out_packet_r_ctx* ctx = (out_packet_r_ctx*)_ctx;
         --(ctx->pending);
 
-        begin_replication(ctx);
+        server->begin_replication(ctx);
     }
 
     PendingReadsQueueItem* Client::propose_self_k_cb(PendingReadCallbackArgs* args) {
