@@ -34,6 +34,12 @@ namespace Skree {
         sockaddr_in* s_in;
         socklen_t s_in_len;
         Server server;
+
+        typedef std::unordered_map<char, Base::Action*> handlers_t;
+        handlers_t handlers;
+
+        template<typename T>
+        void add_action_handler();
     public:
         Client(int _fh, struct ev_loop* _loop, sockaddr_in* _s_in, socklen_t _s_in_len);
         virtual ~Client();

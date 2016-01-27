@@ -5,30 +5,15 @@ namespace Skree {
         const char& opcode, char** out_data,
         size_t* out_len, size_t* in_packet_len
     ) {
-        Action::W w (server, this);
-        Action::L l (server, this);
-        Action::E E (server, this);
-        // ...
+        handlers_t::const_iterator it = handlers.find(opcode);
 
-        if(opcode == 'w') {
-
-        } else if(opcode == 'l') {
-
-        } else if(opcode == 'e') {
-
-        } else if(opcode == 'r') {
-
-        } else if(opcode == 'c') {
-
-        } else if(opcode == 'i') {
-
-
-        } else if(opcode == 'x') {
-
-        } else if(opcode == 'h') {
+        if(it == handlers.cend()) {
+            printf("Unknown packet header: 0x%.2X\n", opcode);
 
         } else {
-            printf("Unknown packet header: 0x%.2X\n", opcode);
+            // in(uint64_t in_len, char* in_data,
+            // uint64_t* out_len, char** out_data)
+            // TODO: it->second->in();
         }
     }
 
@@ -420,9 +405,24 @@ namespace Skree {
 
         fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
 
+        add_action_handler<Action::W>();
+        add_action_handler<Action::L>();
+        add_action_handler<Action::E>();
+        add_action_handler<Action::R>();
+        add_action_handler<Action::C>();
+        add_action_handler<Action::I>();
+        add_action_handler<Action::X>();
+        add_action_handler<Action::H>();
+
         watcher.client = this;
         ev_io_init(&watcher.watcher, client_cb, fh, EV_READ | EV_WRITE);
         ev_io_start(loop, &watcher.watcher);
+    }
+
+    template<typename T>
+    void Client::add_action_handler() {
+        T* handler = new T(server, this);
+        handlers[handler->opcode] = handler;
     }
 
     Client::~Client() {
