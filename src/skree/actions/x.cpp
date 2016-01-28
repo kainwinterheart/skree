@@ -28,7 +28,7 @@ namespace Skree {
             char* event_id = (char*)malloc(event_id_len + 1);
             memcpy(event_id, in_data + in_pos, event_id_len);
             in_pos += event_id_len;
-            peer_id[event_id_len] = '\0';
+            event_id[event_id_len] = '\0';
 
             uint64_t _tmp64;
             memcpy(&_tmp64, in_data + in_pos, sizeof(_tmp64));
@@ -64,6 +64,44 @@ namespace Skree {
             }
 
             delete dbdata;
+        }
+
+        static muh_str_t* X::out_init(
+            const uint32_t& peer_id_len, const char*& peer_id,
+            const uint32_t& event_id_len, const char*& event_id
+        ) {
+            muh_str_t* out = (muh_str_t*)malloc(sizeof(*out));
+            out->len = 1;
+            out->data = (char*)malloc(
+                out->len
+                + sizeof(ctx->peer_id->len)
+                + ctx->peer_id->len
+                + ctx->event->id_len_size
+                + ctx->event->id_len
+                + sizeof(ctx->rid)
+            );
+
+            x_req[0] = 'x';
+
+            uint32_t peer_id_len_net = htonl(ctx->peer_id->len);
+            memcpy(x_req + x_req_len, &peer_id_len_net, sizeof(peer_id_len_net));
+            x_req_len += sizeof(peer_id_len_net);
+
+            memcpy(x_req + x_req_len, ctx->peer_id->data, ctx->peer_id->len);
+            x_req_len += ctx->peer_id->len;
+
+            memcpy(x_req + x_req_len, &(ctx->event->id_len_net),
+                ctx->event->id_len_size);
+            x_req_len += ctx->event->id_len_size;
+
+            memcpy(x_req + x_req_len, ctx->event->id, ctx->event->id_len);
+            x_req_len += ctx->event->id_len;
+
+            uint64_t rid_net = htonll(ctx->rid);
+            memcpy(x_req + x_req_len, &rid_net, sizeof(rid_net));
+            x_req_len += sizeof(rid_net);
+
+            return out;
         }
     }
 }

@@ -60,6 +60,7 @@ namespace Skree {
             wip_t::const_iterator it = server->wip->find(rid);
 
             if(it == server->wip->cend()) {
+                // TODO: check iterator position
                 if(server->db->check(in_key, in_key_len) > 0)
                     should_save_event = true;
 

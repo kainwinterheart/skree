@@ -279,41 +279,12 @@ namespace Skree {
         sprintf(increment_key, "inseq:");
         memcpy(increment_key + 6, ctx->event_name, ctx->event_name_len);
 
-        uint32_t _cnt = htonl(ctx->cnt);
-        size_t r_len = 0;
-        char* r_req = (char*)malloc(1
-            + sizeof(my_hostname_len)
-            + my_hostname_len
-            + sizeof(my_port)
-            + sizeof(ctx->event_name_len)
-            + ctx->event_name_len
-            + sizeof(_cnt)
+        auto r_req = Actions::R::out_init(
+            this,
+            event_name_len,
+            event_name,
+            ctx->cnt
         );
-
-        r_req[0] = 'r'; // TODO: Actions::R::out
-        r_len += 1;
-
-        uint32_t _hostname_len = htonl(my_hostname_len);
-        memcpy(r_req + r_len, &_hostname_len, sizeof(_hostname_len));
-        r_len += sizeof(_hostname_len);
-
-        memcpy(r_req + r_len, my_hostname, my_hostname_len);
-        r_len += my_hostname_len;
-
-        uint32_t _my_port = htonl(my_port);
-        memcpy(r_req + r_len, (char*)&_my_port, sizeof(_my_port));
-        r_len += sizeof(_my_port);
-
-        uint32_t _event_name_len = htonl(ctx->event_name_len);
-        memcpy(r_req + r_len, (char*)&_event_name_len, sizeof(_event_name_len));
-        r_len += sizeof(_event_name_len);
-
-        memcpy(r_req + r_len, ctx->event_name, ctx->event_name_len);
-        r_len += ctx->event_name_len;
-
-        memcpy(r_req + r_len, (char*)&_cnt, sizeof(_cnt));
-        r_len += sizeof(_cnt);
-
         bool replication_began = false;
 
         if(db.begin_transaction()) {
@@ -369,24 +340,7 @@ namespace Skree {
                         break;
                     }
 
-                    uint64_t _max_id = htonll(max_id);
-
-                    r_req = (char*)realloc(r_req,
-                        r_len
-                        + sizeof(_max_id)
-                        + sizeof(event->len)
-                        + event->len
-                    );
-
-                    memcpy(r_req + r_len, (char*)&_max_id, sizeof(_max_id));
-                    r_len += sizeof(_max_id);
-
-                    uint32_t _event_len = htonl(event->len);
-                    memcpy(r_req + r_len, (char*)&_event_len, sizeof(_event_len));
-                    r_len += sizeof(_event_len);
-
-                    memcpy(r_req + r_len, event->data, event->len);
-                    r_len += event->len;
+                    Actions::R::out_add_event(r_req, max_id, event->len, event->data);
 
                     --max_id;
                 }
@@ -428,8 +382,9 @@ namespace Skree {
                         r_ctx->client = client;
                         r_ctx->candidate_peer_ids = candidate_peer_ids;
                         r_ctx->accepted_peers = accepted_peers;
-                        r_ctx->r_req = r_req;
-                        r_ctx->r_len = r_len;
+                        // TODO: use muh_str_t for r_req
+                        r_ctx->r_req = r_req->data;
+                        r_ctx->r_len = r_req->len;
                         /*****************************/
 
                         if(r_ctx->sync) {
@@ -475,7 +430,7 @@ namespace Skree {
         }
 
         free(increment_key);
-        if(!replication_began) free(r_req);
+        // TODO: if(!replication_began) free(r_req);
 
         return result;
     }

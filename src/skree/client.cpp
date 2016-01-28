@@ -267,8 +267,7 @@ namespace Skree {
             pthread_mutex_unlock(&known_peers_mutex);
 
             if(!*(args->stop)) {
-                char* l_req = (char*)malloc(1);
-                l_req[0] = 'l';
+                auto l_req = Actions::L::out_init();
 
                 PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
                     sizeof(*item));
@@ -279,7 +278,7 @@ namespace Skree {
                 item->err = NULL;
                 item->opcode = true;
 
-                push_write_queue(1, l_req, item);
+                push_write_queue(l_req->len, l_req->data, item);
             }
 
             return nullptr;
@@ -337,25 +336,7 @@ namespace Skree {
 
         if(accepted) {
             size_t h_len = 0;
-            char* h_req = (char*)malloc(1
-                + sizeof(my_hostname_len)
-                + my_hostname_len
-                + sizeof(my_port)
-            );
-
-            h_req[0] = 'h';
-            h_len += 1;
-
-            uint32_t _hostname_len = htonl(my_hostname_len);
-            memcpy(h_req + h_len, &_hostname_len, sizeof(_hostname_len));
-            h_len += sizeof(_hostname_len);
-
-            memcpy(h_req + h_len, my_hostname, my_hostname_len);
-            h_len += my_hostname_len;
-
-            uint32_t _my_port = htonl(my_port);
-            memcpy(h_req + h_len, &_my_port, sizeof(_my_port));
-            h_len += sizeof(_my_port);
+            auto h_req = Actions::H::out_init(server);
 
             PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
                 sizeof(*item));
@@ -366,7 +347,7 @@ namespace Skree {
             item->err = NULL;
             item->opcode = true;
 
-            push_write_queue(h_len, h_req, item);
+            push_write_queue(h_req->len, h_req->data, item);
 
         } else {
             *(args->stop) = true;
@@ -554,6 +535,7 @@ namespace Skree {
         return result;
     }
 
+    // TODO: use muh_str_t instead of 'len' and 'data'
     void Client::push_write_queue(size_t len, char* data, PendingReadsQueueItem* cb) {
         WriteQueueItem* item = (WriteQueueItem*)malloc(sizeof(*item));
 

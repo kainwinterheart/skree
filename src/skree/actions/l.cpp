@@ -49,5 +49,13 @@ namespace Skree {
 
             *out_data = _out_data;
         }
+
+        static muh_str_t* L::out_init() {
+            muh_str_t* out = (muh_str_t*)malloc(sizeof(*out));
+            out->len = 1;
+            out->data = (char*)malloc(1);
+            out->data[0] = opcode();
+            return out;
+        }
     }
 }

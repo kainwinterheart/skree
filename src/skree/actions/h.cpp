@@ -51,5 +51,31 @@ namespace Skree {
 
             pthread_mutex_unlock(server->known_peers_mutex);
         }
+
+        static muh_str_t* H::out_init(const Server*& server) {
+            muh_str_t* out = (muh_str_t*)malloc(sizeof(*out));
+            out->len = 0;
+            out->data = (char*)malloc(1
+                + sizeof(server->my_hostname_len)
+                + server->my_hostname_len
+                + sizeof(server->my_port)
+            );
+
+            h_req[0] = opcode();
+            h_len += 1;
+
+            uint32_t _hostname_len = htonl(server->my_hostname_len);
+            memcpy(h_req + h_len, &_hostname_len, sizeof(_hostname_len));
+            h_len += sizeof(_hostname_len);
+
+            memcpy(h_req + h_len, server->my_hostname, server->my_hostname_len);
+            h_len += server->my_hostname_len;
+
+            uint32_t _my_port = htonl(server->my_port);
+            memcpy(h_req + h_len, &_my_port, sizeof(_my_port));
+            h_len += sizeof(_my_port);
+
+            return out;
+        }
     }
 }

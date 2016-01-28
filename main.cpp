@@ -533,8 +533,7 @@ static void* client_thread(void* args) {
 }
 
 static void discovery_cb1(Client* client) {
-    char* w_req = (char*)malloc(1);
-    w_req[0] = 'w';
+    auto w_req = Actions::W::out_init();
 
     PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(sizeof(*item));
 
@@ -544,7 +543,7 @@ static void discovery_cb1(Client* client) {
     item->err = NULL;
     item->opcode = true;
 
-    client->push_write_queue(1, w_req, item);
+    client->push_write_queue(w_req->len, w_req->data, item);
 }
 
 static void* replication_exec_thread(void* args) {
@@ -612,35 +611,7 @@ static void* replication_exec_thread(void* args) {
             );
 
             if(ctx->rpr != NULL) {
-                size_t x_req_len = 1;
-                char* x_req = (char*)malloc(
-                    x_req_len
-                    + sizeof(ctx->peer_id->len)
-                    + ctx->peer_id->len
-                    + ctx->event->id_len_size
-                    + ctx->event->id_len
-                    + sizeof(ctx->rid)
-                );
-
-                x_req[0] = 'x';
-
-                uint32_t peer_id_len_net = htonl(ctx->peer_id->len);
-                memcpy(x_req + x_req_len, &peer_id_len_net, sizeof(peer_id_len_net));
-                x_req_len += sizeof(peer_id_len_net);
-
-                memcpy(x_req + x_req_len, ctx->peer_id->data, ctx->peer_id->len);
-                x_req_len += ctx->peer_id->len;
-
-                memcpy(x_req + x_req_len, &(ctx->event->id_len_net),
-                    ctx->event->id_len_size);
-                x_req_len += ctx->event->id_len_size;
-
-                memcpy(x_req + x_req_len, ctx->event->id, ctx->event->id_len);
-                x_req_len += ctx->event->id_len;
-
-                uint64_t rid_net = htonll(ctx->rid);
-                memcpy(x_req + x_req_len, &rid_net, sizeof(rid_net));
-                x_req_len += sizeof(rid_net);
+                // TODO: Actions::X::out_init()
 
                 size_t offset = 0;
 
