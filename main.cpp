@@ -203,7 +203,7 @@ struct muh_str_t {
     char* data;
 };
 
-struct out_data_i_ctx {
+struct out_packet_i_ctx {
     pthread_mutex_t* mutex;
     known_event_t* event;
     muh_str_t* data;
@@ -238,7 +238,7 @@ struct in_packet_c_ctx {
     uint32_t rin_len;
 };
 
-static std::queue<out_data_i_ctx*> replication_exec_queue;
+static std::queue<out_packet_i_ctx*> replication_exec_queue;
 static pthread_mutex_t replication_exec_queue_mutex;
 
 static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events);
@@ -381,7 +381,7 @@ static inline void load_peers_to_discover() {
 }
 
 static inline void begin_replication(out_packet_r_ctx*& r_ctx);
-static inline void continue_replication_exec(out_data_i_ctx*& ctx);
+static inline void continue_replication_exec(out_packet_i_ctx*& ctx);
 static inline short save_event(
     in_packet_e_ctx* ctx,
     uint32_t replication_factor,
@@ -414,7 +414,7 @@ static inline void unfailover(char* failover_key) {
     }
 }
 
-static inline void continue_replication_exec(out_data_i_ctx*& ctx) {
+static inline void continue_replication_exec(out_packet_i_ctx*& ctx) {
     if(*(ctx->pending) == 0) {
         pthread_mutex_lock(&replication_exec_queue_mutex);
 
@@ -553,7 +553,7 @@ static void* replication_exec_thread(void* args) {
         pthread_mutex_lock(&replication_exec_queue_mutex);
 
         // TODO: persistent queue
-        out_data_i_ctx* ctx = replication_exec_queue.front();
+        out_packet_i_ctx* ctx = replication_exec_queue.front();
         replication_exec_queue.pop();
 
         pthread_mutex_unlock(&replication_exec_queue_mutex);
@@ -611,8 +611,9 @@ static void* replication_exec_thread(void* args) {
             );
 
             if(ctx->rpr != NULL) {
-                // TODO: Actions::X::out_init()
-
+                // const muh_str_t*& peer_id, const known_event_t*& event,
+                // const uint64_t& rid
+                auto x_req = Actions::X::out_init(ctx->peer_id, ctx->event, ctx->rid);
                 size_t offset = 0;
 
                 while(ctx->peers_cnt > 0) {
@@ -625,7 +626,7 @@ static void* replication_exec_thread(void* args) {
                     known_peers_t::const_iterator it = known_peers.find(peer_id);
 
                     if(it != known_peers.cend()) {
-                        it->second->push_write_queue(x_req_len, x_req, NULL);
+                        it->second->push_write_queue(x_req->len, x_req->data, NULL);
                     }
 
                     --(ctx->peers_cnt);
@@ -971,36 +972,7 @@ static void* replication_thread(void* args) {
 
                         *count_replicas = peers_cnt;
 
-                        size_t i_req_len = 1;
-                        char* i_req = (char*)malloc(
-                            i_req_len
-                            + sizeof((*_peer_id)->len)
-                            + (*_peer_id)->len
-                            + event->id_len_size
-                            + event->id_len
-                            + sizeof(rid)
-                        );
-
-                        i_req[0] = 'i';
-
-                        uint32_t _peer_id_len_net = htonl((*_peer_id)->len);
-                        memcpy(i_req + i_req_len, &_peer_id_len_net,
-                            sizeof(_peer_id_len_net));
-                        i_req_len += sizeof(_peer_id_len_net);
-
-                        memcpy(i_req + i_req_len, (*_peer_id)->data, (*_peer_id)->len);
-                        i_req_len += (*_peer_id)->len;
-
-                        memcpy(i_req + i_req_len, &(event->id_len_net),
-                            event->id_len_size);
-                        i_req_len += event->id_len_size;
-
-                        memcpy(i_req + i_req_len, event->id,
-                            event->id_len);
-                        i_req_len += event->id_len;
-
-                        memcpy(i_req + i_req_len, &rid_net, sizeof(rid_net));
-                        i_req_len += sizeof(rid_net);
+                        // TODO: Actions::I::out_init()
 
                         if(peers_cnt > 0) {
                             have_rpr = true;
@@ -1020,7 +992,7 @@ static void* replication_thread(void* args) {
                                 } else {
                                     ++(*pending);
 
-                                    out_data_i_ctx* ctx = (out_data_i_ctx*)malloc(
+                                    out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(
                                         sizeof(*ctx));
 
                                     ctx->count_replicas = count_replicas;
@@ -1055,7 +1027,7 @@ static void* replication_thread(void* args) {
                     }
 
                     if(!have_rpr) {
-                        out_data_i_ctx* ctx = (out_data_i_ctx*)malloc(sizeof(*ctx));
+                        out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(sizeof(*ctx));
 
                         ctx->count_replicas = count_replicas;
                         ctx->pending = pending;

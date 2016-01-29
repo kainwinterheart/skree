@@ -67,39 +67,38 @@ namespace Skree {
         }
 
         static muh_str_t* X::out_init(
-            const uint32_t& peer_id_len, const char*& peer_id,
-            const uint32_t& event_id_len, const char*& event_id
+            const muh_str_t*& peer_id, const known_event_t*& event,
+            const uint64_t& rid
         ) {
             muh_str_t* out = (muh_str_t*)malloc(sizeof(*out));
             out->len = 1;
             out->data = (char*)malloc(
                 out->len
-                + sizeof(ctx->peer_id->len)
-                + ctx->peer_id->len
-                + ctx->event->id_len_size
-                + ctx->event->id_len
-                + sizeof(ctx->rid)
+                + sizeof(peer_id->len)
+                + peer_id->len
+                + event->id_len_size
+                + event->id_len
+                + sizeof(rid)
             );
 
-            x_req[0] = 'x';
+            out->data[0] = 'x';
 
-            uint32_t peer_id_len_net = htonl(ctx->peer_id->len);
-            memcpy(x_req + x_req_len, &peer_id_len_net, sizeof(peer_id_len_net));
-            x_req_len += sizeof(peer_id_len_net);
+            uint32_t peer_id_len_net = htonl(peer_id->len);
+            memcpy(ctx->data + ctx->len, (char*)&peer_id_len_net, sizeof(peer_id_len_net));
+            ctx->len += sizeof(peer_id_len_net);
 
-            memcpy(x_req + x_req_len, ctx->peer_id->data, ctx->peer_id->len);
-            x_req_len += ctx->peer_id->len;
+            memcpy(ctx->data + ctx->len, peer_id->data, peer_id->len);
+            ctx->len += peer_id->len;
 
-            memcpy(x_req + x_req_len, &(ctx->event->id_len_net),
-                ctx->event->id_len_size);
-            x_req_len += ctx->event->id_len_size;
+            memcpy(ctx->data + ctx->len, (char*)&(event->id_len_net), event->id_len_size);
+            ctx->len += event->id_len_size;
 
-            memcpy(x_req + x_req_len, ctx->event->id, ctx->event->id_len);
-            x_req_len += ctx->event->id_len;
+            memcpy(ctx->data + ctx->len, event->id, event->id_len);
+            ctx->len += event->id_len;
 
-            uint64_t rid_net = htonll(ctx->rid);
-            memcpy(x_req + x_req_len, &rid_net, sizeof(rid_net));
-            x_req_len += sizeof(rid_net);
+            uint64_t rid_net = htonll(rid);
+            memcpy(ctx->data + ctx->len, (char*)&rid_net, sizeof(rid_net));
+            ctx->len += sizeof(rid_net);
 
             return out;
         }
