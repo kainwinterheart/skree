@@ -98,5 +98,41 @@ namespace Skree {
 
             free(in_key);
         }
+
+        static muh_str_t* C::out_init(
+            const known_event_t*& event, const uint64_t& rid_net,
+            const uint64_t& rin_len, const char*& rin
+        ) {
+            muh_str_t* out = (muh_str_t*)malloc(sizeof(*out));
+            out->len = 1;
+            out->data = (char*)malloc(
+                out->len
+                + event->id_len_size
+                + event->id_len
+                + sizeof(rid_net)
+                + sizeof(rin_len)
+                + rin_len
+            );
+
+            out->data[0] = opcode();
+
+            memcpy(out->data + out->len, (char*)&(event->id_len_net), event->id_len_size);
+            out->len += event->id_len_size;
+
+            memcpy(out->data + out->len, event->id, event->id_len);
+            out->len += event->id_len;
+
+            memcpy(out->data + out->len, (char*)&rid_net, sizeof(rid_net));
+            out->len += sizeof(rid_net);
+
+            uint32_t rin_len_net = htonl(rin_len);
+            memcpy(out->data + out->len, (char*)&rin_len_net, sizeof(rin_len_net));
+            out->len += sizeof(rin_len_net);
+
+            memcpy(out->data + out->len, rin, rin_len);
+            out->len += rin_len;
+
+            return out;
+        }
     }
 }

@@ -93,39 +93,38 @@ namespace Skree {
             }
         }
 
-        static muh_str_t* I::out_init() {
+        static muh_str_t* I::out_init(
+            const muh_str_t*& peer_id, const known_event_t*& event,
+            const uint64_t& rid_net
+        ) {
             muh_str_t* out = (muh_str_t*)malloc(sizeof(*out));
             out->len = 1;
-            // TODO
             out->data = (char*)malloc(
-                i_req_len
-                + sizeof((*_peer_id)->len)
-                + (*_peer_id)->len
+                out->len
+                + sizeof(peer_id->len)
+                + peer_id->len
                 + event->id_len_size
                 + event->id_len
-                + sizeof(rid)
+                + sizeof(rid_net)
             );
 
-            i_req[0] = 'i';
+            out->data[0] = opcode();
 
-            uint32_t _peer_id_len_net = htonl((*_peer_id)->len);
-            memcpy(i_req + i_req_len, &_peer_id_len_net,
-                sizeof(_peer_id_len_net));
-            i_req_len += sizeof(_peer_id_len_net);
+            uint32_t peer_id_len_net = htonl(peer_id->len);
+            memcpy(out->data + out->len, &peer_id_len_net, sizeof(peer_id_len_net));
+            out->len += sizeof(peer_id_len_net);
 
-            memcpy(i_req + i_req_len, (*_peer_id)->data, (*_peer_id)->len);
-            i_req_len += (*_peer_id)->len;
+            memcpy(out->data + out->len, peer_id->data, peer_id->len);
+            out->len += peer_id->len;
 
-            memcpy(i_req + i_req_len, &(event->id_len_net),
-                event->id_len_size);
-            i_req_len += event->id_len_size;
+            memcpy(out->data + out->len, (char*)&(event->id_len_net), event->id_len_size);
+            out->len += event->id_len_size;
 
-            memcpy(i_req + i_req_len, event->id,
-                event->id_len);
-            i_req_len += event->id_len;
+            memcpy(out->data + out->len, event->id, event->id_len);
+            out->len += event->id_len;
 
-            memcpy(i_req + i_req_len, &rid_net, sizeof(rid_net));
-            i_req_len += sizeof(rid_net);
+            memcpy(out->data + out->len, (char*)&rid_net, sizeof(rid_net));
+            out->len += sizeof(rid_net);
 
             return out;
         }

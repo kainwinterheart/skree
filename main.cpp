@@ -972,7 +972,7 @@ static void* replication_thread(void* args) {
 
                         *count_replicas = peers_cnt;
 
-                        // TODO: Actions::I::out_init()
+                        auto i_req = Actions::I::out_init(*peer_id, event, rid_net);
 
                         if(peers_cnt > 0) {
                             have_rpr = true;
@@ -1018,7 +1018,7 @@ static void* replication_thread(void* args) {
                                     item->err = &Client::propose_self_f_cb;
                                     item->opcode = true;
 
-                                    it->second->push_write_queue(i_req_len, i_req, item);
+                                    it->second->push_write_queue(i_req->len, i_req->data, item);
                                 }
 
                                 --peers_cnt;
@@ -1047,37 +1047,12 @@ static void* replication_thread(void* args) {
                     }
 
                 } else {
-                    size_t c_req_len = 1;
-                    char* c_req = (char*)malloc(c_req_len
-                        + event->id_len_size
-                        + event->id_len
-                        + sizeof(rid_net)
-                        + sizeof(rin_len)
-                        + rin_len
-                    );
-
-                    c_req[0] = 'c';
-
-                    memcpy(c_req + c_req_len, (char*)&(event->id_len_net),
-                        event->id_len_size);
-                    c_req_len += event->id_len_size;
-
-                    memcpy(c_req + c_req_len, event->id, event->id_len);
-                    c_req_len += event->id_len;
-
-                    memcpy(c_req + c_req_len, (char*)&rid_net, sizeof(rid_net));
-                    c_req_len += sizeof(rid_net);
-
-                    uint32_t rin_len_net = htonl(rin_len);
-                    memcpy(c_req + c_req_len, (char*)&rin_len_net, sizeof(rin_len_net));
-                    c_req_len += sizeof(rin_len_net);
-
-                    memcpy(c_req + c_req_len, rin, rin_len);
-                    c_req_len += rin_len;
+                    auto c_req = Actions::C::out_init(event, rid_net, rin_len, rin);
 
                     PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
                         sizeof(*item));
 
+                    // TODO: rin_str's type
                     muh_str_t* rin_str = (muh_str_t*)malloc(sizeof(*rin_str));
 
                     rin_str->len = rin_len;
@@ -1108,7 +1083,7 @@ static void* replication_thread(void* args) {
                     item->err = &Client::ping_task_f_cb;
                     item->opcode = true;
 
-                    peer->push_write_queue(c_req_len, c_req, item);
+                    peer->push_write_queue(c_req->len, c_req->data, item);
                 }
 
                 next();
