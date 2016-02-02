@@ -496,42 +496,6 @@ static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events) {
     return;
 }
 
-static void* client_thread(void* args) {
-    struct ev_loop* loop = ev_loop_new(0);
-
-    while(true) {
-        ev_run(loop, EVRUN_NOWAIT);
-
-        if(!new_clients.empty()) {
-            pthread_mutex_lock(&new_clients_mutex);
-
-            if(!new_clients.empty()) {
-                new_client_t* new_client = new_clients.front();
-                new_clients.pop();
-
-                pthread_mutex_unlock(&new_clients_mutex);
-
-                Client* client = new Client(
-                    new_client->fh,
-                    loop,
-                    new_client->s_in,
-                    new_client->s_in_len
-                );
-
-                if(new_client->cb != NULL)
-                    new_client->cb(client);
-
-                free(new_client);
-
-            } else {
-                pthread_mutex_unlock(&new_clients_mutex);
-            }
-        }
-    }
-
-    return NULL;
-}
-
 static void discovery_cb1(Client* client) {
     auto w_req = Actions::W::out_init();
 
