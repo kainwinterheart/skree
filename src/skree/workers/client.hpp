@@ -6,7 +6,6 @@
 namespace Skree {
     namespace Workers {
         class Client : public Skree::Base::Worker {
-            // TODO
         }
     }
 }

@@ -11,7 +11,7 @@ namespace Skree {
             Skree::Server* server;
             const void* args;
         public:
-            Action(Skree::Server* _server, const void* _args)
+            Action(Skree::Server* _server, const void* _args = NULL)
                 : server(_server), args(_args) {
                 thread = (pthread_t*)malloc(sizeof(*thread));
                 pthread_create(thread, NULL, __run, (void*)this);
