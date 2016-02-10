@@ -565,6 +565,7 @@ namespace Skree {
             pending_reads.push_back(_item);
     }
 
+    // TODO: should go to Skree::Workers::Discovery
     PendingReadsQueueItem* Client::discovery_cb2(PendingReadCallbackArgs* args) {
         if(args->data[0] == SKREE_META_OPCODE_K) {
             PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(

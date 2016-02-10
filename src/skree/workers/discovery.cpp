@@ -2,11 +2,11 @@
 
 namespace Skree {
     namespace Workers {
-        void Discovery::run() { // TODO
+        void Discovery::run() {
             while(true) {
                 for(
-                    peers_to_discover_t::const_iterator it = peers_to_discover.cbegin();
-                    it != peers_to_discover.cend();
+                    peers_to_discover_t::const_iterator it = server->peers_to_discover->cbegin();
+                    it != server->peers_to_discover->cend();
                     ++it
                 ) {
                     peer_to_discover_t* peer_to_discover = it->second;
@@ -53,9 +53,10 @@ namespace Skree {
                             continue;
                         }
 
+                        // TODO: discovery should be async too
                         timeval tv;
-                        tv.tv_sec = (discovery_timeout_milliseconds / 1000);
-                        tv.tv_usec = ((discovery_timeout_milliseconds % 1000) * 1000);
+                        tv.tv_sec = (server->discovery_timeout_milliseconds / 1000);
+                        tv.tv_usec = ((server->discovery_timeout_milliseconds % 1000) * 1000);
 
                         if(setsockopt(fh, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1) {
                             perror("setsockopt");
@@ -103,37 +104,38 @@ namespace Skree {
                             bool found = false;
 
                             {
-                                pthread_mutex_lock(&known_peers_mutex);
+                                pthread_mutex_lock(server->known_peers_mutex);
 
                                 known_peers_t::const_iterator it =
-                                    known_peers_by_conn_id.find(conn_id);
+                                    server->known_peers_by_conn_id->find(conn_id);
 
-                                if(it != known_peers_by_conn_id.cend())
+                                if(it != server->known_peers_by_conn_id->cend())
                                     found = true;
 
-                                pthread_mutex_unlock(&known_peers_mutex);
+                                pthread_mutex_unlock(server->known_peers_mutex);
                             }
 
                             if(!found) {
-                                pthread_mutex_lock(&known_peers_mutex);
+                                pthread_mutex_lock(server->known_peers_mutex);
 
-                                known_peers_t::const_iterator it = known_peers.find(conn_id);
+                                known_peers_t::const_iterator it =
+                                    server->known_peers->find(conn_id);
 
-                                if(it != known_peers.cend())
+                                if(it != server->known_peers->cend())
                                     found = true;
 
-                                pthread_mutex_unlock(&known_peers_mutex);
+                                pthread_mutex_unlock(server->known_peers_mutex);
                             }
 
                             if(!found) {
-                                pthread_mutex_lock(&me_mutex);
+                                pthread_mutex_lock(server->me_mutex);
 
-                                me_t::const_iterator it = me.find(conn_id);
+                                me_t::const_iterator it = server->me->find(conn_id);
 
-                                if(it != me.cend())
+                                if(it != server->me->cend())
                                     found = true;
 
-                                pthread_mutex_unlock(&me_mutex);
+                                pthread_mutex_unlock(server->me_mutex);
                             }
 
                             free(conn_id);
@@ -148,13 +150,14 @@ namespace Skree {
                                     sizeof(*new_client));
 
                                 new_client->fh = fh;
-                                new_client->cb = discovery_cb1;
+                                new_client->cb = Discovery::cb1;
                                 new_client->s_in = addr;
                                 new_client->s_in_len = addr_len;
 
-                                pthread_mutex_lock(&new_clients_mutex);
-                                new_clients.push(new_client);
-                                pthread_mutex_unlock(&new_clients_mutex);
+                                pthread_mutex_lock(server->new_clients_mutex);
+                                // new_clients.push(new_client);
+                                server->push_new_clients(new_client); // TODO
+                                pthread_mutex_unlock(server->new_clients_mutex);
                             }
                         }
 
@@ -166,6 +169,20 @@ namespace Skree {
 
                 sleep(5);
             }
+        }
+
+        static void Discovery::cb1(Client* client) {
+            auto w_req = Skree::Actions::W::out_init();
+
+            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(sizeof(*item));
+
+            item->len = 1;
+            item->cb = &Client::discovery_cb2; // TODO
+            item->ctx = NULL;
+            item->err = NULL;
+            item->opcode = true;
+
+            client->push_write_queue(w_req->len, w_req->data, item);
         }
     }
 }

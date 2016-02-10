@@ -496,20 +496,6 @@ static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events) {
     return;
 }
 
-static void discovery_cb1(Client* client) {
-    auto w_req = Actions::W::out_init();
-
-    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(sizeof(*item));
-
-    item->len = 1;
-    item->cb = &Client::discovery_cb2;
-    item->ctx = NULL;
-    item->err = NULL;
-    item->opcode = true;
-
-    client->push_write_queue(w_req->len, w_req->data, item);
-}
-
 static void socket_cb(struct ev_loop* loop, ev_io* watcher, int events) {
     sockaddr_in* addr = (sockaddr_in*)malloc(sizeof(*addr));
     socklen_t len = sizeof(*addr);
