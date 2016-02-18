@@ -150,7 +150,7 @@ namespace Skree {
                                     sizeof(*new_client));
 
                                 new_client->fh = fh;
-                                new_client->cb = Discovery::cb1;
+                                new_client->cb = &Discovery::cb1;
                                 new_client->s_in = addr;
                                 new_client->s_in_len = addr_len;
 
@@ -177,12 +177,199 @@ namespace Skree {
             PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(sizeof(*item));
 
             item->len = 1;
-            item->cb = &Client::discovery_cb2; // TODO
-            item->ctx = NULL;
+            item->cb = &Discovery::cb2;
+            item->ctx = this;
             item->err = NULL;
             item->opcode = true;
 
             client->push_write_queue(w_req->len, w_req->data, item);
+        }
+
+        // TODO
+        static PendingReadsQueueItem* Discovery::cb6(PendingReadCallbackArgs* args) {
+            if(args->data[0] == SKREE_META_OPCODE_K) {
+                uint64_t in_pos = 0;
+                uint32_t _tmp;
+                auto& server = args->server;
+
+                memcpy(&_tmp, args->data + in_pos, sizeof(_tmp));
+                in_pos += sizeof(_tmp);
+                uint32_t cnt = ntohl(_tmp);
+                uint32_t host_len;
+                char* host;
+                uint32_t port;
+                char* _peer_id;
+                peer_to_discover_t* peer_to_discover;
+                bool got_new_peers = false;
+                peers_to_discover_t::const_iterator prev_item;
+
+                pthread_mutex_lock(server->peers_to_discover_mutex);
+
+                while(cnt > 0) {
+                    --cnt;
+                    memcpy(&_tmp, args->data + in_pos, sizeof(_tmp));
+                    host_len = ntohl(_tmp);
+
+                    host = (char*)malloc(host_len + 1);
+                    memcpy(host, args->data + in_pos, host_len);
+                    in_pos += host_len;
+                    host[host_len] = '\0';
+
+                    memcpy(&_tmp, args->data + in_pos, sizeof(_tmp));
+                    in_pos += sizeof(_tmp);
+                    port = ntohl(_tmp);
+
+                    _peer_id = make_peer_id(host_len, host, port);
+
+                    prev_item = server->peers_to_discover->find(_peer_id);
+
+                    if(prev_item == server->peers_to_discover->cend()) {
+                        peer_to_discover = (peer_to_discover_t*)malloc(
+                            sizeof(*peer_to_discover));
+
+                        peer_to_discover->host = host;
+                        peer_to_discover->port = port;
+
+                        (*(server->peers_to_discover))[_peer_id] = peer_to_discover;
+                        got_new_peers = true;
+
+                    } else {
+                        free(_peer_id);
+                        free(host);
+                    }
+                }
+
+                if(got_new_peers)
+                    server->save_peers_to_discover();
+
+                pthread_mutex_unlock(server->peers_to_discover_mutex);
+            }
+
+            return nullptr;
+        }
+
+        static PendingReadsQueueItem* Discovery::cb5(PendingReadCallbackArgs* args) {
+            auto& server = args->server;
+
+            if(args->data[0] == SKREE_META_OPCODE_K) {
+                pthread_mutex_lock(server->known_peers_mutex);
+
+                // peer_id is guaranteed to be set here
+                known_peers_t::const_iterator known_peer =
+                    server->known_peers->find(peer_id);
+
+                if(known_peer == server->known_peers->cend()) {
+                    (*(server->known_peers))[peer_id] = args->client;
+                    (*(server->known_peers_by_conn_id[args->client->get_conn_id()])) =
+                        args->client;
+
+                } else {
+                    *(args->stop) = true;
+                }
+
+                pthread_mutex_unlock(server->known_peers_mutex);
+
+                if(!*(args->stop)) {
+                    auto l_req = Skree::Actions::L::out_init();
+
+                    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                        sizeof(*item));
+
+                    item->len = 1;
+                    item->cb = &Discovery::cb6;
+                    item->ctx = NULL;
+                    item->err = NULL;
+                    item->opcode = true;
+
+                    args->client->push_write_queue(l_req->len, l_req->data, item);
+                }
+
+            } else {
+                *(args->stop) = true;
+            }
+
+            return nullptr;
+        }
+
+        static PendingReadsQueueItem* Discovery::cb2(PendingReadCallbackArgs* args) {
+            if(args->data[0] == SKREE_META_OPCODE_K) {
+                uint64_t in_pos = 0;
+                uint32_t _tmp;
+
+                memcpy(&_tmp, args->data + in_pos, sizeof(_tmp));
+                in_pos += sizeof(_tmp);
+                uint32_t len = ntohl(_tmp);
+
+                char* peer_name = (char*)malloc(len);
+                memcpy(peer_name, args->data + in_pos, len);
+                in_pos += len;
+
+                _tmp = args->client->get_conn_port();
+                char* _peer_id = make_peer_id(len, peer_name, _tmp);
+                bool accepted = false;
+                auto& server = args->server;
+
+                pthread_mutex_lock(server->known_peers_mutex);
+
+                known_peers_t::const_iterator known_peer =
+                    server->known_peers->find(_peer_id);
+
+                if(known_peer == server->known_peers->cend()) {
+                    if(strcmp(_peer_id, server->my_peer_id) == 0) {
+                        pthread_mutex_lock(server->me_mutex);
+
+                        me_t::const_iterator it = server->me->find(_peer_id);
+
+                        if(it == server->me->cend()) {
+                            char* _conn_peer_id = args->client->get_conn_id();
+
+                            (*(server->me))[_peer_id] = true;
+                            (*(server->me))[strdup(_conn_peer_id)] = true;
+
+                        } else {
+                            free(_peer_id);
+                        }
+
+                        pthread_mutex_unlock(server->me_mutex);
+
+                    } else {
+                        args->client->set_peer_name(len, peer_name);
+                        args->client->set_peer_port(_tmp);
+                        args->client->set_peer_id(_peer_id);
+
+                        accepted = true;
+                    }
+
+                } else {
+                    free(_peer_id);
+                }
+
+                pthread_mutex_unlock(server->known_peers_mutex);
+
+                if(accepted) {
+                    size_t h_len = 0;
+                    auto h_req = Skree::Actions::H::out_init(server);
+
+                    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
+                        sizeof(*item));
+
+                    item->len = 1;
+                    item->cb = &Discovery::cb5;
+                    // item->ctx = this; // TODO
+                    item->err = NULL;
+                    item->opcode = true;
+
+                    args->client->push_write_queue(h_req->len, h_req->data, item);
+
+                } else {
+                    *(args->stop) = true;
+                }
+
+            } else {
+                *(args->stop) = true;
+            }
+
+            return nullptr;
         }
     }
 }

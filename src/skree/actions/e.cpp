@@ -31,7 +31,8 @@ namespace Skree {
             const uint32_t events_count = cnt;
             in_packet_e_ctx_event* events [events_count];
 
-            while(cnt-- > 0) {
+            while(cnt > 0) {
+                --cnt;
                 in_packet_e_ctx_event* event = (in_packet_e_ctx_event*)malloc(
                     sizeof(*event));
 

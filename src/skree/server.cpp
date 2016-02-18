@@ -307,7 +307,8 @@ namespace Skree {
                 uint32_t _cnt = ctx->cnt;
                 uint32_t num_inserted = 0;
 
-                while(_cnt-- > 0) {
+                while(_cnt > 0) {
+                    --_cnt;
                     in_packet_e_ctx_event* event = ctx->events[_cnt];
 
                     event->id = (char*)malloc(21);

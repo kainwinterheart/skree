@@ -36,7 +36,8 @@ namespace Skree {
             in_packet_r_ctx_event* events [events_count];
             uint64_t _tmp64;
 
-            while(cnt-- > 0) {
+            while(cnt > 0) {
+                --cnt;
                 in_packet_r_ctx_event* event = (in_packet_r_ctx_event*)malloc(
                     sizeof(*event));
 
@@ -65,7 +66,8 @@ namespace Skree {
             const uint32_t peers_count = cnt;
             packet_r_ctx_peer* peers [peers_count];
 
-            while(cnt-- > 0) {
+            while(cnt > 0) {
+                --cnt;
                 packet_r_ctx_peer* peer = (packet_r_ctx_peer*)malloc(
                     sizeof(*peer));
 

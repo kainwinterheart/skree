@@ -181,6 +181,8 @@ struct PendingReadCallbackArgs {
     char** out_data;
     bool* stop;
     void* ctx;
+    Skree::Client* client;
+    Skree::Server* server;
 };
 
 struct PendingReadsQueueItem {
