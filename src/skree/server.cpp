@@ -605,4 +605,113 @@ namespace Skree {
             free(r_ctx);
         }
     }
+
+    void save_peers_to_discover() {
+        pthread_mutex_lock(&peers_to_discover_mutex);
+
+        size_t cnt = htonll(peers_to_discover.size());
+        size_t dump_len = 0;
+        char* dump = (char*)malloc(sizeof(cnt));
+
+        memcpy(dump + dump_len, &cnt, sizeof(cnt));
+        dump_len += sizeof(cnt);
+
+        peer_to_discover_t* peer;
+        size_t len;
+        uint32_t port;
+        size_t _len;
+
+        for(
+            peers_to_discover_t::const_iterator it = peers_to_discover.cbegin();
+            it != peers_to_discover.cend();
+            ++it
+        ) {
+            peer = it->second;
+
+            len = strlen(peer->host);
+            port = htonl(peer->port);
+
+            dump = (char*)realloc(dump,
+                dump_len
+                + sizeof(len)
+                + len
+                + sizeof(port)
+            );
+
+            _len = htonll(len);
+            memcpy(dump + dump_len, &_len, sizeof(_len));
+            dump_len += sizeof(_len);
+
+            memcpy(dump + dump_len, peer->host, len);
+            dump_len += len;
+
+            memcpy(dump + dump_len, &port, sizeof(port));
+            dump_len += sizeof(port);
+        }
+
+        pthread_mutex_unlock(&peers_to_discover_mutex);
+
+        const char* key = "peers_to_discover";
+        const size_t key_len = strlen(key);
+
+        if(!db.set(key, key_len, dump, dump_len))
+            fprintf(stderr, "Failed to save peers list: %s\n", db.error().name());
+    }
+
+    void load_peers_to_discover() {
+        const char* key = "peers_to_discover";
+        const size_t key_len = strlen(key);
+        size_t value_len;
+
+        char* value = db.get(key, key_len, &value_len);
+
+        if(value != NULL) {
+            size_t offset = 0;
+
+            size_t cnt;
+            memcpy(&cnt, value + offset, sizeof(cnt));
+            cnt = ntohll(cnt);
+            offset += sizeof(cnt);
+
+            size_t hostname_len;
+            char* hostname;
+            uint32_t port;
+            char* peer_id;
+            peers_to_discover_t::const_iterator it;
+            peer_to_discover_t* peer;
+
+            while(cnt > 0) {
+                --cnt;
+                memcpy(&hostname_len, value + offset, sizeof(hostname_len));
+                hostname_len = ntohll(hostname_len);
+                offset += sizeof(hostname_len);
+
+                hostname = (char*)malloc(hostname_len + 1);
+                memcpy(hostname, value + offset, hostname_len);
+                hostname[hostname_len] = '\0';
+                offset += hostname_len;
+
+                memcpy(&port, value + offset, sizeof(port));
+                port = ntohl(port);
+                offset += sizeof(port);
+
+                peer_id = make_peer_id(hostname_len, hostname, port);
+
+                it = peers_to_discover.find(peer_id);
+
+                if(it == peers_to_discover.cend()) {
+                    peer = (peer_to_discover_t*)malloc(sizeof(*peer));
+
+                    peer->host = hostname;
+                    peer->port = port;
+
+                    peers_to_discover[peer_id] = peer;
+
+                } else {
+                    free(peer_id);
+                    free(hostname);
+                }
+            }
+        }
+    }
 }
