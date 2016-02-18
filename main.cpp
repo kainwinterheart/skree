@@ -524,29 +524,6 @@ static void socket_cb(struct ev_loop* loop, ev_io* watcher, int events) {
     return;
 }
 
-static void* synchronization_thread(void* args) {
-    while(true) {
-        sleep(1);
-        db.synchronize();
-
-        pthread_mutex_lock(&stat_mutex);
-
-        if(stat_num_inserts > 0)
-            printf("number of inserts for last second: %llu\n", stat_num_inserts);
-
-        if(stat_num_replications > 0)
-            printf("number of replication inserts for last second: %llu\n",
-                stat_num_replications);
-
-        stat_num_inserts = 0;
-        stat_num_replications = 0;
-
-        pthread_mutex_unlock(&stat_mutex);
-    }
-
-    return NULL;
-}
-
 int main(int argc, char** argv) {
     std::string db_file_name;
     std::string known_events_file_name;

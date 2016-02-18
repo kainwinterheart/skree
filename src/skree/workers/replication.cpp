@@ -2,7 +2,7 @@
 
 namespace Skree {
     namespace Workers {
-        void* Replication::run() {
+        void Replication::run() {
             while(true) {
                 std::vector<muh_str_t*> peer_ids;
 
@@ -444,8 +444,6 @@ namespace Skree {
                     }
                 }
             }
-
-            return NULL;
         }
     }
 }
