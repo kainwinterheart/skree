@@ -30,7 +30,7 @@ namespace Skree {
         uint32_t conn_port;
         char* peer_id;
         char* conn_id;
-        std::deque<PendingReadsQueueItem**> pending_reads;
+        std::deque<Skree::Base::PendingRead::QueueItem> pending_reads;
         sockaddr_in* s_in;
         socklen_t s_in_len;
         Server server;

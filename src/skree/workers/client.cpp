@@ -1,4 +1,4 @@
-#include "client.cpp"
+#include "client.hpp"
 
 namespace Skree {
     namespace Workers {
@@ -8,14 +8,14 @@ namespace Skree {
             while(true) {
                 ev_run(loop, EVRUN_NOWAIT);
 
-                if(!server->new_clients.empty()) {
-                    pthread_mutex_lock(&server->new_clients_mutex);
+                if(!server->new_clients->empty()) {
+                    pthread_mutex_lock(server->new_clients_mutex);
 
-                    if(!server->new_clients.empty()) {
-                        new_client_t* new_client = new_clients.front();
-                        new_clients.pop();
+                    if(!server->new_clients->empty()) {
+                        new_client_t* new_client = server->new_clients->front();
+                        server->new_clients->pop();
 
-                        pthread_mutex_unlock(&server->new_clients_mutex);
+                        pthread_mutex_unlock(server->new_clients_mutex);
 
                         Skree::Client* client = new Skree::Client(
                             new_client->fh,
@@ -30,7 +30,7 @@ namespace Skree {
                         free(new_client);
 
                     } else {
-                        pthread_mutex_unlock(&server->new_clients_mutex);
+                        pthread_mutex_unlock(server->new_clients_mutex);
                     }
                 }
             }

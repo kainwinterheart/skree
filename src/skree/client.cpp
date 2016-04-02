@@ -1,4 +1,5 @@
 #include "client.hpp"
+#include "base/pending_read.hpp"
 
 namespace Skree {
     void Client::ordinary_packet_cb(
@@ -31,18 +32,17 @@ namespace Skree {
                 // If there is a pending read - incoming data should
                 // be passed to such a callback
 
-                PendingReadsQueueItem** _item = pending_reads.front();
-                PendingReadsQueueItem* item = *_item;
+                const Skree::Base::PendingRead::QueueItem&& item (std::move(pending_reads.front()));
 
                 if(
                     (
-                        (item->opcode == true)
+                        (item.opcode == true)
                         && (
                             (opcode == SKREE_META_OPCODE_K) || (opcode == SKREE_META_OPCODE_F)
                             || (opcode == SKREE_META_OPCODE_A)
                         )
                     )
-                    || (item->opcode == false)
+                    || (item.opcode == false)
                 ) {
                     // If pending read waits for opcode, and it is the
                     // reply opcode we've got here, or if pending read
@@ -50,35 +50,23 @@ namespace Skree {
 
                     --in_packet_len;
 
-                    if(read_queue_length >= item->len) {
+                    if(read_queue_length >= item.len) {
                         bool stop = false;
 
-                        PendingReadCallbackArgs args = {
+                        Skree::Base::PendingRead::Callback::Args args = {
                             .data = read_queue + in_packet_len,
-                            .len = item->len,
-                            .out_data = &out_data,
-                            .out_len = &out_len,
-                            .stop = &stop,
-                            .ctx = item->ctx
+                            .out_data = out_data,
+                            .out_len = out_len,
+                            .stop = stop
                         };
 
-                        PendingReadsQueueItem* new_item = (this ->* (item->cb))(&args);
-                        in_packet_len += item->len;
+                        const Skree::Base::PendingRead::QueueItem&& new_item (item.run(this, item, args));
+                        in_packet_len += item.len;
 
-                        free(item);
+                        pending_reads.pop_front();
 
-                        if(new_item == nullptr) {
-                            // If pending read has received all its data -
-                            // remove it from the queue
-
-                            pending_reads.pop_front();
-                            free(_item);
-
-                        } else {
-                            // If pending read requests more data -
-                            // wait for it
-
-                            *_item = new_item;
+                        if(!new_item.noop) {
+                            push_pending_reads_queue(new_item, true);
                         }
 
                         if(stop) {
@@ -190,20 +178,11 @@ namespace Skree {
         pthread_mutex_unlock(&known_peers_mutex);
 
         while(!pending_reads.empty()) {
-            PendingReadsQueueItem** _item = pending_reads.front();
-            PendingReadsQueueItem* item = *_item;
+            const Skree::Base::PendingRead::QueueItem item (std::move(pending_reads.front()));
 
-            if(item->ctx != NULL) {
-                if(item->err == NULL) {
-                    fprintf(stderr, "Don't known how to free pending read context\n");
-
-                } else {
-                    item->err(item->ctx);
-                }
+            if(!item.cb.noop()) {
+                item.cb.error(this, item);
             }
-
-            free(item);
-            free(_item);
 
             pending_reads.pop_front();
         }
@@ -290,13 +269,13 @@ namespace Skree {
     }
 
     // TODO: use muh_str_t instead of 'len' and 'data'
-    void Client::push_write_queue(size_t len, char* data, PendingReadsQueueItem* cb) {
+    void Client::push_write_queue(size_t len, char* data, const Skree::Base::PendingRead::QueueItem& cb) {
         WriteQueueItem* item = (WriteQueueItem*)malloc(sizeof(*item));
 
         item->len = len;
         item->data = data;
         item->pos = 0;
-        item->cb = cb;
+        item->cb = std::move(cb);
 
         pthread_mutex_lock(&write_queue_mutex);
 
@@ -308,71 +287,11 @@ namespace Skree {
         pthread_mutex_unlock(&write_queue_mutex);
     }
 
-    void Client::push_pending_reads_queue(PendingReadsQueueItem* item, bool front = false) {
-        PendingReadsQueueItem** _item = (PendingReadsQueueItem**)malloc(
-            sizeof(*_item));
-        *_item = item;
-
+    void Client::push_pending_reads_queue(const Skree::Base::PendingRead::QueueItem& item, bool front = false) {
         if(front)
-            pending_reads.push_front(_item);
+            pending_reads.push_front(std::move(item));
         else
-            pending_reads.push_back(_item);
-    }
-
-    PendingReadsQueueItem* Client::replication_cb(PendingReadCallbackArgs* args) {
-        out_packet_r_ctx* ctx = (out_packet_r_ctx*)(args->ctx);
-        --(ctx->pending);
-
-        if(args->data[0] == SKREE_META_OPCODE_K) {
-            packet_r_ctx_peer* peer =
-                (packet_r_ctx_peer*)malloc(sizeof(*peer));
-
-            peer->hostname_len = get_peer_name_len();
-            peer->hostname = get_peer_name();
-            peer->port = htonl(get_peer_port());
-
-            ctx->accepted_peers->push_back(peer);
-        }
-
-        server->begin_replication(ctx);
-
-        return nullptr;
-    }
-
-    static void Client::replication_skip_peer(void* _ctx) {
-        out_packet_r_ctx* ctx = (out_packet_r_ctx*)_ctx;
-        --(ctx->pending);
-
-        server->begin_replication(ctx);
-    }
-
-    PendingReadsQueueItem* Client::propose_self_k_cb(PendingReadCallbackArgs* args) {
-        out_data_i_ctx* ctx = (out_data_i_ctx*)(args->ctx);
-
-        pthread_mutex_lock(ctx->mutex);
-
-        --(*(ctx->pending));
-
-        if(args->data[0] == SKREE_META_OPCODE_K)
-            ++(*(ctx->acceptances));
-
-        continue_replication_exec(ctx);
-
-        pthread_mutex_unlock(ctx->mutex);
-
-        return nullptr;
-    }
-
-    static void Client::propose_self_f_cb(void* _ctx) {
-        out_data_i_ctx* ctx = (out_data_i_ctx*)_ctx;
-
-        pthread_mutex_lock(ctx->mutex);
-
-        --(*(ctx->pending));
-
-        continue_replication_exec(ctx);
-
-        pthread_mutex_unlock(ctx->mutex);
+            pending_reads.push_back(std::move(item));
     }
 
     static void Client::free_in_packet_e_ctx(void* _ctx) {
@@ -395,112 +314,71 @@ namespace Skree {
         free(ctx);
     }
 
-    PendingReadsQueueItem* Client::ping_task_k_cb(PendingReadCallbackArgs* args) {
-        out_data_c_ctx* ctx = (out_data_c_ctx*)(args->ctx);
+    static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events) {
+        struct client_bound_ev_io* watcher = (struct client_bound_ev_io*)_watcher;
+        Client*& client = watcher->client;
 
-        if(args->data[0] == SKREE_META_OPCODE_K) {
-            repl_clean(
-                ctx->failover_key_len,
-                ctx->failover_key,
-                ctx->wrinseq
-            );
-
-        } else {
-            ping_task_f_cb((void*)ctx);
+        if(events & EV_ERROR) {
+            printf("EV_ERROR!\n");
+            delete client;
+            return;
         }
 
-        unfailover(ctx->failover_key);
+        if(events & EV_READ) {
+            char* buf = (char*)malloc(read_size);
+            int read = recv(_watcher->fd, buf, read_size, 0);
 
-        // pthread_mutex_lock(ctx->mutex);
-        //
-        // pthread_mutex_unlock(ctx->mutex);
+            if(read > 0) {
+                // for(int i = 0; i < read; ++i)
+                //     printf("read from %s: 0x%.2X\n", client->get_peer_id(),buf[i]);
 
-        return nullptr;
-    }
+                client->push_read_queue(read, buf);
+                free(buf);
 
-    static void Client::ping_task_f_cb(void* _ctx) {
-        out_data_c_ctx* ctx = (out_data_c_ctx*)_ctx;
-        in_packet_r_ctx* r_ctx = (in_packet_r_ctx*)malloc(sizeof(*r_ctx));
-
-        r_ctx->hostname_len = ctx->client->get_peer_name_len();
-        r_ctx->port = ctx->client->get_peer_port();
-        r_ctx->hostname = strndup(
-            ctx->client->get_peer_name(),
-            r_ctx->hostname_len
-        );
-        r_ctx->event_name_len = ctx->event->id_len;
-        r_ctx->event_name = strndup(
-            ctx->event->id,
-            r_ctx->event_name_len
-        );
-        r_ctx->events = new std::list<in_packet_r_ctx_event*>();
-        r_ctx->cnt = 0;
-        r_ctx->peers = new std::list<packet_r_ctx_peer*>();
-
-        in_packet_r_ctx_event* event = (in_packet_r_ctx_event*)malloc(
-            sizeof(*event));
-
-        event->len = ctx->rin->len;
-        event->data = ctx->rin->data;
-        event->id = (char*)malloc(21);
-        sprintf(event->id, "%llu", ctx->rid);
-
-        r_ctx->events->push_back(event);
-
-        if(ctx->rpr != NULL) {
-            size_t rpr_len = ctx->rpr->len;
-            size_t rpr_offset = 0;
-
-            while(rpr_offset < rpr_len) {
-                size_t peer_id_len = strlen(ctx->rpr->data + rpr_offset);
-                char* peer_id = (char*)malloc(peer_id_len + 1);
-                memcpy(peer_id, ctx->rpr->data + rpr_offset, peer_id_len);
-                peer_id[peer_id_len] = '\0';
-                rpr_offset += peer_id_len + 1;
-
-                char* delimiter = rindex(peer_id, ':');
-
-                if(delimiter == NULL) {
-                    fprintf(stderr, "Invalid peer id: %s\n", peer_id);
-
-                } else {
-                    packet_r_ctx_peer* peer = (packet_r_ctx_peer*)malloc(
-                        sizeof(*peer));
-
-                    peer->hostname_len = delimiter - peer_id;
-                    peer->port = atoi(delimiter + 1);
-                    peer->hostname = (char*)malloc(peer->hostname_len + 1);
-
-                    memcpy(peer->hostname, peer_id, peer->hostname_len);
-                    peer->hostname[peer->hostname_len] = '\0';
-
-                    r_ctx->peers->push_back(peer);
+            } else if(read < 0) {
+                if((errno != EAGAIN) && (errno != EINTR)) {
+                    perror("recv");
+                    free(buf);
+                    delete client;
+                    return;
                 }
+
+            } else {
+                free(buf);
+                delete client;
+                return;
             }
         }
 
-        short result = repl_save(r_ctx, ctx->client);
+        if(events & EV_WRITE) {
+            WriteQueueItem* item = client->get_pending_write();
 
-        if(result == REPL_SAVE_RESULT_K) {
-            repl_clean(
-                ctx->failover_key_len,
-                ctx->failover_key,
-                ctx->wrinseq
-            );
+            if(item != NULL) {
+                int written = write(
+                    _watcher->fd,
+                    (item->data + item->pos),
+                    (item->len - item->pos)
+                );
 
-        } else if(result == REPL_SAVE_RESULT_F) {
-            fprintf(stderr, "repl_save() failed\n");
-            exit(1);
+                if(written < 0) {
+                    if((errno != EAGAIN) && (errno != EINTR)) {
+                        perror("write");
+                        delete client;
+                        return;
+                    }
 
-        } else {
-            fprintf(stderr, "Unexpected repl_save() result: %d\n", result);
-            exit(1);
+                } else {
+                    // for(int i = 0; i < written; ++i)
+                    //     printf("written to %s: 0x%.2X\n", client->get_peer_id(),((char*)(item->data + item->pos))[i]);
+
+                    item->pos += written;
+
+                    if((item->pos >= item->len) && (item->cb != NULL)) {
+                        client->push_pending_reads_queue(item->cb);
+                        item->cb = NULL;
+                    }
+                }
+            }
         }
-
-        unfailover(ctx->failover_key);
-
-        // pthread_mutex_lock(ctx->mutex);
-        //
-        // pthread_mutex_unlock(ctx->mutex);
     }
 }

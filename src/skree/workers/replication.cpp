@@ -6,7 +6,7 @@ namespace Skree {
             while(true) {
                 std::vector<muh_str_t*> peer_ids;
 
-                pthread_mutex_lock(&server->peers_to_discover_mutex);
+                pthread_mutex_lock(server->peers_to_discover_mutex);
 
                 for(
                     peers_to_discover_t::const_iterator it = server->peers_to_discover.cbegin();
@@ -21,7 +21,7 @@ namespace Skree {
                     peer_ids.push_back(item);
                 }
 
-                pthread_mutex_unlock(&server->peers_to_discover_mutex);
+                pthread_mutex_unlock(server->peers_to_discover_mutex);
 
                 std::random_shuffle(peer_ids.begin(), peer_ids.end());
 
@@ -361,14 +361,13 @@ namespace Skree {
                                             ctx->peers_cnt = peers_cnt;
                                             ctx->rid = rid;
 
-                                            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                                                sizeof(*item));
-
-                                            item->len = 1;
-                                            item->cb = &Client::propose_self_k_cb;
-                                            item->ctx = (void*)ctx;
-                                            item->err = &Client::propose_self_f_cb;
-                                            item->opcode = true;
+                                            const Skree::PendingReads::Callbacks::Replication::ProposeSelf cb (server);
+                                            const Skree::Base::PendingRead::QueueItem item {
+                                                .len = 1,
+                                                .cb = std::move(cb),
+                                                .ctx = (void*)ctx,
+                                                .opcode = true
+                                            };
 
                                             it->second->push_write_queue(i_req->len, i_req->data, item);
                                         }
@@ -400,12 +399,6 @@ namespace Skree {
                             }
 
                         } else {
-                            auto c_req = Skree::Actions::C::out_init(
-                                event, rid_net, rin_len, rin);
-
-                            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                                sizeof(*item));
-
                             // TODO: rin_str's type
                             muh_str_t* rin_str = (muh_str_t*)malloc(sizeof(*rin_str));
 
@@ -422,7 +415,6 @@ namespace Skree {
 
                             out_data_c_ctx* ctx = (out_data_c_ctx*)malloc(sizeof(*ctx));
 
-                            ctx->client = peer;
                             ctx->event = event;
                             ctx->rin = rin_str;
                             ctx->rpr = rpr_str;
@@ -431,12 +423,15 @@ namespace Skree {
                             ctx->failover_key = failover_key;
                             ctx->failover_key_len = suffix_len;
 
-                            item->len = 1;
-                            item->cb = &Client::ping_task_k_cb;
-                            item->ctx = (void*)ctx;
-                            item->err = &Client::ping_task_f_cb;
-                            item->opcode = true;
+                            const Skree::PendingReads::Callbacks::Replication::PingTask cb (server);
+                            const Skree::Base::PendingRead::QueueItem item {
+                                .len = 1,
+                                .cb = std::move(cb),
+                                .ctx = (void*)ctx,
+                                .opcode = true
+                            };
 
+                            auto c_req = Skree::Actions::C::out_init(event, rid_net, rin_len, rin);
                             peer->push_write_queue(c_req->len, c_req->data, item);
                         }
 

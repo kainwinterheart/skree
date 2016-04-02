@@ -579,14 +579,13 @@ namespace Skree {
 
                 ++(r_ctx->pending);
 
-                PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                    sizeof(*item));
-
-                item->len = 1;
-                item->cb = &Client::replication_cb;
-                item->ctx = (void*)r_ctx;
-                item->err = &Client::replication_skip_peer;
-                item->opcode = true;
+                const Skree::PendingReads::Callbacks::Replication cb (this);
+                const Skree::Base::PendingRead::QueueItem item {
+                    .len = 1,
+                    .cb = std::move(cb),
+                    .ctx = (void*)r_ctx,
+                    .opcode = true
+                };
 
                 peer->push_write_queue(r_len, r_req, item);
             }
@@ -712,6 +711,47 @@ namespace Skree {
                     free(hostname);
                 }
             }
+        }
+    }
+
+    static void socket_cb(struct ev_loop* loop, ev_io* watcher, int events) {
+        sockaddr_in* addr = (sockaddr_in*)malloc(sizeof(*addr));
+        socklen_t len = sizeof(*addr);
+
+        int fh = accept(watcher->fd, (sockaddr*)addr, &len);
+
+        if(fh < 0) {
+            perror("accept");
+            free(addr);
+            return;
+        }
+
+        new_client_t* new_client = (new_client_t*)malloc(sizeof(*new_client));
+
+        new_client->fh = fh;
+        new_client->cb = NULL;
+        new_client->s_in = addr;
+        new_client->s_in_len = len;
+
+        // TODO
+        pthread_mutex_lock(&new_clients_mutex);
+        new_clients.push(new_client);
+        pthread_mutex_unlock(&new_clients_mutex);
+    }
+
+    void unfailover(char* failover_key) {
+        {
+            failover_t::const_iterator it = failover.find(failover_key);
+
+            if(it != failover.cend())
+                failover.erase(it);
+        }
+
+        {
+            no_failover_t::const_iterator it = no_failover.find(failover_key);
+
+            if(it != no_failover.cend())
+                no_failover.erase(it);
         }
     }
 }

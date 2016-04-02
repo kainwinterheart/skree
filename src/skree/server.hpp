@@ -20,6 +20,13 @@
 #include "client.hpp"
 
 namespace Skree {
+    struct new_client_t {
+        int fh;
+        void (*cb) (Client*);
+        sockaddr_in* s_in;
+        socklen_t s_in_len;
+    };
+
     class Server {
     public:
         size_t read_size = 131072;
@@ -32,6 +39,7 @@ namespace Skree {
         uint64_t stat_num_inserts;
         uint64_t stat_num_replications;
         pthread_mutex_t stat_mutex;
+        pthread_mutex_t new_clients_mutex;
 
         DbWrapper db;
 
@@ -44,6 +52,8 @@ namespace Skree {
         size_t my_peer_id_len_size;
 
         Server() {}
+    private:
+        std::queue<new_client_t*> new_clients;
     }
 }
 

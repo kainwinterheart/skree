@@ -79,18 +79,6 @@
     (x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
 #endif
 
-class Client;
-
-struct new_client_t {
-    int fh;
-    void (*cb) (Client*);
-    sockaddr_in* s_in;
-    socklen_t s_in_len;
-};
-
-static std::queue<new_client_t*> new_clients;
-static pthread_mutex_t new_clients_mutex;
-
 struct char_pointer_comparator : public std::binary_function<char*, char*, bool> {
     bool operator()(const char* a, const char* b) const {
         return (strcmp(a, b) == 0);
@@ -174,16 +162,10 @@ struct client_bound_ev_io {
     Client* client;
 };
 
-struct PendingReadCallbackArgs {
-    size_t len;
-    size_t* out_len;
-    char* data;
-    char** out_data;
-    bool* stop;
-    void* ctx;
-    Skree::Client* client;
-    Skree::Server* server;
-};
+// struct server_bound_ev_io {
+//     ev_io watcher;
+//     Client* client;
+// };
 
 struct PendingReadsQueueItem {
     size_t len;
@@ -222,7 +204,6 @@ struct out_packet_i_ctx {
 };
 
 struct out_data_c_ctx {
-    Client* client;
     known_event_t* event;
     muh_str_t* rin;
     muh_str_t* rpr;
@@ -232,179 +213,8 @@ struct out_data_c_ctx {
     char* failover_key;
 };
 
-struct in_packet_c_ctx {
-    size_t event_name_len;
-    char* event_name;
-    uint64_t rid;
-    char* rin;
-    uint32_t rin_len;
-};
-
 static std::queue<out_packet_i_ctx*> replication_exec_queue;
 static pthread_mutex_t replication_exec_queue_mutex;
-
-static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events);
-
-static inline char* make_peer_id(size_t peer_name_len, char* peer_name, uint32_t peer_port) {
-    char* peer_id = (char*)malloc(peer_name_len
-        + 1 // :
-        + 5 // port string
-        + 1 // \0
-    );
-
-    memcpy(peer_id, peer_name, peer_name_len);
-    sprintf(peer_id + peer_name_len, ":%u", peer_port);
-
-    return peer_id;
-}
-
-static inline char* get_host_from_sockaddr_in(const sockaddr_in* s_in) {
-    char* conn_name = NULL;
-
-    if(s_in->sin_family == AF_INET) {
-        conn_name = (char*)malloc(INET_ADDRSTRLEN);
-        inet_ntop(AF_INET, &(s_in->sin_addr), conn_name, INET_ADDRSTRLEN);
-
-    } else {
-        conn_name = (char*)malloc(INET6_ADDRSTRLEN);
-        inet_ntop(AF_INET6, &(((sockaddr_in6*)s_in)->sin6_addr), conn_name, INET6_ADDRSTRLEN);
-    }
-
-    return conn_name;
-}
-
-static inline uint32_t get_port_from_sockaddr_in(const sockaddr_in* s_in) {
-    if(s_in->sin_family == AF_INET) {
-        return ntohs(s_in->sin_port);
-
-    } else {
-        return ntohs(((sockaddr_in6*)s_in)->sin6_port);
-    }
-}
-
-static inline void unfailover(char* failover_key) {
-    {
-        failover_t::const_iterator it = failover.find(failover_key);
-
-        if(it != failover.cend())
-            failover.erase(it);
-    }
-
-    {
-        no_failover_t::const_iterator it = no_failover.find(failover_key);
-
-        if(it != no_failover.cend())
-            no_failover.erase(it);
-    }
-}
-
-static inline void continue_replication_exec(out_packet_i_ctx*& ctx) {
-    if(*(ctx->pending) == 0) {
-        pthread_mutex_lock(&replication_exec_queue_mutex);
-
-        replication_exec_queue.push(ctx);
-
-        pthread_mutex_unlock(&replication_exec_queue_mutex);
-    }
-}
-
-static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events) {
-    struct client_bound_ev_io* watcher = (struct client_bound_ev_io*)_watcher;
-    Client* client = watcher->client;
-
-    if(events & EV_ERROR) {
-        printf("EV_ERROR!\n");
-
-        delete client;
-
-        return;
-    }
-
-    if(events & EV_READ) {
-        char* buf = (char*)malloc(read_size);
-        int read = recv(_watcher->fd, buf, read_size, 0);
-
-        if(read > 0) {
-            // for(int i = 0; i < read; ++i)
-            //     printf("read from %s: 0x%.2X\n", client->get_peer_id(),buf[i]);
-
-            client->push_read_queue(read, buf);
-            free(buf);
-
-        } else if(read < 0) {
-            if((errno != EAGAIN) && (errno != EINTR)) {
-                perror("recv");
-                free(buf);
-                delete client;
-                return;
-            }
-
-        } else {
-            free(buf);
-            delete client;
-            return;
-        }
-    }
-
-    if(events & EV_WRITE) {
-        WriteQueueItem* item = client->get_pending_write();
-
-        if(item != NULL) {
-            int written = write(
-                _watcher->fd,
-                (item->data + item->pos),
-                (item->len - item->pos)
-            );
-
-            if(written < 0) {
-                if((errno != EAGAIN) && (errno != EINTR)) {
-                    perror("write");
-                    delete client;
-                    return;
-                }
-
-            } else {
-                // for(int i = 0; i < written; ++i)
-                //     printf("written to %s: 0x%.2X\n", client->get_peer_id(),((char*)(item->data + item->pos))[i]);
-
-                item->pos += written;
-
-                if((item->pos >= item->len) && (item->cb != NULL)) {
-                    client->push_pending_reads_queue(item->cb);
-                    item->cb = NULL;
-                }
-            }
-        }
-    }
-
-    return;
-}
-
-static void socket_cb(struct ev_loop* loop, ev_io* watcher, int events) {
-    sockaddr_in* addr = (sockaddr_in*)malloc(sizeof(*addr));
-    socklen_t len = sizeof(*addr);
-
-    int fh = accept(watcher->fd, (sockaddr*)addr, &len);
-
-    if(fh < 0) {
-        perror("accept");
-        free(addr);
-        return;
-    }
-
-    new_client_t* new_client = (new_client_t*)malloc(sizeof(*new_client));
-
-    new_client->fh = fh;
-    new_client->cb = NULL;
-    new_client->s_in = addr;
-    new_client->s_in_len = len;
-
-    pthread_mutex_lock(&new_clients_mutex);
-    new_clients.push(new_client);
-    pthread_mutex_unlock(&new_clients_mutex);
-
-    return;
-}
 
 int main(int argc, char** argv) {
     std::string db_file_name;

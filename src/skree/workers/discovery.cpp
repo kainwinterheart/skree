@@ -5,8 +5,8 @@ namespace Skree {
         void Discovery::run() {
             while(true) {
                 for(
-                    peers_to_discover_t::const_iterator it = server->peers_to_discover->cbegin();
-                    it != server->peers_to_discover->cend();
+                    peers_to_discover_t::const_iterator it = server.peers_to_discover->cbegin();
+                    it != server.peers_to_discover->cend();
                     ++it
                 ) {
                     peer_to_discover_t* peer_to_discover = it->second;
@@ -55,8 +55,8 @@ namespace Skree {
 
                         // TODO: discovery should be async too
                         timeval tv;
-                        tv.tv_sec = (server->discovery_timeout_milliseconds / 1000);
-                        tv.tv_usec = ((server->discovery_timeout_milliseconds % 1000) * 1000);
+                        tv.tv_sec = (server.discovery_timeout_milliseconds / 1000);
+                        tv.tv_usec = ((server.discovery_timeout_milliseconds % 1000) * 1000);
 
                         if(setsockopt(fh, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1) {
                             perror("setsockopt");
@@ -104,38 +104,38 @@ namespace Skree {
                             bool found = false;
 
                             {
-                                pthread_mutex_lock(server->known_peers_mutex);
+                                pthread_mutex_lock(server.known_peers_mutex);
 
                                 known_peers_t::const_iterator it =
-                                    server->known_peers_by_conn_id->find(conn_id);
+                                    server.known_peers_by_conn_id->find(conn_id);
 
-                                if(it != server->known_peers_by_conn_id->cend())
+                                if(it != server.known_peers_by_conn_id->cend())
                                     found = true;
 
-                                pthread_mutex_unlock(server->known_peers_mutex);
+                                pthread_mutex_unlock(server.known_peers_mutex);
                             }
 
                             if(!found) {
-                                pthread_mutex_lock(server->known_peers_mutex);
+                                pthread_mutex_lock(server.known_peers_mutex);
 
                                 known_peers_t::const_iterator it =
-                                    server->known_peers->find(conn_id);
+                                    server.known_peers->find(conn_id);
 
-                                if(it != server->known_peers->cend())
+                                if(it != server.known_peers->cend())
                                     found = true;
 
-                                pthread_mutex_unlock(server->known_peers_mutex);
+                                pthread_mutex_unlock(server.known_peers_mutex);
                             }
 
                             if(!found) {
-                                pthread_mutex_lock(server->me_mutex);
+                                pthread_mutex_lock(server.me_mutex);
 
-                                me_t::const_iterator it = server->me->find(conn_id);
+                                me_t::const_iterator it = server.me->find(conn_id);
 
-                                if(it != server->me->cend())
+                                if(it != server.me->cend())
                                     found = true;
 
-                                pthread_mutex_unlock(server->me_mutex);
+                                pthread_mutex_unlock(server.me_mutex);
                             }
 
                             free(conn_id);
@@ -150,14 +150,14 @@ namespace Skree {
                                     sizeof(*new_client));
 
                                 new_client->fh = fh;
-                                new_client->cb = &Discovery::cb1;
+                                // new_client->cb = &Discovery::cb1; // TODO
                                 new_client->s_in = addr;
                                 new_client->s_in_len = addr_len;
 
-                                pthread_mutex_lock(server->new_clients_mutex);
+                                pthread_mutex_lock(server.new_clients_mutex);
                                 // new_clients.push(new_client);
-                                server->push_new_clients(new_client); // TODO
-                                pthread_mutex_unlock(server->new_clients_mutex);
+                                server.push_new_clients(new_client); // TODO
+                                pthread_mutex_unlock(server.new_clients_mutex);
                             }
                         }
 
@@ -171,26 +171,35 @@ namespace Skree {
             }
         }
 
-        static void Discovery::cb1(Client* client) {
+        void Discovery::cb1(const Skree::Client& client) {
+            auto _cb = [this](
+                const Skree::Client& client,
+                const Skree::Base::PendingRead::QueueItem& item,
+                const Skree::Base::PendingRead::Callback::Args& args
+            ) {
+                return cb2(client, item, args);
+            };
+
+            const Skree::PendingReads::Callbacks::Discovery cb (server, _cb);
+            const Skree::Base::PendingRead::QueueItem item {
+                .len = 1,
+                .cb = std::move(cb),
+                .ctx = NULL,
+                .opcode = true
+            };
+
             auto w_req = Skree::Actions::W::out_init();
-
-            PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(sizeof(*item));
-
-            item->len = 1;
-            item->cb = &Discovery::cb2;
-            item->ctx = this;
-            item->err = NULL;
-            item->opcode = true;
-
-            client->push_write_queue(w_req->len, w_req->data, item);
+            client.push_write_queue(w_req->len, w_req->data, item);
         }
 
-        // TODO
-        static PendingReadsQueueItem* Discovery::cb6(PendingReadCallbackArgs* args) {
+        const Skree::Base::PendingRead::QueueItem&& Discovery::cb6(
+            const Skree::Client& client,
+            const Skree::Base::PendingRead::QueueItem& item,
+            const Skree::Base::PendingRead::Callback::Args& args
+        ) {
             if(args->data[0] == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 0;
                 uint32_t _tmp;
-                auto& server = args->server;
 
                 memcpy(&_tmp, args->data + in_pos, sizeof(_tmp));
                 in_pos += sizeof(_tmp);
@@ -203,7 +212,7 @@ namespace Skree {
                 bool got_new_peers = false;
                 peers_to_discover_t::const_iterator prev_item;
 
-                pthread_mutex_lock(server->peers_to_discover_mutex);
+                pthread_mutex_lock(server.peers_to_discover_mutex);
 
                 while(cnt > 0) {
                     --cnt;
@@ -221,16 +230,16 @@ namespace Skree {
 
                     _peer_id = make_peer_id(host_len, host, port);
 
-                    prev_item = server->peers_to_discover->find(_peer_id);
+                    prev_item = server.peers_to_discover->find(_peer_id);
 
-                    if(prev_item == server->peers_to_discover->cend()) {
+                    if(prev_item == server.peers_to_discover->cend()) {
                         peer_to_discover = (peer_to_discover_t*)malloc(
                             sizeof(*peer_to_discover));
 
                         peer_to_discover->host = host;
                         peer_to_discover->port = port;
 
-                        (*(server->peers_to_discover))[_peer_id] = peer_to_discover;
+                        (*(server.peers_to_discover))[_peer_id] = peer_to_discover;
                         got_new_peers = true;
 
                     } else {
@@ -240,58 +249,69 @@ namespace Skree {
                 }
 
                 if(got_new_peers)
-                    server->save_peers_to_discover();
+                    server.save_peers_to_discover();
 
-                pthread_mutex_unlock(server->peers_to_discover_mutex);
+                pthread_mutex_unlock(server.peers_to_discover_mutex);
             }
 
-            return nullptr;
+            return Skree::PendingReads::noop(server);
         }
 
-        static PendingReadsQueueItem* Discovery::cb5(PendingReadCallbackArgs* args) {
-            auto& server = args->server;
-
+        const Skree::Base::PendingRead::QueueItem&& Discovery::cb5(
+            const Skree::Client& client,
+            const Skree::Base::PendingRead::QueueItem& item,
+            const Skree::Base::PendingRead::Callback::Args& args
+        ) {
             if(args->data[0] == SKREE_META_OPCODE_K) {
-                pthread_mutex_lock(server->known_peers_mutex);
+                pthread_mutex_lock(server.known_peers_mutex);
 
                 // peer_id is guaranteed to be set here
                 known_peers_t::const_iterator known_peer =
-                    server->known_peers->find(peer_id);
+                    server.known_peers->find(peer_id);
 
-                if(known_peer == server->known_peers->cend()) {
-                    (*(server->known_peers))[peer_id] = args->client;
-                    (*(server->known_peers_by_conn_id[args->client->get_conn_id()])) =
-                        args->client;
+                if(known_peer == server.known_peers->cend()) {
+                    (*(server.known_peers))[peer_id] = &client;
+                    (*(server.known_peers_by_conn_id[client.get_conn_id()])) = &client;
 
                 } else {
                     *(args->stop) = true;
                 }
 
-                pthread_mutex_unlock(server->known_peers_mutex);
+                pthread_mutex_unlock(server.known_peers_mutex);
 
                 if(!*(args->stop)) {
+                    auto _cb = [this](
+                        const Skree::Client& client,
+                        const Skree::Base::PendingRead::QueueItem& item,
+                        const Skree::Base::PendingRead::Callback::Args& args
+                    ) {
+                        return cb6(client, item, args);
+                    };
+
+                    const Skree::PendingReads::Callbacks::Discovery cb (server, _cb);
+                    const Skree::Base::PendingRead::QueueItem item {
+                        .len = 1,
+                        .cb = std::move(cb),
+                        .ctx = NULL,
+                        .opcode = true
+                    };
+
                     auto l_req = Skree::Actions::L::out_init();
-
-                    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                        sizeof(*item));
-
-                    item->len = 1;
-                    item->cb = &Discovery::cb6;
-                    item->ctx = NULL;
-                    item->err = NULL;
-                    item->opcode = true;
-
-                    args->client->push_write_queue(l_req->len, l_req->data, item);
+                    client.push_write_queue(l_req->len, l_req->data, item);
                 }
 
             } else {
                 *(args->stop) = true;
             }
 
-            return nullptr;
+            return Skree::PendingReads::noop(server);
         }
 
-        static PendingReadsQueueItem* Discovery::cb2(PendingReadCallbackArgs* args) {
+        const Skree::Base::PendingRead::QueueItem&& Discovery::cb2(
+            const Skree::Client& client,
+            const Skree::Base::PendingRead::QueueItem& item,
+            const Skree::Base::PendingRead::Callback::Args& args
+        ) {
             if(args->data[0] == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 0;
                 uint32_t _tmp;
@@ -304,38 +324,37 @@ namespace Skree {
                 memcpy(peer_name, args->data + in_pos, len);
                 in_pos += len;
 
-                _tmp = args->client->get_conn_port();
+                _tmp = client.get_conn_port();
                 char* _peer_id = make_peer_id(len, peer_name, _tmp);
                 bool accepted = false;
-                auto& server = args->server;
 
-                pthread_mutex_lock(server->known_peers_mutex);
+                pthread_mutex_lock(server.known_peers_mutex);
 
                 known_peers_t::const_iterator known_peer =
-                    server->known_peers->find(_peer_id);
+                    server.known_peers->find(_peer_id);
 
-                if(known_peer == server->known_peers->cend()) {
-                    if(strcmp(_peer_id, server->my_peer_id) == 0) {
-                        pthread_mutex_lock(server->me_mutex);
+                if(known_peer == server.known_peers->cend()) {
+                    if(strcmp(_peer_id, server.my_peer_id) == 0) {
+                        pthread_mutex_lock(server.me_mutex);
 
-                        me_t::const_iterator it = server->me->find(_peer_id);
+                        me_t::const_iterator it = server.me->find(_peer_id);
 
-                        if(it == server->me->cend()) {
-                            char* _conn_peer_id = args->client->get_conn_id();
+                        if(it == server.me->cend()) {
+                            char* _conn_peer_id = client.get_conn_id();
 
-                            (*(server->me))[_peer_id] = true;
-                            (*(server->me))[strdup(_conn_peer_id)] = true;
+                            (*(server.me))[_peer_id] = true;
+                            (*(server.me))[strdup(_conn_peer_id)] = true;
 
                         } else {
                             free(_peer_id);
                         }
 
-                        pthread_mutex_unlock(server->me_mutex);
+                        pthread_mutex_unlock(server.me_mutex);
 
                     } else {
-                        args->client->set_peer_name(len, peer_name);
-                        args->client->set_peer_port(_tmp);
-                        args->client->set_peer_id(_peer_id);
+                        client.set_peer_name(len, peer_name);
+                        client.set_peer_port(_tmp);
+                        client.set_peer_id(_peer_id);
 
                         accepted = true;
                     }
@@ -344,22 +363,27 @@ namespace Skree {
                     free(_peer_id);
                 }
 
-                pthread_mutex_unlock(server->known_peers_mutex);
+                pthread_mutex_unlock(server.known_peers_mutex);
 
                 if(accepted) {
-                    size_t h_len = 0;
+                    auto _cb = [this](
+                        const Skree::Client& client,
+                        const Skree::Base::PendingRead::QueueItem& item,
+                        const Skree::Base::PendingRead::Callback::Args& args
+                    ) {
+                        return cb5(client, item, args);
+                    };
+
+                    const Skree::PendingReads::Callbacks::Discovery cb (server, _cb);
+                    const Skree::Base::PendingRead::QueueItem item {
+                        .len = 1,
+                        .cb = std::move(cb),
+                        .ctx = NULL,
+                        .opcode = true
+                    };
+
                     auto h_req = Skree::Actions::H::out_init(server);
-
-                    PendingReadsQueueItem* item = (PendingReadsQueueItem*)malloc(
-                        sizeof(*item));
-
-                    item->len = 1;
-                    item->cb = &Discovery::cb5;
-                    // item->ctx = this; // TODO
-                    item->err = NULL;
-                    item->opcode = true;
-
-                    args->client->push_write_queue(h_req->len, h_req->data, item);
+                    client.push_write_queue(h_req->len, h_req->data, item);
 
                 } else {
                     *(args->stop) = true;
@@ -369,7 +393,7 @@ namespace Skree {
                 *(args->stop) = true;
             }
 
-            return nullptr;
+            return Skree::PendingReads::noop(server);
         }
     }
 }
