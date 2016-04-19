@@ -1,4 +1,4 @@
-#include "replication.hpp"
+// #include "replication.hpp"
 
 namespace Skree {
     namespace Workers {
@@ -369,7 +369,14 @@ namespace Skree {
                                                 .opcode = true
                                             };
 
-                                            it->second->push_write_queue(i_req->len, i_req->data, item);
+                                            Skree::Base::PendingWrite::QueueItem witem (
+                                                .len = i_req->len,
+                                                .data = i_req->data,
+                                                .pos = 0,
+                                                .cb = std::move(item)
+                                            );
+
+                                            it->second->push_write_queue(std::move(witem));
                                         }
 
                                         --peers_cnt;
@@ -432,7 +439,15 @@ namespace Skree {
                             };
 
                             auto c_req = Skree::Actions::C::out_init(event, rid_net, rin_len, rin);
-                            peer->push_write_queue(c_req->len, c_req->data, item);
+
+                            Skree::Base::PendingWrite::QueueItem witem (
+                                .len = c_req->len,
+                                .data = c_req->data,
+                                .pos = 0,
+                                .cb = std::move(item)
+                            );
+
+                            peer->push_write_queue(std::move(witem));
                         }
 
                         next();

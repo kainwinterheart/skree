@@ -1,5 +1,5 @@
-#ifndef _SKREE_BASE_ACTION_H_
-#define _SKREE_BASE_ACTION_H_
+#ifndef _SKREE_META_OPCODES_H_
+#define _SKREE_META_OPCODES_H_
 
 #define SKREE_META_OPCODE_K 'k'
 #define SKREE_META_OPCODE_F 'f'

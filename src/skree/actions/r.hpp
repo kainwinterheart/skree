@@ -2,7 +2,16 @@
 #define _SKREE_ACTIONS_R_H_
 
 #include "../base/action.hpp"
-#include "../meta/opcodes.hpp"
+
+namespace Skree {
+    struct in_packet_r_ctx;
+}
+
+#include "../server.hpp"
+// #include "../meta/opcodes.hpp"
+
+#include <list>
+#include <vector>
 
 namespace Skree {
     struct in_packet_r_ctx_event {
@@ -44,7 +53,22 @@ namespace Skree {
     namespace Actions {
         class R : public Skree::Base::Action {
         public:
-            virtual char opcode() { return 'r'; }
+            static const char opcode() { return 'r'; }
+
+            virtual void in(
+                const uint64_t& in_len, const char*& in_data,
+                uint64_t& out_len, char*& out_data
+            ) override;
+
+            static Utils::muh_str_t* out_init(
+                const Server& server, const uint32_t& event_name_len,
+                const char*& event_name, const uint32_t& cnt
+            );
+
+            static void out_add_event(
+                Utils::muh_str_t*& r_req, const uint64_t& id,
+                const uint32_t& len, const char*& data
+            );
         };
     }
 }

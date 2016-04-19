@@ -1,9 +1,116 @@
-#include "server.hpp"
+// #include "server.hpp"
 
 namespace Skree {
+    Server::Server(
+            DbWrapper& _db, uint32_t _my_port,
+            uint32_t _max_client_threads,
+            const Utils::known_events_t& known_events
+        )
+        : db(_db), my_port(_my_port), max_client_threads(_max_client_threads) {
+        pthread_mutex_init(&stat_mutex, NULL);
+        pthread_mutex_init(&new_clients_mutex, NULL);
+        pthread_mutex_init(&known_peers_mutex, NULL);
+        pthread_mutex_init(&me_mutex, NULL);
+        pthread_mutex_init(&peers_to_discover_mutex, NULL);
+        pthread_mutex_init(&replication_exec_queue_mutex, NULL);
+
+        load_peers_to_discover();
+
+        my_hostname = (char*)"127.0.0.1";
+        my_hostname_len = strlen(my_hostname);
+        my_peer_id = make_peer_id(my_hostname_len, my_hostname, my_port);
+        my_peer_id_len = strlen(my_peer_id);
+        my_peer_id_len_net = htonl(my_peer_id_len);
+        my_peer_id_len_size = sizeof(my_peer_id_len_net);
+
+        sockaddr_in addr;
+
+        int fh = socket(PF_INET, SOCK_STREAM, 0);
+
+        addr.sin_family = AF_UNSPEC;
+        addr.sin_port = htons(my_port);
+        addr.sin_addr.s_addr = INADDR_ANY;
+
+        int yes = 1;
+
+        if(setsockopt(fh, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
+            perror("setsockopt");
+            return 1;
+        }
+
+        if(bind(fh, (sockaddr*)&addr, sizeof(addr)) != 0) {
+            perror("bind");
+            return 1;
+        }
+
+        fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
+        listen(fh, 100000);
+
+        ev_io socket_watcher;
+        struct ev_loop* loop = ev_loop_new(0);
+
+        ev_io_init(&socket_watcher, socket_cb, fh, EV_READ);
+        ev_io_start(loop, &socket_watcher);
+
+        Skree::Workers::Synchronization synchronization (this);
+
+        for(int i = 0; i < max_client_threads; ++i) {
+            threads.push(new Skree::Workers::Client(&server));
+        }
+
+        {
+            peer_to_discover_t* localhost7654 = (peer_to_discover_t*)malloc(
+                sizeof(*localhost7654));
+
+            localhost7654->host = "127.0.0.1";
+            localhost7654->port = 7654;
+
+            peer_to_discover_t* localhost8765 = (peer_to_discover_t*)malloc(
+                sizeof(*localhost8765));
+
+            localhost8765->host = "127.0.0.1";
+            localhost8765->port = 8765;
+
+            peers_to_discover[make_peer_id(
+                strlen(localhost7654->host),
+                (char*)localhost7654->host,
+                localhost7654->port
+
+            )] = localhost7654;
+
+            peers_to_discover[make_peer_id(
+                strlen(localhost8765->host),
+                (char*)localhost8765->host,
+                localhost8765->port
+
+            )] = localhost8765;
+        }
+
+        Skree::Workers::ReplicationExec replication_exec (this);
+        Skree::Workers::Replication replication (this);
+        Skree::Workers::Discovery discovery (this);
+
+        ev_run(loop, 0); // TODO
+    }
+
+    Server::~Server() {
+        while(!threads.empty()) {
+            auto thread = threads.front();
+            threads.pop();
+            delete thread; // TODO
+        }
+
+        pthread_mutex_destroy(&replication_exec_queue_mutex);
+        pthread_mutex_destroy(&peers_to_discover_mutex);
+        pthread_mutex_destroy(&me_mutex);
+        pthread_mutex_destroy(&known_peers_mutex);
+        pthread_mutex_destroy(&new_clients_mutex);
+        pthread_mutex_destroy(&stat_mutex);
+    }
+
     short Server::repl_save(
         in_packet_r_ctx* ctx,
-        Client* client
+        Client& client
     ) {
         short result = REPL_SAVE_RESULT_F;
 
@@ -262,6 +369,7 @@ namespace Skree {
         return result;
     }
 
+    // TODO: get rid of ctx
     short Server::save_event(
         in_packet_e_ctx* ctx,
         uint32_t replication_factor,
@@ -502,7 +610,15 @@ namespace Skree {
                     if(r_ctx->client != NULL) {
                         char* r_ans = (char*)malloc(1);
                         r_ans[0] = SKREE_META_OPCODE_K;
-                        r_ctx->client->push_write_queue(1, r_ans, NULL);
+
+                        Skree::Base::PendingWrite::QueueItem item (
+                            .len = 1,
+                            .data = r_ans,
+                            .pos = 0,
+                            .cb = Skree::PendingReads::noop(server)
+                        );
+
+                        r_ctx->client->push_write_queue(std::move(item));
                     }
 
                     r_ctx->sync = false;
@@ -511,7 +627,15 @@ namespace Skree {
                     if(r_ctx->client != NULL) {
                         char* r_ans = (char*)malloc(1);
                         r_ans[0] = SKREE_META_OPCODE_A;
-                        r_ctx->client->push_write_queue(1, r_ans, NULL);
+
+                        Skree::Base::PendingWrite::QueueItem item (
+                            .len = 1,
+                            .data = r_ans,
+                            .pos = 0,
+                            .cb = Skree::PendingReads::noop(server)
+                        );
+
+                        r_ctx->client->push_write_queue(std::move(item));
                     }
 
                     r_ctx->sync = false;
@@ -531,7 +655,15 @@ namespace Skree {
                 if(r_ctx->client != NULL) {
                     char* r_ans = (char*)malloc(1);
                     r_ans[0] = SKREE_META_OPCODE_K;
-                    r_ctx->client->push_write_queue(1, r_ans, NULL);
+
+                    Skree::Base::PendingWrite::QueueItem item (
+                        .len = 1,
+                        .data = r_ans,
+                        .pos = 0,
+                        .cb = Skree::PendingReads::noop(server)
+                    );
+
+                    r_ctx->client->push_write_queue(std::move(item));
                 }
 
                 r_ctx->sync = false;
@@ -587,7 +719,14 @@ namespace Skree {
                     .opcode = true
                 };
 
-                peer->push_write_queue(r_len, r_req, item);
+                Skree::Base::PendingWrite::QueueItem witem (
+                    .len = r_len,
+                    .data = r_req,
+                    .pos = 0,
+                    .cb = std::move(item)
+                );
+
+                peer->push_write_queue(std::move(witem));
             }
         }
 

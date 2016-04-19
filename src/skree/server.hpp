@@ -9,15 +9,24 @@
 #define REPL_SAVE_RESULT_F 0
 #define REPL_SAVE_RESULT_K 1
 
-#include "actions/c.hpp"
-#include "actions/e.hpp"
-#include "actions/h.hpp"
-#include "actions/i.hpp"
-#include "actions/l.hpp"
-#include "actions/r.hpp"
-#include "actions/w.hpp"
-#include "actions/x.hpp"
+// #include "actions/c.hpp"
+// #include "actions/e.hpp"
+// #include "actions/h.hpp"
+// #include "actions/i.hpp"
+// #include "actions/l.hpp"
+// #include "actions/r.hpp"
+// #include "actions/w.hpp"
+// #include "actions/x.hpp"
+
+namespace Skree {
+    class Server;
+}
+
 #include "client.hpp"
+#include "workers/client.hpp"
+#include "db_wrapper.hpp"
+#include "actions/e.hpp"
+#include "actions/r.hpp"
 
 namespace Skree {
     struct new_client_t {
@@ -27,13 +36,47 @@ namespace Skree {
         socklen_t s_in_len;
     };
 
+    typedef std::unordered_map<char*, uint64_t, Utils::char_pointer_hasher, Utils::char_pointer_comparator> failover_t;
+    typedef std::unordered_map<uint64_t, uint64_t> wip_t;
+    typedef std::unordered_map<char*, uint64_t, Utils::char_pointer_hasher, Utils::char_pointer_comparator> no_failover_t;
+    typedef std::unordered_map<char*, Client*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> known_peers_t;
+    typedef std::unordered_map<char*, bool, Utils::char_pointer_hasher, Utils::char_pointer_comparator> me_t;
+
+    struct peer_to_discover_t {
+        const char* host;
+        uint32_t port;
+    };
+
+    typedef std::unordered_map<char*, peer_to_discover_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> peers_to_discover_t;
+
+    struct out_packet_i_ctx {
+        pthread_mutex_t* mutex;
+        Utils::known_event_t* event;
+        Utils::muh_str_t* data;
+        Utils::muh_str_t* peer_id;
+        uint64_t wrinseq;
+        char* failover_key;
+        uint64_t failover_key_len;
+        uint32_t* count_replicas;
+        uint32_t* pending;
+        uint32_t* acceptances;
+        char* rpr;
+        uint64_t rid;
+        uint32_t peers_cnt;
+    };
+
     class Server {
+    private:
+        std::queue<Workers::Client*> threads;
+        pthread_t discovery;
+        pthread_t replication;
+        pthread_t replication_exec;
+        uint32_t max_client_threads;
     public:
         size_t read_size = 131072;
         uint64_t no_failover_time = 10 * 60;
         time_t discovery_timeout_milliseconds = 3000;
         uint32_t max_replication_factor = 3;
-        uint32_t max_client_threads = 1;
         uint64_t job_time = 10 * 60;
 
         uint64_t stat_num_inserts;
@@ -41,7 +84,7 @@ namespace Skree {
         pthread_mutex_t stat_mutex;
         pthread_mutex_t new_clients_mutex;
 
-        DbWrapper db;
+        DbWrapper& db;
 
         char* my_hostname;
         uint32_t my_hostname_len;
@@ -51,10 +94,48 @@ namespace Skree {
         uint32_t my_peer_id_len_net;
         size_t my_peer_id_len_size;
 
-        Server() {}
+        known_peers_t known_peers;
+        known_peers_t known_peers_by_conn_id;
+        pthread_mutex_t known_peers_mutex;
+        no_failover_t no_failover;
+        wip_t wip;
+        failover_t failover;
+        me_t me;
+        pthread_mutex_t me_mutex;
+        peers_to_discover_t peers_to_discover;
+        pthread_mutex_t peers_to_discover_mutex;
+        std::queue<out_packet_i_ctx*> replication_exec_queue;
+        pthread_mutex_t replication_exec_queue_mutex;
+        const Utils::known_events_t& known_events;
+
+        Server(
+            DbWrapper& _db, uint32_t _my_port,
+            uint32_t _max_client_threads,
+            const Utils::known_events_t& known_events
+        );
+        ~Server();
+
+        short save_event(
+            in_packet_e_ctx* ctx,
+            uint32_t replication_factor,
+            Client* client,
+            uint64_t* task_ids
+        );
+
+        short repl_save(
+            in_packet_r_ctx* ctx,
+            Client& client
+        );
+
+        void repl_clean(
+            size_t failover_key_len,
+            const char* failover_key,
+            uint64_t wrinseq
+        );
+
     private:
         std::queue<new_client_t*> new_clients;
-    }
+    };
 }
 
 #endif

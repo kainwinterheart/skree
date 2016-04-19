@@ -3,8 +3,8 @@
 namespace Skree {
     namespace Actions {
         void C::in(
-            uint64_t in_len, char* in_data,
-            uint64_t* out_len, char** out_data
+            const uint64_t& in_len, const char*& in_data,
+            uint64_t& out_len, char*& out_data
         ) {
             uint64_t in_pos = 0;
             uint32_t _tmp;
@@ -31,8 +31,8 @@ namespace Skree {
             in_pos += rin_len;
 
             char* _out_data = (char*)malloc(1);
-            *(args->out_len) += 1;
-            *(args->out_data) = _out_data;
+            out_len += 1;
+            out_data = _out_data;
 
             size_t in_key_len = 3;
             char* in_key = (char*)malloc(
@@ -57,21 +57,22 @@ namespace Skree {
 
             bool should_save_event = false;
 
-            wip_t::const_iterator it = server->wip->find(rid);
+            wip_t::const_iterator it = server.wip.find(rid);
 
-            if(it == server->wip->cend()) {
+            if(it == server.wip.cend()) {
                 // TODO: check iterator position
-                if(server->db->check(in_key, in_key_len) > 0)
+                if(server.db.check(in_key, in_key_len) > 0)
                     should_save_event = true;
 
                 _out_data[0] = SKREE_META_OPCODE_K;
 
             } else {
                 // TODO: check for overflow
-                if((it->second + server->job_time) <= std::time(nullptr)) {
+                if((it->second + server.job_time) <= std::time(nullptr)) {
                     should_save_event = true;
                     _out_data[0] = SKREE_META_OPCODE_K;
-                    server->wip->erase(it);
+                    auto _wip = server.wip;
+                    _wip.erase(it);
 
                 } else {
                     _out_data[0] = SKREE_META_OPCODE_F;
@@ -79,31 +80,41 @@ namespace Skree {
             }
 
             if(should_save_event) {
-                in_packet_e_ctx_event* event = (in_packet_e_ctx_event*)malloc(
-                    sizeof(*event));
+                in_packet_e_ctx_event event = {
+                    .len = rin_len,
+                    .data = rin
+                };
 
-                event->len = rin_len;
-                event->data = rin;
+                in_packet_e_ctx_event* events [1];
 
-                short result = server->save_event(e_ctx, 0, NULL, NULL);
+                events[0] = &event;
+
+                in_packet_e_ctx e_ctx {
+                    .cnt = 1,
+                    .event_name_len = event_name_len,
+                    .event_name = event_name,
+                    .events = events
+                };
+
+                short result = server.save_event(&e_ctx, 0, NULL, NULL);
 
                 if(result != SAVE_EVENT_RESULT_K) {
-                    fprintf(stderr, "save_event() failed: %s\n", server->db->error().name());
+                    fprintf(stderr, "save_event() failed: %s\n", server.db.error().name());
                     exit(1);
                 }
 
-                if(!server->db->remove(in_key, strlen(in_key)))
-                    fprintf(stderr, "db.remove failed: %s\n", server->db->error().name());
+                if(!server.db.remove(in_key, strlen(in_key)))
+                    fprintf(stderr, "db.remove failed: %s\n", server.db.error().name());
             }
 
             free(in_key);
         }
 
-        static muh_str_t* C::out_init(
-            const known_event_t*& event, const uint64_t& rid_net,
+        Utils::muh_str_t* C::out_init(
+            const Utils::known_event_t*& event, const uint64_t& rid_net,
             const uint64_t& rin_len, const char*& rin
         ) {
-            muh_str_t* out = (muh_str_t*)malloc(sizeof(*out));
+            Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
             out->len = 1;
             out->data = (char*)malloc(
                 out->len

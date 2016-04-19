@@ -23,13 +23,14 @@
 #include <kchashdb.h>
 #pragma clang diagnostic pop
 
-#include <pthread.h>
-#include <vector>
-#include <string>
+#include "utils/misc.hpp"
+// #include <pthread.h>
+// #include <vector>
+// #include <string>
 
 namespace Skree {
-    typedef std::unordered_map<char*, muh_str_t*, char_pointer_hasher, char_pointer_comparator> get_keys_result_t;
-    
+    typedef std::unordered_map<char*, Utils::muh_str_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> get_keys_result_t;
+
     class DbWrapper : public kyotocabinet::HashDB {
     public:
         DbWrapper() : kyotocabinet::HashDB() {
@@ -103,6 +104,14 @@ namespace Skree {
             const char * kbuf,
             size_t ksiz
         );
+
+        get_keys_result_t* db_get_keys(std::vector<std::string>& keys);
+
+        template <typename T>
+        T* parse_db_value(Utils::muh_str_t* _value, size_t* size = NULL);
+
+        template <typename T>
+        T* parse_db_value(get_keys_result_t* map, std::string* key, size_t* size = NULL);
 
     private:
         pthread_mutex_t mutex;

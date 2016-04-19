@@ -1,4 +1,4 @@
-#include "discovery.hpp"
+// #include "discovery.hpp"
 
 namespace Skree {
     namespace Workers {
@@ -189,7 +189,15 @@ namespace Skree {
             };
 
             auto w_req = Skree::Actions::W::out_init();
-            client.push_write_queue(w_req->len, w_req->data, item);
+
+            Skree::Base::PendingWrite::QueueItem witem (
+                .len = w_req->len,
+                .data = w_req->data,
+                .pos = 0,
+                .cb = std::move(item)
+            );
+
+            client.push_write_queue(std::move(witem));
         }
 
         const Skree::Base::PendingRead::QueueItem&& Discovery::cb6(
@@ -297,7 +305,15 @@ namespace Skree {
                     };
 
                     auto l_req = Skree::Actions::L::out_init();
-                    client.push_write_queue(l_req->len, l_req->data, item);
+
+                    Skree::Base::PendingWrite::QueueItem witem (
+                        .len = l_req->len,
+                        .data = l_req->data,
+                        .pos = 0,
+                        .cb = std::move(item)
+                    );
+
+                    client.push_write_queue(std::move(witem));
                 }
 
             } else {
@@ -383,7 +399,15 @@ namespace Skree {
                     };
 
                     auto h_req = Skree::Actions::H::out_init(server);
-                    client.push_write_queue(h_req->len, h_req->data, item);
+
+                    Skree::Base::PendingWrite::QueueItem witem (
+                        .len = h_req->len,
+                        .data = h_req->data,
+                        .pos = 0,
+                        .cb = std::move(item)
+                    );
+
+                    client.push_write_queue(std::move(witem));
 
                 } else {
                     *(args->stop) = true;

@@ -3,8 +3,8 @@
 namespace Skree {
     namespace Actions {
         void E::in(
-            uint64_t in_len, char* in_data,
-            uint64_t* out_len, char** out_data
+            const uint64_t& in_len, const char*& in_data,
+            uint64_t& out_len, char*& out_data
         ) {
             uint64_t in_pos = 0;
             uint32_t _tmp;
@@ -18,9 +18,9 @@ namespace Skree {
             in_pos += event_name_len;
             event_name[event_name_len] = '\0';
 
-            known_events_t::const_iterator it = server->known_events->find(event_name);
+            Utils::known_events_t::const_iterator it = server.known_events.find(event_name);
 
-            if(it == server->known_events->cend()) {
+            if(it == server.known_events.cend()) {
                 fprintf(stderr, "Got unknown event: %s\n", event_name);
                 return;
             }
@@ -36,7 +36,7 @@ namespace Skree {
                 in_packet_e_ctx_event* event = (in_packet_e_ctx_event*)malloc(
                     sizeof(*event));
 
-                memcpy(&_len, in_data + in_pos, sizeof(_tmp));
+                memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
                 in_pos += sizeof(_tmp);
 
                 event->len = ntohl(_tmp);
@@ -60,11 +60,11 @@ namespace Skree {
                 .events = events
             };
 
-            short result = server->save_event(&ctx, ntohl(_tmp), client, NULL);
+            short result = server.save_event(&ctx, ntohl(_tmp), &client, NULL);
 
             char* _out_data = (char*)malloc(1);
-            *(args->out_len) += 1;
-            *(args->out_data) = _out_data;
+            out_len += 1;
+            out_data = _out_data;
 
             switch(result) {
                 case SAVE_EVENT_RESULT_F:
@@ -78,8 +78,8 @@ namespace Skree {
                     break;
                 case SAVE_EVENT_RESULT_NULL:
                     free(_out_data);
-                    *(args->out_data) = NULL;
-                    *(args->out_len) = 0;
+                    out_data = NULL;
+                    out_len = 0;
                     break;
                 default:
                     fprintf(stderr, "Unexpected save_event() result: %d\n", result);

@@ -1,7 +1,7 @@
 #ifndef _SKREE_WORKERS_SYNCHRONIZATION_H_
 #define _SKREE_WORKERS_SYNCHRONIZATION_H_
 
-#include "../base/worker.hpp"
+// #include "../base/worker.hpp"
 
 namespace Skree {
     namespace Workers {

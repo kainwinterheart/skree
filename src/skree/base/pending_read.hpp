@@ -2,18 +2,13 @@
 #define _SKREE_BASE_PENDINGREAD_H_
 
 #include "../server.hpp"
-#include "../client.hpp"
+// #include "../client.hpp"
+#include <sys/types.h>
 
 namespace Skree {
     namespace Base {
         namespace PendingRead {
-            struct QueueItem {
-                size_t len;
-                const Callback&& cb;
-                void*& ctx;
-                bool opcode;
-                bool noop;
-            };
+            struct QueueItem;
 
             class Callback {
             protected:
@@ -40,6 +35,14 @@ namespace Skree {
                 ) {}
 
                 virtual bool noop() { return false; };
+            };
+
+            struct QueueItem {
+                size_t len;
+                const Callback cb;
+                void* ctx;
+                bool opcode;
+                bool noop;
             };
         }
     }

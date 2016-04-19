@@ -3,8 +3,8 @@
 namespace Skree {
     namespace Actions {
         void R::in(
-            uint64_t in_len, char* in_data,
-            uint64_t* out_len, char** out_data
+            const uint64_t& in_len, const char*& in_data,
+            uint64_t& out_len, char*& out_data
         ) {
             uint64_t in_pos = 0;
             uint32_t _tmp;
@@ -98,17 +98,16 @@ namespace Skree {
                 .peers = peers
             };
 
-            short result = server->repl_save(&ctx, client);
+            short result = server.repl_save(&ctx, client);
 
-            char* _out_data = (char*)malloc(1);
-            *(args->out_len) += 1;
-            *(args->out_data) = _out_data;
+            out_data = (char*)malloc(1);
+            out_len += 1;
 
             if(result == REPL_SAVE_RESULT_F) {
-                _out_data[0] = SKREE_META_OPCODE_F;
+                out_data[0] = SKREE_META_OPCODE_F;
 
             } else if(result == REPL_SAVE_RESULT_K) {
-                _out_data[0] = SKREE_META_OPCODE_K;
+                out_data[0] = SKREE_META_OPCODE_K;
 
             } else {
                 fprintf(stderr, "Unexpected repl_save() result: %d\n", result);
@@ -116,17 +115,17 @@ namespace Skree {
             }
         }
 
-        static muh_str_t* R::out_init(
-            const Server*& server, const uint32_t& event_name_len,
+        Utils::muh_str_t* R::out_init(
+            const Server& server, const uint32_t& event_name_len,
             const char*& event_name, const uint32_t& cnt
         ) {
             uint32_t _cnt = htonl(cnt);
-            muh_str_t* out = (muh_str_t*)malloc(sizeof(*out));
+            Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
             out->len = 0;
             out->data = (char*)malloc(1
-                + sizeof(server->my_hostname_len)
-                + server->my_hostname_len
-                + sizeof(server->my_port)
+                + sizeof(server.my_hostname_len)
+                + server.my_hostname_len
+                + sizeof(server.my_port)
                 + sizeof(event_name_len)
                 + event_name_len
                 + sizeof(_cnt)
@@ -135,14 +134,14 @@ namespace Skree {
             out->data[0] = opcode();
             out->len += 1;
 
-            uint32_t _hostname_len = htonl(server->my_hostname_len);
+            uint32_t _hostname_len = htonl(server.my_hostname_len);
             memcpy(out->data + out->len, &_hostname_len, sizeof(_hostname_len));
             out->len += sizeof(_hostname_len);
 
-            memcpy(out->data + out->len, server->my_hostname, server->my_hostname_len);
-            out->len += server->my_hostname_len;
+            memcpy(out->data + out->len, server.my_hostname, server.my_hostname_len);
+            out->len += server.my_hostname_len;
 
-            uint32_t _my_port = htonl(server->my_port);
+            uint32_t _my_port = htonl(server.my_port);
             memcpy(out->data + out->len, (char*)&_my_port, sizeof(_my_port));
             out->len += sizeof(_my_port);
 
@@ -159,28 +158,28 @@ namespace Skree {
             return out;
         }
 
-        static void R::out_add_event(
-            muh_str_t*& r_req, const uint64_t& id,
+        void R::out_add_event(
+            Utils::muh_str_t*& r_req, const uint64_t& id,
             const uint32_t& len, const char*& data
         ) {
             uint64_t _id = htonll(id);
 
             r_req->data = (char*)realloc(r_req->data,
-                r_req->r_len
+                r_req->len
                 + sizeof(_id)
                 + sizeof(len)
                 + len
             );
 
-            memcpy(r_req->data + r_req->r_len, (char*)&_id, sizeof(_id));
-            r_req->r_len += sizeof(_id);
+            memcpy(r_req->data + r_req->len, (char*)&_id, sizeof(_id));
+            r_req->len += sizeof(_id);
 
             uint32_t _event_len = htonl(len);
-            memcpy(r_req->r_req + r_req->r_len, (char*)&_event_len, sizeof(_event_len));
-            r_req->r_len += sizeof(_event_len);
+            memcpy(r_req->data + r_req->len, (char*)&_event_len, sizeof(_event_len));
+            r_req->len += sizeof(_event_len);
 
-            memcpy(r_req->r_req + r_req->r_len, data, len);
-            r_req->r_len += len;
+            memcpy(r_req->data + r_req->len, data, len);
+            r_req->len += len;
         }
     }
 }

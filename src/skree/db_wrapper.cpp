@@ -1,4 +1,4 @@
-#include "db_wrapper.hpp"
+// #include "db_wrapper.hpp"
 
 namespace Skree {
     bool DbWrapper::add(
@@ -129,7 +129,7 @@ namespace Skree {
     }
 
     template <typename T>
-    T* parse_db_value(muh_str_t* _value, size_t* size = NULL) {
+    T* DbWrapper::parse_db_value(Utils::muh_str_t* _value, size_t* size = NULL) {
         if(_value == NULL) return NULL;
         if(size != NULL) *size = _value->len;
 
@@ -143,7 +143,7 @@ namespace Skree {
     }
 
     template <typename T>
-    T* parse_db_value(get_keys_result_t* map, std::string* key, size_t* size = NULL) {
+    T* DbWrapper::parse_db_value(get_keys_result_t* map, std::string* key, size_t* size = NULL) {
         get_keys_result_t::iterator it = map->find((char*)(key->c_str()));
 
         if(it == map->end()) return NULL;
@@ -151,7 +151,7 @@ namespace Skree {
         return parse_db_value<T>(it->second, size);
     }
 
-    get_keys_result_t* db_get_keys(std::vector<std::string>& keys) {
+    get_keys_result_t* DbWrapper::db_get_keys(std::vector<std::string>& keys) {
         class VisitorImpl : public kyotocabinet::DB::Visitor {
             public:
                 explicit VisitorImpl(get_keys_result_t* _out) : out(_out) {}
@@ -171,7 +171,7 @@ namespace Skree {
                     char* value = (char*)malloc(value_len);
                     memcpy(value, _value, value_len);
 
-                    (*out)[key] = (muh_str_t*)malloc(sizeof(muh_str_t));
+                    (*out)[key] = (Utils::muh_str_t*)malloc(sizeof(Utils::muh_str_t));
                     (*out)[key]->len = value_len;
                     (*out)[key]->data = value;
 

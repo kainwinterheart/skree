@@ -2,6 +2,13 @@
 #define _SKREE_ACTIONS_E_H_
 
 #include "../base/action.hpp"
+#include "../utils/misc.hpp"
+
+namespace Skree {
+    struct in_packet_e_ctx;
+}
+
+#include "../server.hpp"
 #include "../meta/opcodes.hpp"
 
 namespace Skree {
@@ -21,7 +28,12 @@ namespace Skree {
     namespace Actions {
         class E : public Skree::Base::Action {
         public:
-            virtual char opcode() { return 'e'; }
+            static const char opcode() { return 'e'; }
+
+            virtual void in(
+                const uint64_t& in_len, const char*& in_data,
+                uint64_t& out_len, char*& out_data
+            ) override;
         };
     }
 }

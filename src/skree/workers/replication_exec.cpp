@@ -1,4 +1,4 @@
-#include "replication_exec.hpp"
+// #include "replication_exec.hpp"
 
 namespace Skree {
     namespace Workers {
@@ -88,7 +88,15 @@ namespace Skree {
                                 server->known_peers->find(peer_id);
 
                             if(it != server->known_peers->cend()) {
-                                it->second->push_write_queue(x_req->len, x_req->data, NULL);
+
+                                Skree::Base::PendingWrite::QueueItem item (
+                                    .len = x_req->len,
+                                    .data = x_req->data,
+                                    .pos = 0,
+                                    .cb = Skree::PendingReads::noop(server)
+                                );
+
+                                it->second->push_write_queue(std::move(item));
                             }
 
                             --(ctx->peers_cnt);

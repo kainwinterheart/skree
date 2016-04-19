@@ -3,8 +3,8 @@
 namespace Skree {
     namespace Actions {
         void X::in(
-            uint64_t in_len, char* in_data,
-            uint64_t* out_len, char** out_data
+            const uint64_t& in_len, const char*& in_data,
+            uint64_t& out_len, char*& out_data
         ) {
             uint64_t in_pos = 0;
             uint32_t _tmp;
@@ -12,7 +12,7 @@ namespace Skree {
             memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
             in_pos += sizeof(_tmp);
 
-            muh_str_t* peer_id = (muh_str_t*)malloc(sizeof(*peer_id));
+            Utils::muh_str_t* peer_id = (Utils::muh_str_t*)malloc(sizeof(*peer_id));
 
             peer_id->len = ntohl(_tmp);
             peer_id->data = (char*)malloc(peer_id->len + 1);
@@ -54,23 +54,23 @@ namespace Skree {
             std::vector<std::string> keys;
             keys.push_back(rre_key);
 
-            get_keys_result_t* dbdata = server->db->db_get_keys(keys);
+            get_keys_result_t* dbdata = server.db.db_get_keys(keys);
 
-            uint64_t* _rinseq = server->db->parse_db_value<uint64_t>(dbdata, &rre_key);
+            uint64_t* _rinseq = server.db.parse_db_value<uint64_t>(dbdata, &rre_key);
 
             if(_rinseq != NULL) {
-                server->repl_clean(suffix_len, suffix, ntohll(*_rinseq));
+                server.repl_clean(suffix_len, suffix, ntohll(*_rinseq));
                 free(_rinseq);
             }
 
             delete dbdata;
         }
 
-        static muh_str_t* X::out_init(
-            const muh_str_t*& peer_id, const known_event_t*& event,
+        Utils::muh_str_t* X::out_init(
+            const Utils::muh_str_t*& peer_id, const Utils::known_event_t*& event,
             const uint64_t& rid
         ) {
-            muh_str_t* out = (muh_str_t*)malloc(sizeof(*out));
+            Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
             out->len = 1;
             out->data = (char*)malloc(
                 out->len
@@ -84,21 +84,21 @@ namespace Skree {
             out->data[0] = 'x';
 
             uint32_t peer_id_len_net = htonl(peer_id->len);
-            memcpy(ctx->data + ctx->len, (char*)&peer_id_len_net, sizeof(peer_id_len_net));
-            ctx->len += sizeof(peer_id_len_net);
+            memcpy(out->data + out->len, (char*)&peer_id_len_net, sizeof(peer_id_len_net));
+            out->len += sizeof(peer_id_len_net);
 
-            memcpy(ctx->data + ctx->len, peer_id->data, peer_id->len);
-            ctx->len += peer_id->len;
+            memcpy(out->data + out->len, peer_id->data, peer_id->len);
+            out->len += peer_id->len;
 
-            memcpy(ctx->data + ctx->len, (char*)&(event->id_len_net), event->id_len_size);
-            ctx->len += event->id_len_size;
+            memcpy(out->data + out->len, (char*)&(event->id_len_net), event->id_len_size);
+            out->len += event->id_len_size;
 
-            memcpy(ctx->data + ctx->len, event->id, event->id_len);
-            ctx->len += event->id_len;
+            memcpy(out->data + out->len, event->id, event->id_len);
+            out->len += event->id_len;
 
             uint64_t rid_net = htonll(rid);
-            memcpy(ctx->data + ctx->len, (char*)&rid_net, sizeof(rid_net));
-            ctx->len += sizeof(rid_net);
+            memcpy(out->data + out->len, (char*)&rid_net, sizeof(rid_net));
+            out->len += sizeof(rid_net);
 
             return out;
         }
