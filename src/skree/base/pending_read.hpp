@@ -1,18 +1,28 @@
 #ifndef _SKREE_BASE_PENDINGREAD_H_
 #define _SKREE_BASE_PENDINGREAD_H_
 
-#include "../server.hpp"
-// #include "../client.hpp"
-#include <sys/types.h>
-
 namespace Skree {
     namespace Base {
         namespace PendingRead {
             struct QueueItem;
+            class Callback;
+        }
+    }
+    class Server;
+    class Client;
+}
 
+// #include "../server.hpp"
+// #include "../client.hpp"
+#include <sys/types.h>
+#include <stdexcept>
+
+namespace Skree {
+    namespace Base {
+        namespace PendingRead {
             class Callback {
             protected:
-                const Skree::Server& server;
+                Skree::Server& server;
             public:
                 struct Args {
                     size_t& out_len;
@@ -21,16 +31,16 @@ namespace Skree {
                     bool& stop;
                 };
 
-                Callback(const Skree::Server& _server) : server(_server) {}
+                Callback(Skree::Server& _server) : server(_server) {}
 
-                virtual const QueueItem&& run(
-                    const Skree::Client& client,
+                virtual const QueueItem* run(
+                    Skree::Client& client,
                     const QueueItem& item,
                     const Args& args
-                );
+                ) = 0;
 
                 virtual void error(
-                    const Skree::Client& client,
+                    Skree::Client& client,
                     const QueueItem& item
                 ) {}
 
@@ -39,7 +49,7 @@ namespace Skree {
 
             struct QueueItem {
                 size_t len;
-                const Callback cb;
+                Callback* cb;
                 void* ctx;
                 bool opcode;
                 bool noop;

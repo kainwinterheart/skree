@@ -1,10 +1,10 @@
-// #include "replication.hpp"
+#include "replication.hpp"
 
 namespace Skree {
     namespace PendingReads {
         namespace Callbacks {
-            virtual const Skree::Base::PendingRead::QueueItem&& Replication::run(
-                const Skree::Client& client,
+            const Skree::Base::PendingRead::QueueItem* Replication::run(
+                Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
                 const Skree::Base::PendingRead::Callback::Args& args
             ) {
@@ -16,7 +16,7 @@ namespace Skree {
                         (packet_r_ctx_peer*)malloc(sizeof(*peer));
 
                     peer->hostname_len = client.get_peer_name_len();
-                    peer->hostname = client.get_peer_name();
+                    peer->hostname = (char*)(client.get_peer_name());
                     peer->port = htonl(client.get_peer_port());
 
                     ctx->accepted_peers->push_back(peer);
@@ -27,8 +27,8 @@ namespace Skree {
                 return Skree::PendingReads::noop(server);
             }
 
-            virtual void Replication::error(
-                const Skree::Client& client,
+            void Replication::error(
+                Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item
             ) {
                 out_packet_r_ctx* ctx = (out_packet_r_ctx*)(item.ctx);

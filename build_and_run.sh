@@ -4,7 +4,7 @@ MORE_FLAGS="-fwrapv"
 
 FILES=$(find ./src -type f -name '*.cpp')
 
-clang++ ${MORE_FLAGS} -I /usr/local/Cellar/libev/4.20/include/ -I /usr/local/include/ -L /usr/local/Cellar/libev/4.20/lib/ -L /usr/local/lib -std=c++11 main.cpp ${FILES} -lev -lpthread -lc -lz -lkyotocabinet -lstdc++ -lm -lyaml-cpp
+clang++ ${MORE_FLAGS} -I /usr/local/Cellar/libev/4.20/include/ -I /usr/local/include/ -L /usr/local/Cellar/libev/4.20/lib/ -L /usr/local/lib -std=c++11 main.cpp ${FILES} -lev -lpthread -lc -lz -lkyotocabinet -lstdc++ -lm -lyaml-cpp -arch x86_64
 
 if [ "$?" -eq "0" ]; then
 

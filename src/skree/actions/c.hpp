@@ -13,14 +13,19 @@ namespace Skree {
         public:
             static const char opcode() { return 'c'; }
 
+            C(
+                Skree::Server& _server,
+                Skree::Client& _client
+            ) : Skree::Base::Action(_server, _client) {}
+
             virtual void in(
                 const uint64_t& in_len, const char*& in_data,
                 uint64_t& out_len, char*& out_data
             ) override;
 
             static Utils::muh_str_t* out_init(
-                const Utils::known_event_t*& event, const uint64_t& rid_net,
-                const uint64_t& rin_len, const char*& rin
+                Utils::known_event_t*& event, const uint64_t& rid_net,
+                const uint64_t& rin_len, char*& rin
             );
         };
     }

@@ -27,11 +27,20 @@ namespace Skree {
 #include "db_wrapper.hpp"
 #include "actions/e.hpp"
 #include "actions/r.hpp"
+#include "workers/synchronization.hpp"
+#include "workers/client.hpp"
+#include "workers/replication.hpp"
+#include "workers/replication_exec.hpp"
+#include "workers/discovery.hpp"
+#include "pending_reads/replication.hpp"
+
+#include <stdexcept>
+#include <functional>
 
 namespace Skree {
     struct new_client_t {
         int fh;
-        void (*cb) (Client*);
+        std::function<void(Client&)> cb;
         sockaddr_in* s_in;
         socklen_t s_in_len;
     };
@@ -49,22 +58,6 @@ namespace Skree {
 
     typedef std::unordered_map<char*, peer_to_discover_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> peers_to_discover_t;
 
-    struct out_packet_i_ctx {
-        pthread_mutex_t* mutex;
-        Utils::known_event_t* event;
-        Utils::muh_str_t* data;
-        Utils::muh_str_t* peer_id;
-        uint64_t wrinseq;
-        char* failover_key;
-        uint64_t failover_key_len;
-        uint32_t* count_replicas;
-        uint32_t* pending;
-        uint32_t* acceptances;
-        char* rpr;
-        uint64_t rid;
-        uint32_t peers_cnt;
-    };
-
     class Server {
     private:
         std::queue<Workers::Client*> threads;
@@ -72,7 +65,10 @@ namespace Skree {
         pthread_t replication;
         pthread_t replication_exec;
         uint32_t max_client_threads;
+        void load_peers_to_discover();
+        static void socket_cb(struct ev_loop* loop, ev_io* watcher, int events);
     public:
+        std::queue<new_client_t*> new_clients;
         size_t read_size = 131072;
         uint64_t no_failover_time = 10 * 60;
         time_t discovery_timeout_milliseconds = 3000;
@@ -113,7 +109,7 @@ namespace Skree {
             uint32_t _max_client_threads,
             const Utils::known_events_t& known_events
         );
-        ~Server();
+        virtual ~Server();
 
         short save_event(
             in_packet_e_ctx* ctx,
@@ -133,8 +129,9 @@ namespace Skree {
             uint64_t wrinseq
         );
 
-    private:
-        std::queue<new_client_t*> new_clients;
+        void unfailover(char* failover_key);
+        void begin_replication(out_packet_r_ctx*& r_ctx);
+        void save_peers_to_discover();
     };
 }
 

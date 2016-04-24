@@ -2,16 +2,12 @@
 #define _SKREE_ACTIONS_R_H_
 
 #include "../base/action.hpp"
-
-namespace Skree {
-    struct in_packet_r_ctx;
-}
-
-#include "../server.hpp"
+#include "../utils/misc.hpp"
 // #include "../meta/opcodes.hpp"
 
 #include <list>
 #include <vector>
+#include <pthread.h>
 
 namespace Skree {
     struct in_packet_r_ctx_event {
@@ -50,10 +46,31 @@ namespace Skree {
         bool sync;
     };
 
+    struct out_packet_i_ctx {
+        pthread_mutex_t* mutex;
+        Utils::known_event_t* event;
+        Utils::muh_str_t* data;
+        Utils::muh_str_t* peer_id;
+        uint64_t wrinseq;
+        char* failover_key;
+        uint64_t failover_key_len;
+        uint32_t* count_replicas;
+        uint32_t* pending;
+        uint32_t* acceptances;
+        char* rpr;
+        uint64_t rid;
+        uint32_t peers_cnt;
+    };
+
     namespace Actions {
         class R : public Skree::Base::Action {
         public:
             static const char opcode() { return 'r'; }
+
+            R(
+                Skree::Server& _server,
+                Skree::Client& _client
+            ) : Skree::Base::Action(_server, _client) {}
 
             virtual void in(
                 const uint64_t& in_len, const char*& in_data,
@@ -72,5 +89,7 @@ namespace Skree {
         };
     }
 }
+
+#include "../server.hpp" // sorry
 
 #endif

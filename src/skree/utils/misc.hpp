@@ -30,6 +30,7 @@
 
 namespace Skree {
     class Client;
+    class Server;
 
     namespace Utils {
         struct client_bound_ev_io {
@@ -37,9 +38,14 @@ namespace Skree {
             Client* client;
         };
 
+        struct server_bound_ev_io {
+            ev_io watcher;
+            Server* server;
+        };
+
         struct muh_str_t {
-            size_t len;
             char* data;
+            uint32_t len;
         };
 
         struct char_pointer_comparator : public std::binary_function<char*, char*, bool> {
@@ -104,6 +110,15 @@ namespace Skree {
             sprintf(peer_id + peer_name_len, ":%u", peer_port);
 
             return strndup(peer_id, peer_name_len + 1 + 5);
+        }
+
+        static inline char* make_peer_id(
+            const size_t& peer_name_len,
+            const char*& peer_name,
+            const uint16_t& peer_port
+        ) {
+            char* _peer_name = (char*)peer_name;
+            return make_peer_id(peer_name_len, _peer_name, peer_port);
         }
 
         static inline char* get_host_from_sockaddr_in(const sockaddr_in* s_in) {

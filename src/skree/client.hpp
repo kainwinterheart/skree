@@ -1,13 +1,6 @@
 #ifndef _SKREE_CLIENT_H_
 #define _SKREE_CLIENT_H_
 
-// #include "actions/c.hpp"
-// #include "actions/h.hpp"
-// #include "actions/i.hpp"
-// #include "actions/l.hpp"
-// #include "actions/w.hpp"
-// #include "actions/x.hpp"
-
 namespace Skree {
     class Client;
 }
@@ -20,8 +13,17 @@ namespace Skree {
 #include "actions/r.hpp"
 #include "server.hpp"
 #include "pending_reads/noop.hpp"
+#include "pending_reads/ordinary_packet.hpp"
+#include <fcntl.h>
+#include "actions/w.hpp"
+#include "actions/l.hpp"
+#include "actions/c.hpp"
+#include "actions/i.hpp"
+#include "actions/x.hpp"
+#include "actions/h.hpp"
 
 #include <deque>
+#include <memory>
 
 namespace Skree {
     class Client {
@@ -41,24 +43,42 @@ namespace Skree {
         uint16_t conn_port;
         char* peer_id;
         char* conn_id;
-        std::deque<Base::PendingWrite::QueueItem> write_queue;
-        std::deque<Base::PendingRead::QueueItem> pending_reads;
+        std::deque<Base::PendingWrite::QueueItem*> write_queue;
+        std::deque<const Base::PendingRead::QueueItem*> pending_reads;
         sockaddr_in* s_in;
         socklen_t s_in_len;
         Server& server;
 
-        typedef std::unordered_map<char, Base::Action*> handlers_t;
-        handlers_t handlers;
+        typedef Base::Action* handlers_t;
+        handlers_t handlers [256] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 
         template<typename T>
         void add_action_handler();
+
+        void push_pending_reads_queue(
+            const Skree::Base::PendingRead::QueueItem* item,
+            bool front = false
+        );
+
+        void read_cb();
+
+        static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events);
+
+        void push_read_queue(size_t len, char* data);
+
+        void ordinary_packet_cb(
+            const char& opcode, char*& out_data,
+            size_t& out_len, const size_t& in_packet_len
+        );
+
+        Skree::Base::PendingWrite::QueueItem* get_pending_write();
     public:
         Client(int _fh, struct ev_loop* _loop, sockaddr_in* _s_in, socklen_t _s_in_len, Server& _server);
         virtual ~Client();
 
-        char* get_peer_name() { return peer_name; }
-        uint32_t get_peer_name_len() { return peer_name_len; }
-        uint16_t get_peer_port() { return peer_port; }
+        const char* get_peer_name() const { return peer_name; }
+        const uint32_t get_peer_name_len() const { return peer_name_len; }
+        const uint16_t get_peer_port() const { return peer_port; }
 
         void set_peer_name(uint32_t _peer_name_len, char* _peer_name) {
             peer_name_len = _peer_name_len;
@@ -105,9 +125,9 @@ namespace Skree {
             return conn_id;
         }
 
-        void ordinary_packet_cb(
-            const char& opcode, char*& out_data,
-            size_t& out_len, const size_t& in_packet_len
+        void push_write_queue(
+            Skree::Base::PendingWrite::QueueItem* item,
+            bool front = false
         );
     };
 }

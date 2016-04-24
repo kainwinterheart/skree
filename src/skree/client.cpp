@@ -6,36 +6,34 @@ namespace Skree {
         const char& opcode, char*& out_data,
         size_t& out_len, const size_t& in_packet_len
     ) {
-        handlers_t::const_iterator it = handlers.find(opcode);
-
-        if(it == handlers.cend()) {
+        if(handlers[opcode] == NULL) {
             printf("Unknown packet header: 0x%.2X\n", opcode);
 
         } else {
             // TODO: should be one pending read instead of two
-            auto _cb = [this, &it](
+            auto _cb = [this, &opcode](
                 const Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
                 const Skree::Base::PendingRead::Callback::Args& args
             ) {
-                auto _cb = [this, &it](
+                auto _cb = [this, &opcode](
                     const Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
                     const Skree::Base::PendingRead::Callback::Args& args
                 ) {
                     uint64_t _out_len; // TODO: git rid of this
-                    it->second->in(item.len, args.data, _out_len, args.out_data);
+                    handlers[opcode]->in(item.len, args.data, _out_len, args.out_data);
                     args.out_len = _out_len;
 
                     return Skree::PendingReads::noop(server);
                 };
 
-                const Skree::PendingReads::Callbacks::OrdinaryPacket cb (server, _cb);
+                const auto cb = new Skree::PendingReads::Callbacks::OrdinaryPacket<decltype(_cb)>(server, _cb);
                 uint32_t _tmp;
 
-                memcpy(&_tmp, item.data, sizeof(_tmp));
+                memcpy(&_tmp, args.data, sizeof(_tmp));
 
-                const Skree::Base::PendingRead::QueueItem item {
+                const auto _item = new Skree::Base::PendingRead::QueueItem {
                     .len = ntohl(_tmp),
                     .cb = cb,
                     .ctx = NULL,
@@ -43,11 +41,11 @@ namespace Skree {
                     .noop = false
                 };
 
-                return item;
+                return _item;
             };
 
-            const Skree::PendingReads::Callbacks::OrdinaryPacket cb (server, _cb);
-            const Skree::Base::PendingRead::QueueItem item {
+            const auto cb = new Skree::PendingReads::Callbacks::OrdinaryPacket<decltype(_cb)>(server, _cb);
+            const auto item = new Skree::Base::PendingRead::QueueItem {
                 .len = 4,
                 .cb = cb,
                 .ctx = NULL,
@@ -72,17 +70,17 @@ namespace Skree {
                 // If there is a pending read - incoming data should
                 // be passed to such a callback
 
-                Skree::Base::PendingRead::QueueItem item (std::move(pending_reads.front()));
+                auto item = pending_reads.front();
 
                 if(
                     (
-                        (item.opcode == true)
+                        (item->opcode == true)
                         && (
                             (opcode == SKREE_META_OPCODE_K) || (opcode == SKREE_META_OPCODE_F)
                             || (opcode == SKREE_META_OPCODE_A)
                         )
                     )
-                    || (item.opcode == false)
+                    || (item->opcode == false)
                 ) {
                     // If pending read waits for opcode, and it is the
                     // reply opcode we've got here, or if pending read
@@ -90,22 +88,25 @@ namespace Skree {
 
                     --in_packet_len;
 
-                    if(read_queue_length >= item.len) {
+                    if(read_queue_length >= item->len) {
                         bool stop = false;
 
+                        const char* _data = read_queue + in_packet_len;
+
                         Skree::Base::PendingRead::Callback::Args args = {
-                            .data = read_queue + in_packet_len,
+                            .data = _data,
                             .out_data = out_data,
                             .out_len = out_len,
                             .stop = stop
                         };
 
-                        Skree::Base::PendingRead::QueueItem new_item (item.cb.run(this, item, args));
-                        in_packet_len += item.len;
+                        auto _cb = item->cb;
+                        auto new_item = _cb->run(*this, *item, args);
+                        in_packet_len += item->len;
 
                         pending_reads.pop_front();
 
-                        if(!new_item.noop) {
+                        if(!new_item->noop) {
                             push_pending_reads_queue(new_item, true);
                         }
 
@@ -143,22 +144,17 @@ namespace Skree {
                 memmove(read_queue, read_queue + in_packet_len, read_queue_length);
 
             if(out_len > 0) {
-                Skree::Base::PendingWrite::QueueItem item (
+                auto item = new Skree::Base::PendingWrite::QueueItem {
                     .len = out_len,
                     .data = out_data,
                     .pos = 0,
-                    .cb = Skree::PendingReads::noop(server)
-                );
+                    .cb = Skree::PendingReads::noop(server),
+                    .noop = false
+                };
 
-                push_write_queue(std::move(item));
+                push_write_queue(item);
             }
         }
-    }
-
-    static void Client::free_discovery_ctx(void* _ctx) {
-        uint32_t* ctx = (uint32_t*)_ctx;
-
-        free(ctx);
     }
 
     Client::Client(int _fh, struct ev_loop* _loop, sockaddr_in* _s_in, socklen_t _s_in_len, Server& _server)
@@ -191,12 +187,12 @@ namespace Skree {
 
     template<typename T>
     void Client::add_action_handler() {
-        T* handler = new T(server, this);
-        handlers[handler->opcode] = handler;
+        T* handler = new T(server, *this);
+        handlers[handler->opcode()] = handler;
     }
 
     Client::~Client() {
-        pthread_mutex_lock(&known_peers_mutex);
+        pthread_mutex_lock(&(server.known_peers_mutex));
 
         ev_io_stop(loop, &watcher.watcher);
         shutdown(fh, SHUT_RDWR);
@@ -204,41 +200,43 @@ namespace Skree {
         free(s_in);
 
         if(peer_id != NULL) {
-            known_peers_t::const_iterator known_peer = known_peers.find(peer_id);
+            known_peers_t::const_iterator known_peer = server.known_peers.find(peer_id);
 
-            if(known_peer != known_peers.cend())
-                known_peers.erase(known_peer);
+            if(known_peer != server.known_peers.cend())
+                server.known_peers.erase(known_peer);
 
             free(peer_id);
         }
 
         if(conn_id != NULL) {
-            known_peers_t::const_iterator known_peer = known_peers_by_conn_id.find(conn_id);
+            known_peers_t::const_iterator known_peer = server.known_peers_by_conn_id.find(conn_id);
 
-            if(known_peer != known_peers_by_conn_id.cend())
-                known_peers_by_conn_id.erase(known_peer);
+            if(known_peer != server.known_peers_by_conn_id.cend())
+                server.known_peers_by_conn_id.erase(known_peer);
 
             free(conn_id);
         }
 
-        pthread_mutex_unlock(&known_peers_mutex);
+        pthread_mutex_unlock(&(server.known_peers_mutex));
 
         while(!pending_reads.empty()) {
-            const Skree::Base::PendingRead::QueueItem item (std::move(pending_reads.front()));
+            auto item = pending_reads.front();
 
-            if(!item.cb.noop()) {
-                item.cb.error(this, item);
+            auto _cb = item->cb;
+            if(!_cb->noop()) {
+                _cb->error(*this, *item);
             }
 
             pending_reads.pop_front();
         }
 
         while(!write_queue.empty()) {
-            Skree::Base::PendingWrite::QueueItem item (std::move(write_queue.front()));
+            auto item = write_queue.front();
             write_queue.pop_front();
 
-            if(!item.cb.cb.noop()) {
-                item.cb.cb.err(item);
+            auto _cb = item->cb->cb;
+            if(!_cb->noop()) {
+                _cb->error(*this, *(item->cb));
             }
         }
 
@@ -254,8 +252,8 @@ namespace Skree {
 
         if(read_queue == NULL) {
             read_queue_length = len;
-            read_queue_mapped_length = read_size +
-                ((read_queue_length > read_size) ? read_queue_length : 0);
+            read_queue_mapped_length = server.read_size +
+                ((read_queue_length > server.read_size) ? read_queue_length : 0);
 
             read_queue = (char*)malloc(read_queue_mapped_length);
 
@@ -263,7 +261,7 @@ namespace Skree {
             read_queue_length += len;
 
             if(read_queue_length > read_queue_mapped_length) {
-                read_queue_mapped_length = read_size + read_queue_length;
+                read_queue_mapped_length = server.read_size + read_queue_length;
                 read_queue = (char*)realloc(read_queue, read_queue_length);
             }
         }
@@ -274,17 +272,19 @@ namespace Skree {
         return;
     }
 
-    Skree::Base::PendingWrite::QueueItem&& Client::get_pending_write() {
+    Skree::Base::PendingWrite::QueueItem* Client::get_pending_write() {
         pthread_mutex_lock(&write_queue_mutex);
 
         while(!write_queue.empty()) {
-            Skree::Base::PendingWrite::QueueItem item (std::move(write_queue.front()));
-            write_queue.pop_front();
+            auto item = write_queue.front();
 
-            if((item.len > 0) && (item.pos < item.len)) {
+            if((item->len > 0) && (item->pos < item->len)) {
                 pthread_mutex_unlock(&write_queue_mutex);
                 return item;
             }
+
+            write_queue.pop_front();
+            delete item;
         }
 
         ev_io_set(&watcher.watcher, fh, EV_READ);
@@ -292,22 +292,20 @@ namespace Skree {
         pthread_mutex_unlock(&write_queue_mutex);
 
         // TODO?
-        Skree::Base::PendingWrite::QueueItem item (
+        auto item = new Skree::Base::PendingWrite::QueueItem {
+            .len = 0,
+            .pos = 0,
+            .cb = Skree::PendingReads::noop(server),
+            .data = NULL,
             .noop = true
-        );
+        };
 
-        return std::move(item);
+        return item;
     }
 
-    // TODO: use muh_str_t instead of 'len' and 'data'
-    void Client::push_write_queue(Skree::Base::PendingWrite::QueueItem&& item, bool front = false) {
-        // Skree::Base::PendingWrite::QueueItem item (
-        //     .len = len,
-        //     .data = data,
-        //     .pos = 0,
-        //     .cb = std::move(cb)
-        // );
-
+    void Client::push_write_queue(
+        Skree::Base::PendingWrite::QueueItem* item, bool front
+    ) {
         pthread_mutex_lock(&write_queue_mutex);
 
         if(write_queue.empty())
@@ -321,35 +319,17 @@ namespace Skree {
         pthread_mutex_unlock(&write_queue_mutex);
     }
 
-    void Client::push_pending_reads_queue(Skree::Base::PendingRead::QueueItem& item, bool front = false) {
+    void Client::push_pending_reads_queue(
+        const Skree::Base::PendingRead::QueueItem* item, bool front
+    ) {
         if(front)
-            pending_reads.push_front(std::move(item));
+            pending_reads.push_front(item);
         else
-            pending_reads.push_back(std::move(item));
+            pending_reads.push_back(item);
     }
 
-    static void Client::free_in_packet_e_ctx(void* _ctx) {
-        in_packet_e_ctx* ctx = (in_packet_e_ctx*)_ctx;
-
-        for(
-            std::list<in_packet_e_ctx_event*>::const_iterator it = ctx->events->cbegin();
-            it != ctx->events->cend();
-            ++it
-        ) {
-            in_packet_e_ctx_event* event = *it;
-
-            free(event->data);
-            if(event->id != NULL) free(event->id);
-            free(event);
-        }
-
-        free(ctx->event_name);
-        free(ctx->events);
-        free(ctx);
-    }
-
-    static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events) {
-        struct client_bound_ev_io* watcher = (struct client_bound_ev_io*)_watcher;
+    void Client::client_cb(struct ev_loop* loop, ev_io* _watcher, int events) {
+        struct Utils::client_bound_ev_io* watcher = (struct Utils::client_bound_ev_io*)_watcher;
         Client*& client = watcher->client;
 
         if(events & EV_ERROR) {
@@ -359,8 +339,8 @@ namespace Skree {
         }
 
         if(events & EV_READ) {
-            char* buf = (char*)malloc(read_size);
-            int read = recv(_watcher->fd, buf, read_size, 0);
+            char* buf = (char*)malloc(client->server.read_size);
+            int read = recv(_watcher->fd, buf, client->server.read_size, 0);
 
             if(read > 0) {
                 // for(int i = 0; i < read; ++i)
@@ -387,11 +367,11 @@ namespace Skree {
         if(events & EV_WRITE) {
             auto item = client->get_pending_write();
 
-            if(!item.noop) {
+            if(!item->noop) {
                 int written = write(
                     _watcher->fd,
-                    (item.data + item.pos),
-                    (item.len - item.pos)
+                    (item->data + item->pos),
+                    (item->len - item->pos)
                 );
 
                 if(written < 0) {
@@ -405,15 +385,11 @@ namespace Skree {
                     // for(int i = 0; i < written; ++i)
                     //     printf("written to %s: 0x%.2X\n", client->get_peer_id(),((char*)(item->data + item->pos))[i]);
 
-                    item.pos += written;
+                    item->pos += written;
 
-                    if(item.pos >= item.len) {
-                        if(!item.cb.noop) {
-                            client->push_pending_reads_queue(item.cb);
-                            item.cb = Skree::PendingReads::noop(client->server);
-                        }
-                    } else {
-                        client->push_write_queue(std::move(item), true);
+                    if((item->pos >= item->len) && !item->cb->noop) {
+                        client->push_pending_reads_queue(item->cb);
+                        item->cb = Skree::PendingReads::noop(client->server);
                     }
                 }
             }

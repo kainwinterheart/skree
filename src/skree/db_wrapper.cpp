@@ -1,4 +1,4 @@
-// #include "db_wrapper.hpp"
+#include "db_wrapper.hpp"
 
 namespace Skree {
     bool DbWrapper::add(
@@ -129,7 +129,7 @@ namespace Skree {
     }
 
     template <typename T>
-    T* DbWrapper::parse_db_value(Utils::muh_str_t* _value, size_t* size = NULL) {
+    T* DbWrapper::parse_db_value(Utils::muh_str_t* _value, size_t* size) {
         if(_value == NULL) return NULL;
         if(size != NULL) *size = _value->len;
 
@@ -143,7 +143,7 @@ namespace Skree {
     }
 
     template <typename T>
-    T* DbWrapper::parse_db_value(get_keys_result_t* map, std::string* key, size_t* size = NULL) {
+    T* DbWrapper::parse_db_value(get_keys_result_t* map, std::string* key, size_t* size) {
         get_keys_result_t::iterator it = map->find((char*)(key->c_str()));
 
         if(it == map->end()) return NULL;
@@ -185,7 +185,7 @@ namespace Skree {
 
         VisitorImpl visitor(out);
 
-        if(db.accept_bulk(keys, &visitor, false)) return out;
+        if(accept_bulk(keys, &visitor, false)) return out;
         else return NULL;
     }
 }

@@ -67,7 +67,8 @@ namespace Skree {
         }
 
         Utils::muh_str_t* X::out_init(
-            const Utils::muh_str_t*& peer_id, const Utils::known_event_t*& event,
+            Utils::muh_str_t*& peer_id,
+            Utils::known_event_t*& event,
             const uint64_t& rid
         ) {
             Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));

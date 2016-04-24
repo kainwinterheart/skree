@@ -15,6 +15,11 @@ namespace Skree {
         public:
             static const char opcode() { return 'h'; }
 
+            H(
+                Skree::Server& _server,
+                Skree::Client& _client
+            ) : Skree::Base::Action(_server, _client) {}
+
             virtual void in(
                 const uint64_t& in_len, const char*& in_data,
                 uint64_t& out_len, char*& out_data

@@ -1,12 +1,12 @@
-// #include "server.hpp"
+#include "server.hpp"
 
 namespace Skree {
     Server::Server(
-            DbWrapper& _db, uint32_t _my_port,
-            uint32_t _max_client_threads,
-            const Utils::known_events_t& known_events
-        )
-        : db(_db), my_port(_my_port), max_client_threads(_max_client_threads) {
+        DbWrapper& _db, uint32_t _my_port,
+        uint32_t _max_client_threads,
+        const Utils::known_events_t& _known_events
+    )
+    : db(_db), my_port(_my_port), max_client_threads(_max_client_threads), known_events(_known_events) {
         pthread_mutex_init(&stat_mutex, NULL);
         pthread_mutex_init(&new_clients_mutex, NULL);
         pthread_mutex_init(&known_peers_mutex, NULL);
@@ -18,7 +18,7 @@ namespace Skree {
 
         my_hostname = (char*)"127.0.0.1";
         my_hostname_len = strlen(my_hostname);
-        my_peer_id = make_peer_id(my_hostname_len, my_hostname, my_port);
+        my_peer_id = Utils::make_peer_id(my_hostname_len, my_hostname, my_port);
         my_peer_id_len = strlen(my_peer_id);
         my_peer_id_len_net = htonl(my_peer_id_len);
         my_peer_id_len_size = sizeof(my_peer_id_len_net);
@@ -35,27 +35,28 @@ namespace Skree {
 
         if(setsockopt(fh, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
             perror("setsockopt");
-            return 1;
+            throw new std::runtime_error("Socket error");
         }
 
         if(bind(fh, (sockaddr*)&addr, sizeof(addr)) != 0) {
             perror("bind");
-            return 1;
+            throw new std::runtime_error("Socket error");
         }
 
         fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
         listen(fh, 100000);
 
-        ev_io socket_watcher;
+        Utils::server_bound_ev_io socket_watcher;
+        socket_watcher.server = this;
         struct ev_loop* loop = ev_loop_new(0);
 
-        ev_io_init(&socket_watcher, socket_cb, fh, EV_READ);
-        ev_io_start(loop, &socket_watcher);
+        ev_io_init((ev_io*)&socket_watcher, socket_cb, fh, EV_READ);
+        ev_io_start(loop, (ev_io*)&socket_watcher);
 
-        Skree::Workers::Synchronization synchronization (this);
+        Skree::Workers::Synchronization synchronization (*this);
 
         for(int i = 0; i < max_client_threads; ++i) {
-            threads.push(new Skree::Workers::Client(&server));
+            threads.push(new Skree::Workers::Client(*this));
         }
 
         {
@@ -71,24 +72,24 @@ namespace Skree {
             localhost8765->host = "127.0.0.1";
             localhost8765->port = 8765;
 
-            peers_to_discover[make_peer_id(
+            peers_to_discover[Utils::make_peer_id(
                 strlen(localhost7654->host),
-                (char*)localhost7654->host,
+                localhost7654->host,
                 localhost7654->port
 
             )] = localhost7654;
 
-            peers_to_discover[make_peer_id(
+            peers_to_discover[Utils::make_peer_id(
                 strlen(localhost8765->host),
-                (char*)localhost8765->host,
+                localhost8765->host,
                 localhost8765->port
 
             )] = localhost8765;
         }
 
-        Skree::Workers::ReplicationExec replication_exec (this);
-        Skree::Workers::Replication replication (this);
-        Skree::Workers::Discovery discovery (this);
+        Skree::Workers::ReplicationExec replication_exec (*this);
+        Skree::Workers::Replication replication (*this);
+        Skree::Workers::Discovery discovery (*this);
 
         ev_run(loop, 0); // TODO
     }
@@ -114,11 +115,11 @@ namespace Skree {
     ) {
         short result = REPL_SAVE_RESULT_F;
 
-        char* _peer_id = client->get_peer_id();
+        char* _peer_id = client.get_peer_id();
         size_t _peer_id_len = strlen(_peer_id);
 
         uint64_t increment_key_len = 7 + ctx->event_name_len;
-        char* increment_key = (char*)malloc(increment_key_len + 1 + _peer_id_len);
+        char increment_key [increment_key_len + 1 + _peer_id_len];
 
         sprintf(increment_key, "rinseq:");
         memcpy(increment_key + 7, ctx->event_name, ctx->event_name_len);
@@ -129,20 +130,14 @@ namespace Skree {
 
         uint32_t num_inserted = 0;
 
-        uint32_t peers_cnt = ctx->peers->size();
-        uint32_t _peers_cnt = htonl(peers_cnt);
+        uint32_t _peers_cnt = htonl(ctx->peers_count);
         uint64_t serialized_peers_len = sizeof(_peers_cnt);
         char* serialized_peers = (char*)malloc(serialized_peers_len);
         memcpy(serialized_peers, &_peers_cnt, serialized_peers_len);
 
-        for(
-            std::list<packet_r_ctx_peer*>::const_iterator it =
-                ctx->peers->cbegin();
-            it != ctx->peers->cend();
-            ++it
-        ) {
-            packet_r_ctx_peer* peer = *it;
-            char* _peer_id = make_peer_id(peer->hostname_len,
+        for(uint32_t i = 0; i < ctx->peers_count; ++i) {
+            auto peer = ctx->peers[i];
+            char* _peer_id = Utils::make_peer_id(peer->hostname_len,
                 peer->hostname, peer->port);
 
             bool keep_peer_id = false;
@@ -182,7 +177,7 @@ namespace Skree {
             int64_t max_id = db.increment(
                 increment_key,
                 increment_key_len,
-                ctx->events->size(),
+                ctx->events_count,
                 0
             );
 
@@ -193,20 +188,13 @@ namespace Skree {
                 }
 
             } else {
-                uint64_t _now = htonll(std::time(nullptr));
-                size_t now_len = sizeof(_now);
-                char* now = (char*)malloc(now_len);
-                memcpy(now, &_now, now_len);
+                uint64_t now = htonll(std::time(nullptr));
+                size_t now_len = sizeof(now);
 
-                for(
-                    std::list<in_packet_r_ctx_event*>::const_iterator it =
-                        ctx->events->cbegin();
-                    it != ctx->events->cend();
-                    ++it
-                ) {
-                    in_packet_r_ctx_event* event = *it;
+                for(uint32_t i = 0; i < ctx->events_count; ++i) {
+                    auto event = ctx->events[i];
 
-                    char* r_id = (char*)malloc(21);
+                    char r_id [21];
                     sprintf(r_id, "%llu", max_id);
 
                     size_t r_id_len = strlen(r_id);
@@ -235,7 +223,7 @@ namespace Skree {
                         key[1] = 't';
                         key[2] = 's';
 
-                        if(db.add(key, key_len, now, now_len)) {
+                        if(db.add(key, key_len, (char*)&now, now_len)) {
                             key[1] = 'i';
                             key[2] = 'd';
 
@@ -245,7 +233,7 @@ namespace Skree {
                                 sizeof(event->id_net))) {
                                 bool rpr_ok = false;
 
-                                if(peers_cnt > 0) {
+                                if(ctx->peers_count > 0) {
                                     key[1] = 'p';
                                     key[2] = 'r';
 
@@ -314,9 +302,11 @@ namespace Skree {
                         free(r_id);
                         break;
                     }
+
+                    free(key);
                 }
 
-                if(num_inserted == ctx->events->size()) {
+                if(num_inserted == ctx->events_count) {
                     if(db.end_transaction(true)) {
                         pthread_mutex_lock(&stat_mutex);
                         stat_num_replications += num_inserted;
@@ -335,18 +325,13 @@ namespace Skree {
                         exit(1);
                     }
                 }
-
-                free(now);
             }
-
-            free(increment_key);
         }
 
         free(serialized_peers);
 
-        while(!ctx->peers->empty()) {
-            packet_r_ctx_peer* peer = ctx->peers->back();
-            ctx->peers->pop_back();
+        for(uint32_t i = 0; i < ctx->peers_count; ++i) {
+            auto peer = ctx->peers[i];
 
             free(peer->hostname);
             free(peer);
@@ -354,9 +339,8 @@ namespace Skree {
 
         free(ctx->peers);
 
-        while(!ctx->events->empty()) {
-            in_packet_r_ctx_event* event = ctx->events->back();
-            ctx->events->pop_back();
+        for(uint32_t i = 0; i < ctx->events_count; ++i) {
+            auto event = ctx->events[i];
 
             free(event->data);
             free(event);
@@ -387,10 +371,11 @@ namespace Skree {
         sprintf(increment_key, "inseq:");
         memcpy(increment_key + 6, ctx->event_name, ctx->event_name_len);
 
+        const char* _event_name = ctx->event_name;
         auto r_req = Actions::R::out_init(
-            this,
-            event_name_len,
-            event_name,
+            *this,
+            ctx->event_name_len,
+            _event_name,
             ctx->cnt
         );
         bool replication_began = false;
@@ -414,6 +399,7 @@ namespace Skree {
             } else {
                 uint32_t _cnt = ctx->cnt;
                 uint32_t num_inserted = 0;
+                const char* _event_data;
 
                 while(_cnt > 0) {
                     --_cnt;
@@ -449,7 +435,8 @@ namespace Skree {
                         break;
                     }
 
-                    Actions::R::out_add_event(r_req, max_id, event->len, event->data);
+                    _event_data = event->data;
+                    Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
 
                     --max_id;
                 }
@@ -611,14 +598,14 @@ namespace Skree {
                         char* r_ans = (char*)malloc(1);
                         r_ans[0] = SKREE_META_OPCODE_K;
 
-                        Skree::Base::PendingWrite::QueueItem item (
+                        auto item = new Skree::Base::PendingWrite::QueueItem {
                             .len = 1,
                             .data = r_ans,
                             .pos = 0,
-                            .cb = Skree::PendingReads::noop(server)
-                        );
+                            .cb = Skree::PendingReads::noop(*this)
+                        };
 
-                        r_ctx->client->push_write_queue(std::move(item));
+                        r_ctx->client->push_write_queue(item);
                     }
 
                     r_ctx->sync = false;
@@ -628,14 +615,14 @@ namespace Skree {
                         char* r_ans = (char*)malloc(1);
                         r_ans[0] = SKREE_META_OPCODE_A;
 
-                        Skree::Base::PendingWrite::QueueItem item (
+                        auto item = new Skree::Base::PendingWrite::QueueItem {
                             .len = 1,
                             .data = r_ans,
                             .pos = 0,
-                            .cb = Skree::PendingReads::noop(server)
-                        );
+                            .cb = Skree::PendingReads::noop(*this)
+                        };
 
-                        r_ctx->client->push_write_queue(std::move(item));
+                        r_ctx->client->push_write_queue(item);
                     }
 
                     r_ctx->sync = false;
@@ -656,14 +643,14 @@ namespace Skree {
                     char* r_ans = (char*)malloc(1);
                     r_ans[0] = SKREE_META_OPCODE_K;
 
-                    Skree::Base::PendingWrite::QueueItem item (
+                    auto item = new Skree::Base::PendingWrite::QueueItem {
                         .len = 1,
                         .data = r_ans,
                         .pos = 0,
-                        .cb = Skree::PendingReads::noop(server)
-                    );
+                        .cb = Skree::PendingReads::noop(*this)
+                    };
 
-                    r_ctx->client->push_write_queue(std::move(item));
+                    r_ctx->client->push_write_queue(item);
                 }
 
                 r_ctx->sync = false;
@@ -711,22 +698,22 @@ namespace Skree {
 
                 ++(r_ctx->pending);
 
-                const Skree::PendingReads::Callbacks::Replication cb (this);
-                const Skree::Base::PendingRead::QueueItem item {
+                const auto cb = new Skree::PendingReads::Callbacks::Replication(*this);
+                const auto item = new Skree::Base::PendingRead::QueueItem {
                     .len = 1,
-                    .cb = std::move(cb),
+                    .cb = cb,
                     .ctx = (void*)r_ctx,
                     .opcode = true
                 };
 
-                Skree::Base::PendingWrite::QueueItem witem (
+                auto witem = new Skree::Base::PendingWrite::QueueItem {
                     .len = r_len,
                     .data = r_req,
                     .pos = 0,
-                    .cb = std::move(item)
-                );
+                    .cb = item
+                };
 
-                peer->push_write_queue(std::move(witem));
+                peer->push_write_queue(witem);
             }
         }
 
@@ -744,7 +731,7 @@ namespace Skree {
         }
     }
 
-    void save_peers_to_discover() {
+    void Server::save_peers_to_discover() {
         pthread_mutex_lock(&peers_to_discover_mutex);
 
         size_t cnt = htonll(peers_to_discover.size());
@@ -796,7 +783,7 @@ namespace Skree {
             fprintf(stderr, "Failed to save peers list: %s\n", db.error().name());
     }
 
-    void load_peers_to_discover() {
+    void Server::load_peers_to_discover() {
         const char* key = "peers_to_discover";
         const size_t key_len = strlen(key);
         size_t value_len;
@@ -833,7 +820,7 @@ namespace Skree {
                 port = ntohl(port);
                 offset += sizeof(port);
 
-                peer_id = make_peer_id(hostname_len, hostname, port);
+                peer_id = Utils::make_peer_id(hostname_len, hostname, port);
 
                 it = peers_to_discover.find(peer_id);
 
@@ -853,11 +840,13 @@ namespace Skree {
         }
     }
 
-    static void socket_cb(struct ev_loop* loop, ev_io* watcher, int events) {
+    void Server::socket_cb(struct ev_loop* loop, ev_io* _watcher, int events) {
+        struct Utils::server_bound_ev_io* watcher = (struct Utils::server_bound_ev_io*)_watcher;
+        auto server = watcher->server;
         sockaddr_in* addr = (sockaddr_in*)malloc(sizeof(*addr));
         socklen_t len = sizeof(*addr);
 
-        int fh = accept(watcher->fd, (sockaddr*)addr, &len);
+        int fh = accept(_watcher->fd, (sockaddr*)addr, &len);
 
         if(fh < 0) {
             perror("accept");
@@ -868,17 +857,17 @@ namespace Skree {
         new_client_t* new_client = (new_client_t*)malloc(sizeof(*new_client));
 
         new_client->fh = fh;
-        new_client->cb = NULL;
+        new_client->cb = nullptr;
         new_client->s_in = addr;
         new_client->s_in_len = len;
 
         // TODO
-        pthread_mutex_lock(&new_clients_mutex);
-        new_clients.push(new_client);
-        pthread_mutex_unlock(&new_clients_mutex);
+        pthread_mutex_lock(&(server->new_clients_mutex));
+        server->new_clients.push(new_client);
+        pthread_mutex_unlock(&(server->new_clients_mutex));
     }
 
-    void unfailover(char* failover_key) {
+    void Server::unfailover(char* failover_key) {
         {
             failover_t::const_iterator it = failover.find(failover_key);
 

@@ -111,8 +111,8 @@ namespace Skree {
         }
 
         Utils::muh_str_t* C::out_init(
-            const Utils::known_event_t*& event, const uint64_t& rid_net,
-            const uint64_t& rin_len, const char*& rin
+            Utils::known_event_t*& event, const uint64_t& rid_net,
+            const uint64_t& rin_len, char*& rin
         ) {
             Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
             out->len = 1;
