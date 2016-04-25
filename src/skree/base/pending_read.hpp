@@ -36,7 +36,7 @@ namespace Skree {
                 virtual const QueueItem* run(
                     Skree::Client& client,
                     const QueueItem& item,
-                    const Args& args
+                    Args& args
                 ) = 0;
 
                 virtual void error(

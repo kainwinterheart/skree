@@ -176,7 +176,7 @@ namespace Skree {
             auto _cb = [this](
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                const Skree::Base::PendingRead::Callback::Args& args
+                Skree::Base::PendingRead::Callback::Args& args
             ) {
                 return cb2(client, item, args);
             };
@@ -204,7 +204,7 @@ namespace Skree {
         const Skree::Base::PendingRead::QueueItem* Discovery::cb6(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
-            const Skree::Base::PendingRead::Callback::Args& args
+            Skree::Base::PendingRead::Callback::Args& args
         ) {
             if(args.data[0] == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 0;
@@ -269,7 +269,7 @@ namespace Skree {
         const Skree::Base::PendingRead::QueueItem* Discovery::cb5(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
-            const Skree::Base::PendingRead::Callback::Args& args
+            Skree::Base::PendingRead::Callback::Args& args
         ) {
             if(args.data[0] == SKREE_META_OPCODE_K) {
                 pthread_mutex_lock(&(server.known_peers_mutex));
@@ -292,7 +292,7 @@ namespace Skree {
                     auto _cb = [this](
                         Skree::Client& client,
                         const Skree::Base::PendingRead::QueueItem& item,
-                        const Skree::Base::PendingRead::Callback::Args& args
+                        Skree::Base::PendingRead::Callback::Args& args
                     ) {
                         return cb6(client, item, args);
                     };
@@ -327,7 +327,7 @@ namespace Skree {
         const Skree::Base::PendingRead::QueueItem* Discovery::cb2(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
-            const Skree::Base::PendingRead::Callback::Args& args
+            Skree::Base::PendingRead::Callback::Args& args
         ) {
             if(args.data[0] == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 0;
@@ -386,7 +386,7 @@ namespace Skree {
                     auto _cb = [this](
                         Skree::Client& client,
                         const Skree::Base::PendingRead::QueueItem& item,
-                        const Skree::Base::PendingRead::Callback::Args& args
+                        Skree::Base::PendingRead::Callback::Args& args
                     ) {
                         return cb5(client, item, args);
                     };

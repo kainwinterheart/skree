@@ -6,7 +6,7 @@ namespace Skree {
             const Skree::Base::PendingRead::QueueItem* ReplicationProposeSelf::run(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                const Skree::Base::PendingRead::Callback::Args& args
+                Skree::Base::PendingRead::Callback::Args& args
             ) {
                 out_packet_i_ctx* ctx = (out_packet_i_ctx*)(item.ctx);
 

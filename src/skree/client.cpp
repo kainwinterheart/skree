@@ -14,14 +14,14 @@ namespace Skree {
             auto _cb = [this, opcode](
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                const Skree::Base::PendingRead::Callback::Args& args
+                Skree::Base::PendingRead::Callback::Args& args
             ) {
                 auto _cb = [this, opcode](
                     Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
-                    const Skree::Base::PendingRead::Callback::Args& args
+                    Skree::Base::PendingRead::Callback::Args& args
                 ) {
-                    uint64_t _out_len; // TODO: git rid of this
+                    uint64_t _out_len = 0; // TODO: git rid of this
                     handlers[opcode]->in(item.len, args.data, _out_len, args.out_data);
                     args.out_len = _out_len;
 
@@ -93,7 +93,7 @@ namespace Skree {
 
                         const char* _data = read_queue + in_packet_len;
 
-                        Skree::Base::PendingRead::Callback::Args args = {
+                        Skree::Base::PendingRead::Callback::Args args {
                             .data = _data,
                             .out_data = out_data,
                             .out_len = out_len,

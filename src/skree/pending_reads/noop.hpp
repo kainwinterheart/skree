@@ -18,7 +18,7 @@ namespace Skree {
                 virtual const Skree::Base::PendingRead::QueueItem* run(
                     Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
-                    const Skree::Base::PendingRead::Callback::Args& args
+                    Skree::Base::PendingRead::Callback::Args& args
                 ) override { throw std::logic_error("Noop callback should not be called"); };
             };
         }

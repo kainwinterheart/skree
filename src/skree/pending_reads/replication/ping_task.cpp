@@ -6,7 +6,7 @@ namespace Skree {
             const Skree::Base::PendingRead::QueueItem* ReplicationPingTask::run(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                const Skree::Base::PendingRead::Callback::Args& args
+                Skree::Base::PendingRead::Callback::Args& args
             ) {
                 // TODO: free(ctx)
                 out_data_c_ctx* ctx = (out_data_c_ctx*)(item.ctx);

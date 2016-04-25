@@ -23,19 +23,19 @@ namespace Skree {
             const Skree::Base::PendingRead::QueueItem* cb2(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                const Skree::Base::PendingRead::Callback::Args& args
+                Skree::Base::PendingRead::Callback::Args& args
             );
 
             const Skree::Base::PendingRead::QueueItem* cb5(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                const Skree::Base::PendingRead::Callback::Args& args
+                Skree::Base::PendingRead::Callback::Args& args
             );
 
             const Skree::Base::PendingRead::QueueItem* cb6(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                const Skree::Base::PendingRead::Callback::Args& args
+                Skree::Base::PendingRead::Callback::Args& args
             );
         };
     }

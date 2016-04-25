@@ -62,22 +62,21 @@ namespace Skree {
 
             short result = server.save_event(&ctx, ntohl(_tmp), &client, NULL);
 
-            char* _out_data = (char*)malloc(1);
+            out_data = (char*)malloc(1);
             out_len += 1;
-            out_data = _out_data;
 
             switch(result) {
                 case SAVE_EVENT_RESULT_F:
-                    _out_data[0] = SKREE_META_OPCODE_F;
+                    out_data[0] = SKREE_META_OPCODE_F;
                     break;
                 case SAVE_EVENT_RESULT_A:
-                    _out_data[0] = SKREE_META_OPCODE_A;
+                    out_data[0] = SKREE_META_OPCODE_A;
                     break;
                 case SAVE_EVENT_RESULT_K:
-                    _out_data[0] = SKREE_META_OPCODE_K;
+                    out_data[0] = SKREE_META_OPCODE_K;
                     break;
                 case SAVE_EVENT_RESULT_NULL:
-                    free(_out_data);
+                    free(out_data);
                     out_data = NULL;
                     out_len = 0;
                     break;

@@ -18,7 +18,7 @@ namespace Skree {
                 virtual const Skree::Base::PendingRead::QueueItem* run(
                     Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
-                    const Skree::Base::PendingRead::Callback::Args& args
+                    Skree::Base::PendingRead::Callback::Args& args
                 ) override {
                     return cb(client, item, args);
                 }
