@@ -1,10 +1,10 @@
-NO_FLAGS="" # -Wno-c++98-compat-pedantic -Wno-c++98-compat -Wno-exit-time-destructors -Wno-global-constructors -Wno-shadow -Wno-old-style-cast"
+#NO_FLAGS="" # -Wno-c++98-compat-pedantic -Wno-c++98-compat -Wno-exit-time-destructors -Wno-global-constructors -Wno-shadow -Wno-old-style-cast"
 #MORE_FLAGS="-Wall -Weverything ${NO_FLAGS}"
-MORE_FLAGS="-fwrapv"
+#MORE_FLAGS="-fwrapv"
 
-FILES="" # $(find ./src -type f -name '*.cpp')
+#FILES="" # $(find ./src -type f -name '*.cpp')
 
-clang++ ${MORE_FLAGS} -I /usr/local/Cellar/libev/4.20/include/ -I /usr/local/include/ -L /usr/local/Cellar/libev/4.20/lib/ -L /usr/local/lib -std=c++11 main.cpp ${FILES} -lev -lpthread -lc -lz -lkyotocabinet -lstdc++ -lm -lyaml-cpp -arch x86_64
+make clean ; make
 
 if [ "$?" -eq "0" ]; then
 
