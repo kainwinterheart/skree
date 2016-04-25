@@ -857,7 +857,7 @@ namespace Skree {
         new_client_t* new_client = (new_client_t*)malloc(sizeof(*new_client));
 
         new_client->fh = fh;
-        new_client->cb = nullptr;
+        new_client->cb = [](Client& client){};
         new_client->s_in = addr;
         new_client->s_in_len = len;
 

@@ -19,12 +19,12 @@ namespace Skree {
                     Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
                     const Skree::Base::PendingRead::Callback::Args& args
-                ) override;
+                ) override {
+                    return cb(client, item, args);
+                }
             };
         }
     }
 }
-
-#include "ordinary_packet.cpp" // fuck
 
 #endif

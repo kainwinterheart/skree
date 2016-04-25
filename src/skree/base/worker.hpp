@@ -19,13 +19,18 @@ namespace Skree {
         public:
             Worker(Skree::Server& _server, const void* _args = NULL)
                 : server(_server), args(_args) {
+            }
+
+            void start() {
                 thread = (pthread_t*)malloc(sizeof(*thread));
                 pthread_create(thread, NULL, __run, (void*)this);
             }
 
             virtual ~Worker() {
-                pthread_join(*thread, NULL);
-                free(thread);
+                if(thread != NULL) {
+                    pthread_join(*thread, NULL);
+                    free(thread);
+                }
             }
 
             virtual void run() = 0;

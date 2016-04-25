@@ -128,29 +128,6 @@ namespace Skree {
         return rv;
     }
 
-    template <typename T>
-    T* DbWrapper::parse_db_value(Utils::muh_str_t* _value, size_t* size) {
-        if(_value == NULL) return NULL;
-        if(size != NULL) *size = _value->len;
-
-        T* value = (T*)malloc(_value->len);
-        memcpy(value, _value->data, _value->len);
-
-        // free(_value->data);
-        delete _value;
-
-        return value;
-    }
-
-    template <typename T>
-    T* DbWrapper::parse_db_value(get_keys_result_t* map, std::string* key, size_t* size) {
-        get_keys_result_t::iterator it = map->find((char*)(key->c_str()));
-
-        if(it == map->end()) return NULL;
-
-        return parse_db_value<T>(it->second, size);
-    }
-
     get_keys_result_t* DbWrapper::db_get_keys(std::vector<std::string>& keys) {
         class VisitorImpl : public kyotocabinet::DB::Visitor {
             public:

@@ -25,8 +25,7 @@ namespace Skree {
                             server
                         );
 
-                        if(new_client->cb != nullptr)
-                            new_client->cb(*client);
+                        new_client->cb(*client);
 
                         free(new_client);
 
