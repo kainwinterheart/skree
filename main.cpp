@@ -58,38 +58,7 @@
 #pragma clang diagnostic ignored "-Wshadow"
 #pragma clang diagnostic ignored "-Wold-style-cast"
 
-// TODO
-
 #include "src/skree/server.hpp"
-
-// #include "src/skree/actions/c.cpp"
-// #include "src/skree/actions/e.cpp"
-// #include "src/skree/actions/h.cpp"
-// #include "src/skree/actions/i.cpp"
-// #include "src/skree/actions/l.cpp"
-// #include "src/skree/actions/r.cpp"
-// #include "src/skree/actions/w.cpp"
-// #include "src/skree/actions/x.cpp"
-// #include "src/skree/base/action.cpp"
-// #include "src/skree/base/pending_read.cpp"
-// #include "src/skree/base/pending_write.cpp"
-// #include "src/skree/base/worker.cpp"
-// #include "src/skree/client.cpp"
-// #include "src/skree/db_wrapper.cpp"
-// #include "src/skree/meta/opcodes.cpp"
-// #include "src/skree/pending_reads/discovery.cpp"
-// #include "src/skree/pending_reads/noop.cpp"
-// #include "src/skree/pending_reads/ordinary_packet.cpp"
-// #include "src/skree/pending_reads/replication/ping_task.cpp"
-// #include "src/skree/pending_reads/replication/propose_self.cpp"
-// #include "src/skree/pending_reads/replication.cpp"
-// #include "src/skree/server.cpp"
-// #include "src/skree/utils/misc.cpp"
-// #include "src/skree/workers/client.cpp"
-// #include "src/skree/workers/discovery.cpp"
-// #include "src/skree/workers/replication.cpp"
-// #include "src/skree/workers/replication_exec.cpp"
-// #include "src/skree/workers/synchronization.cpp"
 
 static Skree::Utils::skree_modules_t skree_modules;
 static Skree::Utils::event_groups_t event_groups;
