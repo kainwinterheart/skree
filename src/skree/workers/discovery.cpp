@@ -146,15 +146,14 @@ namespace Skree {
                                 free(addr);
 
                             } else {
-                                new_client_t* new_client = (new_client_t*)malloc(
-                                    sizeof(*new_client));
-
-                                new_client->fh = fh;
-                                new_client->cb = [this](Skree::Client& client) {
-                                    cb1(client);
+                                new_client_t* new_client = new new_client_t {
+                                    .fh = fh,
+                                    .cb = [this](Skree::Client& client) {
+                                        cb1(client);
+                                    },
+                                    .s_in = addr,
+                                    .s_in_len = addr_len
                                 };
-                                new_client->s_in = addr;
-                                new_client->s_in_len = addr_len;
 
                                 pthread_mutex_lock(&(server.new_clients_mutex));
                                 server.new_clients.push(new_client);

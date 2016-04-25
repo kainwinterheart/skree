@@ -54,9 +54,12 @@ namespace Skree {
         ev_io_start(loop, (ev_io*)&socket_watcher);
 
         Skree::Workers::Synchronization synchronization (*this);
+        synchronization.start();
 
         for(int i = 0; i < max_client_threads; ++i) {
-            threads.push(new Skree::Workers::Client(*this));
+            auto client = new Skree::Workers::Client(*this);
+            threads.push(client);
+            client->start();
         }
 
         {
@@ -88,8 +91,13 @@ namespace Skree {
         }
 
         Skree::Workers::ReplicationExec replication_exec (*this);
+        replication_exec.start();
+
         Skree::Workers::Replication replication (*this);
+        replication.start();
+
         Skree::Workers::Discovery discovery (*this);
+        discovery.start();
 
         ev_run(loop, 0); // TODO
     }
@@ -854,12 +862,12 @@ namespace Skree {
             return;
         }
 
-        new_client_t* new_client = (new_client_t*)malloc(sizeof(*new_client));
-
-        new_client->fh = fh;
-        new_client->cb = [](Client& client){};
-        new_client->s_in = addr;
-        new_client->s_in_len = len;
+        new_client_t* new_client = new new_client_t {
+            .fh = fh,
+            .cb = [](Client& client){},
+            .s_in = addr,
+            .s_in_len = len
+        };
 
         // TODO
         pthread_mutex_lock(&(server->new_clients_mutex));

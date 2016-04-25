@@ -9,6 +9,7 @@ namespace Skree {
 // #include "../client.hpp"
 #include <stdlib.h>
 #include <pthread.h>
+#include <functional>
 
 namespace Skree {
     namespace Base {
@@ -21,9 +22,16 @@ namespace Skree {
                 : server(_server), args(_args) {
             }
 
-            void start() {
+            virtual void start() {
                 thread = (pthread_t*)malloc(sizeof(*thread));
-                pthread_create(thread, NULL, __run, (void*)this);
+
+                run_args* args = new run_args {
+                    .cb = [this](){
+                        run();
+                    }
+                };
+
+                pthread_create(thread, NULL, __run, (void*)args);
             }
 
             virtual ~Worker() {
@@ -36,9 +44,13 @@ namespace Skree {
             virtual void run() = 0;
         private:
             pthread_t* thread;
+            struct run_args {
+                std::function<void()> cb;
+            };
 
             static void* __run(void* args) {
-                ((Worker*)args)->run();
+                ((run_args*)args)->cb();
+                free(args);
                 return NULL;
             }
         };

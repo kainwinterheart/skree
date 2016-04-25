@@ -11,13 +11,13 @@ namespace Skree {
 
         } else {
             // TODO: should be one pending read instead of two
-            auto _cb = [this, &opcode](
-                const Skree::Client& client,
+            auto _cb = [this, opcode](
+                Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
                 const Skree::Base::PendingRead::Callback::Args& args
             ) {
-                auto _cb = [this, &opcode](
-                    const Skree::Client& client,
+                auto _cb = [this, opcode](
+                    Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
                     const Skree::Base::PendingRead::Callback::Args& args
                 ) {

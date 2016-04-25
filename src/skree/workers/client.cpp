@@ -27,7 +27,7 @@ namespace Skree {
 
                         new_client->cb(*client);
 
-                        free(new_client);
+                        delete new_client;
 
                     } else {
                         pthread_mutex_unlock(&(server.new_clients_mutex));
