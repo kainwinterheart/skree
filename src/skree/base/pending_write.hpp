@@ -1,6 +1,14 @@
 #ifndef _SKREE_BASE_PENDINGWRITE_H_
 #define _SKREE_BASE_PENDINGWRITE_H_
 
+namespace Skree {
+    namespace Base {
+        namespace PendingWrite {
+            struct QueueItem;
+        }
+    }
+}
+
 // #include "../server.hpp"
 // #include "../client.hpp"
 #include <stdlib.h>
@@ -14,7 +22,6 @@ namespace Skree {
                 size_t pos;
                 char* data;
                 const Skree::Base::PendingRead::QueueItem* cb;
-                bool noop;
             };
         }
     }

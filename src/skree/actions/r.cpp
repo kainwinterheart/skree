@@ -25,7 +25,7 @@ namespace Skree {
             in_pos += sizeof(_tmp);
             uint32_t event_name_len = ntohl(_tmp);
 
-            char* event_name = (char*)malloc(event_name_len);
+            char event_name [event_name_len];
             memcpy(event_name, in_data + in_pos, event_name_len);
             in_pos += event_name_len;
 
@@ -77,7 +77,7 @@ namespace Skree {
 
                 peer->hostname = (char*)malloc(peer->hostname_len + 1);
                 memcpy(peer->hostname, in_data + in_pos, peer->hostname_len);
-                in_pos += sizeof(peer->hostname_len);
+                in_pos += peer->hostname_len;
                 peer->hostname[peer->hostname_len] = '\0';
 
                 memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
@@ -90,8 +90,9 @@ namespace Skree {
             in_packet_r_ctx ctx {
                 .hostname_len = hostname_len,
                 .port = port,
-                .hostname = hostname,
+                .hostname = hostname, // TODO: unused
                 .event_name_len = event_name_len,
+                .event_name = event_name,
                 .events_count = events_count,
                 .peers_count = peers_count,
                 .events = events,

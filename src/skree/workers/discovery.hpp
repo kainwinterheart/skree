@@ -20,19 +20,19 @@ namespace Skree {
             virtual void run() override;
             void cb1(Skree::Client& client);
 
-            const Skree::Base::PendingRead::QueueItem* cb2(
+            Skree::Base::PendingWrite::QueueItem* cb2(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
                 Skree::Base::PendingRead::Callback::Args& args
             );
 
-            const Skree::Base::PendingRead::QueueItem* cb5(
+            Skree::Base::PendingWrite::QueueItem* cb5(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
                 Skree::Base::PendingRead::Callback::Args& args
             );
 
-            const Skree::Base::PendingRead::QueueItem* cb6(
+            Skree::Base::PendingWrite::QueueItem* cb6(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
                 Skree::Base::PendingRead::Callback::Args& args

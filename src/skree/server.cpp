@@ -122,7 +122,7 @@ namespace Skree {
         Client& client
     ) {
         short result = REPL_SAVE_RESULT_F;
-
+        // printf("INCOMING REPLICATION: %llu\n", ctx->events_count);
         char* _peer_id = client.get_peer_id();
         size_t _peer_id_len = strlen(_peer_id);
 
@@ -130,6 +130,7 @@ namespace Skree {
         char increment_key [increment_key_len + 1 + _peer_id_len];
 
         sprintf(increment_key, "rinseq:");
+        // printf("EVENT_NAME_LEN: %lu\n", ctx->event_name_len);
         memcpy(increment_key + 7, ctx->event_name, ctx->event_name_len);
         increment_key[increment_key_len] = ':';
         ++increment_key_len;
@@ -272,42 +273,35 @@ namespace Skree {
                                     auto _max_id = htonll(max_id);
     // printf("repl_save: before db.add(%s)\n", key);
                                     if(db.add(key, key_len, (char*)&_max_id, sizeof(_max_id))) {
-                                        free(key);
-                                        free(r_id);
                                         ++num_inserted;
                                         --max_id;
 
                                     } else {
                                         fprintf(stderr, "db.add(%s) failed: %s\n", key, db.error().name());
                                         free(key);
-                                        free(r_id);
                                         break;
                                     }
 
                                 } else {
                                     free(key);
-                                    free(r_id);
                                     break;
                                 }
 
                             } else {
                                 fprintf(stderr, "db.add(%s) failed: %s\n", key, db.error().name());
                                 free(key);
-                                free(r_id);
                                 break;
                             }
 
                         } else {
                             fprintf(stderr, "db.add(%s) failed: %s\n", key, db.error().name());
                             free(key);
-                            free(r_id);
                             break;
                         }
 
                     } else {
                         fprintf(stderr, "db.add(%s) failed: %s\n", key, db.error().name());
                         free(key);
-                        free(r_id);
                         break;
                     }
 
@@ -345,8 +339,6 @@ namespace Skree {
             free(peer);
         }
 
-        free(ctx->peers);
-
         for(uint32_t i = 0; i < ctx->events_count; ++i) {
             auto event = ctx->events[i];
 
@@ -354,9 +346,7 @@ namespace Skree {
             free(event);
         }
 
-        free(ctx->events);
         free(ctx->hostname);
-        free(ctx->event_name);
 
         return result;
     }
@@ -461,9 +451,9 @@ namespace Skree {
                             new std::list<packet_r_ctx_peer*>();
 
                         pthread_mutex_lock(&known_peers_mutex);
-
+// printf("REPLICATION ATTEMPT: %llu\n", known_peers.size());
                         for(
-                            known_peers_t::const_iterator it = known_peers.cbegin();
+                            auto it = known_peers.cbegin();
                             it != known_peers.cend();
                             ++it
                         ) {
@@ -711,7 +701,8 @@ namespace Skree {
                     .len = 1,
                     .cb = cb,
                     .ctx = (void*)r_ctx,
-                    .opcode = true
+                    .opcode = true,
+                    .noop = false
                 };
 
                 auto witem = new Skree::Base::PendingWrite::QueueItem {

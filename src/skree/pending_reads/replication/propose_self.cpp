@@ -3,7 +3,7 @@
 namespace Skree {
     namespace PendingReads {
         namespace Callbacks {
-            const Skree::Base::PendingRead::QueueItem* ReplicationProposeSelf::run(
+            Skree::Base::PendingWrite::QueueItem* ReplicationProposeSelf::run(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
                 Skree::Base::PendingRead::Callback::Args& args
@@ -21,7 +21,7 @@ namespace Skree {
 
                 pthread_mutex_unlock(ctx->mutex);
 
-                return Skree::PendingReads::noop(server);
+                return NULL;
             }
 
             void ReplicationProposeSelf::error(

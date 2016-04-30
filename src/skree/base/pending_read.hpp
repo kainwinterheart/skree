@@ -14,6 +14,7 @@ namespace Skree {
 
 // #include "../server.hpp"
 // #include "../client.hpp"
+#include "pending_write.hpp"
 #include <sys/types.h>
 #include <stdexcept>
 
@@ -33,15 +34,15 @@ namespace Skree {
 
                 Callback(Skree::Server& _server) : server(_server) {}
 
-                virtual const QueueItem* run(
+                virtual Skree::Base::PendingWrite::QueueItem* run(
                     Skree::Client& client,
-                    const QueueItem& item,
+                    const Skree::Base::PendingRead::QueueItem& item,
                     Args& args
                 ) = 0;
 
                 virtual void error(
                     Skree::Client& client,
-                    const QueueItem& item
+                    const Skree::Base::PendingRead::QueueItem& item
                 ) {}
 
                 virtual bool noop() { return false; };

@@ -3,7 +3,7 @@
 namespace Skree {
     namespace PendingReads {
         namespace Callbacks {
-            const Skree::Base::PendingRead::QueueItem* Replication::run(
+            Skree::Base::PendingWrite::QueueItem* Replication::run(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
                 Skree::Base::PendingRead::Callback::Args& args
@@ -24,7 +24,7 @@ namespace Skree {
 
                 server.begin_replication(ctx);
 
-                return Skree::PendingReads::noop(server);
+                return NULL;
             }
 
             void Replication::error(

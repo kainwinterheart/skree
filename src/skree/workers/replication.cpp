@@ -367,7 +367,8 @@ namespace Skree {
                                                 .len = 1,
                                                 .cb = cb,
                                                 .ctx = (void*)ctx,
-                                                .opcode = true
+                                                .opcode = true,
+                                                .noop = false
                                             };
 
                                             auto witem = new Skree::Base::PendingWrite::QueueItem {
@@ -436,7 +437,8 @@ namespace Skree {
                                 .len = 1,
                                 .cb = cb,
                                 .ctx = (void*)ctx,
-                                .opcode = true
+                                .opcode = true,
+                                .noop = false
                             };
 
                             auto c_req = Skree::Actions::C::out_init(event, rid_net, rin_len, rin);

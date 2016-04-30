@@ -19,6 +19,7 @@ namespace Skree {
 
             memcpy(out_data + out_len, server.my_hostname, server.my_hostname_len);
             out_len += server.my_hostname_len;
+            printf("W::in done\n");
         }
 
         Utils::muh_str_t* W::out_init() {

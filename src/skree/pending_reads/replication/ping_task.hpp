@@ -24,7 +24,7 @@ namespace Skree {
                 ReplicationPingTask(Skree::Server& _server)
                     : Skree::Base::PendingRead::Callback(_server) {};
 
-                virtual const Skree::Base::PendingRead::QueueItem* run(
+                virtual Skree::Base::PendingWrite::QueueItem* run(
                     Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
                     Skree::Base::PendingRead::Callback::Args& args

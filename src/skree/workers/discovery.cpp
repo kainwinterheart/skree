@@ -186,7 +186,8 @@ namespace Skree {
                 .len = 1,
                 .cb = cb,
                 .ctx = NULL,
-                .opcode = true
+                .opcode = true,
+                .noop = false
             };
 
             auto w_req = Skree::Actions::W::out_init();
@@ -201,13 +202,13 @@ namespace Skree {
             client.push_write_queue(witem);
         }
 
-        const Skree::Base::PendingRead::QueueItem* Discovery::cb6(
+        Skree::Base::PendingWrite::QueueItem* Discovery::cb6(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
         ) {
             if(args.data[0] == SKREE_META_OPCODE_K) {
-                uint64_t in_pos = 0;
+                uint64_t in_pos = 1;
                 uint32_t _tmp;
 
                 memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
@@ -257,20 +258,21 @@ namespace Skree {
                     }
                 }
 
+                pthread_mutex_unlock(&(server.peers_to_discover_mutex));
+
                 if(got_new_peers)
                     server.save_peers_to_discover();
-
-                pthread_mutex_unlock(&(server.peers_to_discover_mutex));
             }
 
-            return Skree::PendingReads::noop(server);
+            return (Skree::Base::PendingWrite::QueueItem*)NULL;
         }
 
-        const Skree::Base::PendingRead::QueueItem* Discovery::cb5(
+        Skree::Base::PendingWrite::QueueItem* Discovery::cb5(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
         ) {
+            printf("DISCOVERY CB5 OPCODE: %c\n", args.data[0]);
             if(args.data[0] == SKREE_META_OPCODE_K) {
                 pthread_mutex_lock(&(server.known_peers_mutex));
 
@@ -302,7 +304,8 @@ namespace Skree {
                         .len = 1,
                         .cb = cb,
                         .ctx = NULL,
-                        .opcode = true
+                        .opcode = true,
+                        .noop = false
                     };
 
                     auto l_req = Skree::Actions::L::out_init();
@@ -314,23 +317,24 @@ namespace Skree {
                         .cb = item
                     };
 
-                    client.push_write_queue(witem);
+                    return witem;
                 }
 
             } else {
                 args.stop = true;
             }
 
-            return Skree::PendingReads::noop(server);
+            return (Skree::Base::PendingWrite::QueueItem*)NULL;
         }
 
-        const Skree::Base::PendingRead::QueueItem* Discovery::cb2(
+        Skree::Base::PendingWrite::QueueItem* Discovery::cb2(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
         ) {
+            printf("DISCOVERY CB2 OPCODE: %c\n", args.data[0]);
             if(args.data[0] == SKREE_META_OPCODE_K) {
-                uint64_t in_pos = 0;
+                uint64_t in_pos = 1;
                 uint32_t _tmp;
 
                 memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
@@ -396,7 +400,8 @@ namespace Skree {
                         .len = 1,
                         .cb = cb,
                         .ctx = NULL,
-                        .opcode = true
+                        .opcode = true,
+                        .noop = false
                     };
 
                     auto h_req = Skree::Actions::H::out_init(server);
@@ -408,7 +413,7 @@ namespace Skree {
                         .cb = item
                     };
 
-                    client.push_write_queue(witem);
+                    return witem;
 
                 } else {
                     args.stop = true;
@@ -418,7 +423,7 @@ namespace Skree {
                 args.stop = true;
             }
 
-            return Skree::PendingReads::noop(server);
+            return (Skree::Base::PendingWrite::QueueItem*)NULL;
         }
     }
 }
