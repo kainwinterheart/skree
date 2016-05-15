@@ -104,7 +104,11 @@ namespace Skree {
                         ) {
                             char data [_item.len + 1];
                             data[0] = opcode;
-                            memcpy(data + 1, args.data, _item.len); // TODO
+
+                            if(_item.len > 0) {
+                                memcpy(data + 1, args.data, _item.len); // TODO
+                            }
+
                             const char* _data = data;
 
                             // ***
@@ -141,7 +145,15 @@ namespace Skree {
                         _tmp = ntohl(_tmp);
 
                         if(_tmp == 0) {
-                            _cb(client, _item, args);
+                            const Skree::Base::PendingRead::QueueItem __item {
+                                .len = 0,
+                                .cb = NULL,
+                                .ctx = NULL,
+                                .opcode = false,
+                                .noop = false
+                            };
+
+                            _cb(client, __item, args);
 
                         } else {
                             const auto cb = new Skree::PendingReads::Callbacks::OrdinaryPacket<decltype(_cb)>(server, _cb);

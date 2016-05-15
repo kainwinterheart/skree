@@ -13,17 +13,22 @@ namespace Skree {
             in_pos += sizeof(_tmp);
             uint32_t event_name_len = ntohl(_tmp);
 
-            char* event_name = (char*)malloc(event_name_len + 1);
+            char event_name [event_name_len + 1];
             memcpy(event_name, in_data + in_pos, event_name_len);
             in_pos += event_name_len;
             event_name[event_name_len] = '\0';
 
-            Utils::known_events_t::const_iterator it = server.known_events.find(event_name);
+            auto it = server.known_events.find(event_name);
 
-            if(it == server.known_events.cend()) {
-                fprintf(stderr, "Got unknown event: %s\n", event_name);
+            if(it == server.known_events.end()) {
+                fprintf(stderr, "[E::in] Got unknown event: %s\n", event_name);
+                out_data = (char*)malloc(1);
+                out_len += 1;
+                out_data[0] = SKREE_META_OPCODE_F;
                 return;
             }
+
+            auto queue = it->second->queue;
 
             memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
             in_pos += sizeof(_tmp);
@@ -60,7 +65,7 @@ namespace Skree {
                 .events = events
             };
 
-            short result = server.save_event(&ctx, ntohl(_tmp), &client, NULL);
+            short result = server.save_event(&ctx, ntohl(_tmp), &client, NULL, *queue);
 
             out_data = (char*)malloc(1);
             out_len += 1;

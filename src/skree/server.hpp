@@ -33,9 +33,11 @@ namespace Skree {
 #include "workers/replication_exec.hpp"
 #include "workers/discovery.hpp"
 #include "pending_reads/replication.hpp"
+#include "queue_db.hpp"
 
 #include <stdexcept>
 #include <functional>
+#include <algorithm>
 
 namespace Skree {
     struct new_client_t {
@@ -107,7 +109,7 @@ namespace Skree {
         Server(
             DbWrapper& _db, uint32_t _my_port,
             uint32_t _max_client_threads,
-            const Utils::known_events_t& known_events
+            const Utils::known_events_t& _known_events
         );
         virtual ~Server();
 
@@ -115,12 +117,14 @@ namespace Skree {
             in_packet_e_ctx* ctx,
             uint32_t replication_factor,
             Client* client,
-            uint64_t* task_ids
+            uint64_t* task_ids,
+            QueueDb& queue
         );
 
         short repl_save(
             in_packet_r_ctx* ctx,
-            Client& client
+            Client& client,
+            QueueDb& queue
         );
 
         void repl_clean(

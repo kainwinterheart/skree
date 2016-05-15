@@ -25,9 +25,22 @@ namespace Skree {
             in_pos += sizeof(_tmp);
             uint32_t event_name_len = ntohl(_tmp);
 
-            char event_name [event_name_len];
+            char event_name [event_name_len + 1];
             memcpy(event_name, in_data + in_pos, event_name_len);
             in_pos += event_name_len;
+            event_name[event_name_len] = '\0';
+
+            auto it = server.known_events.find(event_name);
+
+            if(it == server.known_events.end()) {
+                fprintf(stderr, "[R::in] Got unknown event: %s\n", event_name);
+                out_data = (char*)malloc(1);
+                out_len += 1;
+                out_data[0] = SKREE_META_OPCODE_F;
+                return;
+            }
+
+            auto queue = it->second->r_queue;
 
             memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
             in_pos += sizeof(_tmp);
@@ -38,24 +51,26 @@ namespace Skree {
 
             while(cnt > 0) {
                 --cnt;
-                in_packet_r_ctx_event* event = (in_packet_r_ctx_event*)malloc(
-                    sizeof(*event));
 
                 memcpy(&_tmp64, in_data + in_pos, sizeof(_tmp64));
                 in_pos += sizeof(_tmp64);
-                event->id_net = _tmp64;
-
-                event->id = (char*)malloc(21);
-                sprintf(event->id, "%llu", ntohll(_tmp64));
-                // printf("repl got id: %llu\n", ntohll(event->id_net));
 
                 memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
                 in_pos += sizeof(_tmp);
-                event->len = ntohl(_tmp);
+                _tmp = ntohl(_tmp);
 
-                event->data = (char*)malloc(event->len);
-                memcpy(event->data, in_data + in_pos, event->len);
-                in_pos += event->len;
+                auto event = new in_packet_r_ctx_event {
+                    .id_net = _tmp64,
+                    .id = (char*)malloc(21),
+                    .len = _tmp,
+                    .data = (char*)malloc(_tmp)
+                };
+
+                sprintf(event->id, "%llu", ntohll(_tmp64));
+                // printf("repl got id: %llu\n", ntohll(event->id_net));
+
+                memcpy(event->data, in_data + in_pos, _tmp);
+                in_pos += _tmp;
 
                 events[cnt] = event;
             }
@@ -68,17 +83,19 @@ namespace Skree {
 
             while(cnt > 0) {
                 --cnt;
-                packet_r_ctx_peer* peer = (packet_r_ctx_peer*)malloc(
-                    sizeof(*peer));
 
                 memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
                 in_pos += sizeof(_tmp);
-                peer->hostname_len = ntohl(_tmp);
+                _tmp = ntohl(_tmp);
 
-                peer->hostname = (char*)malloc(peer->hostname_len + 1);
-                memcpy(peer->hostname, in_data + in_pos, peer->hostname_len);
-                in_pos += peer->hostname_len;
-                peer->hostname[peer->hostname_len] = '\0';
+                auto peer = new packet_r_ctx_peer {
+                    .hostname_len = _tmp,
+                    .hostname = (char*)malloc(_tmp + 1)
+                };
+
+                memcpy(peer->hostname, in_data + in_pos, _tmp);
+                in_pos += _tmp;
+                peer->hostname[_tmp] = '\0';
 
                 memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
                 in_pos += sizeof(_tmp);
@@ -99,7 +116,7 @@ namespace Skree {
                 .peers = peers
             };
 
-            short result = server.repl_save(&ctx, client);
+            short result = server.repl_save(&ctx, client, *queue);
 
             out_data = (char*)malloc(1);
             out_len += 1;

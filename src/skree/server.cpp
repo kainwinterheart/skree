@@ -119,7 +119,8 @@ namespace Skree {
 
     short Server::repl_save(
         in_packet_r_ctx* ctx,
-        Client& client
+        Client& client,
+        QueueDb& queue
     ) {
         short result = REPL_SAVE_RESULT_F;
         // printf("INCOMING REPLICATION: %llu\n", ctx->events_count);
@@ -180,9 +181,11 @@ namespace Skree {
 
             if(!keep_peer_id) free(_peer_id);
         }
+
     // printf("repl_save: before begin_transaction\n");
         if(db.begin_transaction()) {
     // printf("repl_save: after begin_transaction\n");
+            // TODO: is it really necessary?
             int64_t max_id = db.increment(
                 increment_key,
                 increment_key_len,
@@ -199,113 +202,100 @@ namespace Skree {
             } else {
                 uint64_t now = htonll(std::time(nullptr));
                 size_t now_len = sizeof(now);
+                // uint32_t r_id_len;
+                // uint32_t event_id_len;
+                // uint32_t key_len;
+                // uint32_t base_key_len =
+                //     4 // rin: | rts: | rid: | rpr:
+                //     + ctx->event_name_len
+                //     + 1 // :
+                //     + _peer_id_len
+                //     + 1 // :
+                // ;
+                // char r_id [21];
+                in_packet_r_ctx_event* event;
+                uint64_t queue_item_pos;
+                uint32_t event_len;
+                // uint64_t _max_id;
+                uint32_t _hostname_len = htonl(ctx->hostname_len);
+                uint32_t _port = htonl(ctx->port);
 
                 for(uint32_t i = 0; i < ctx->events_count; ++i) {
-                    auto event = ctx->events[i];
+                    event = ctx->events[i];
+                    // sprintf(r_id, "%llu", max_id);
 
-                    char r_id [21];
-                    sprintf(r_id, "%llu", max_id);
+                    // key_len = 0;
+                    // r_id_len = strlen(r_id);
+                    // event_id_len = strlen(event->id);
+                    // char key [base_key_len + std::max(r_id_len, event_id_len) + 1];
+                    //
+                    // sprintf(key, "rin:");
+                    // key_len += 4;
+                    //
+                    // memcpy(key + key_len, ctx->event_name, ctx->event_name_len);
+                    // key_len += ctx->event_name_len;
+                    //
+                    // key[key_len] = ':';
+                    // ++key_len;
+                    //
+                    // memcpy(key + key_len, _peer_id, _peer_id_len);
+                    // key_len += _peer_id_len;
+                    //
+                    // key[key_len] = ':';
+                    // ++key_len;
+                    //
+                    // memcpy(key + key_len, r_id, r_id_len);
+                    // key_len += r_id_len;
+                    //
+                    // key[key_len] = '\0';
 
-                    size_t r_id_len = strlen(r_id);
-                    uint32_t key_len =
-                        4 // rin: | rts: | rid: | rpr:
-                        + ctx->event_name_len
-                        + 1 // :
-                        + _peer_id_len
-                        + 1 // :
-                        + r_id_len
-                    ;
-                    char* key = (char*)malloc(key_len);
+                    queue_item_pos = 0;
+                    char queue_item [
+                        sizeof(event->len)
+                        + event->len
+                        + now_len
+                        + sizeof(event->id_net)
+                        // + sizeof(max_id)
+                        + sizeof(ctx->hostname_len)
+                        + ctx->hostname_len
+                        + sizeof(_port)
+                        + serialized_peers_len
+                    ];
 
-                    sprintf(key, "rin:");
-                    memcpy(key + 4, ctx->event_name, ctx->event_name_len);
-                    key[4 + ctx->event_name_len] = ':';
+                    event_len = htonl(event->len);
+                    memcpy(queue_item + queue_item_pos, (char*)&event_len, sizeof(event_len));
+                    queue_item_pos += sizeof(event_len);
 
-                    memcpy(key + 4 + ctx->event_name_len + 1, _peer_id,
-                        _peer_id_len);
-                    key[4 + ctx->event_name_len + 1 + _peer_id_len] = ':';
+                    memcpy(queue_item + queue_item_pos, event->data, event->len);
+                    queue_item_pos += event->len;
 
-                    memcpy(key + 4 + ctx->event_name_len + 1 + _peer_id_len + 1,
-                        r_id, r_id_len);
+                    memcpy(queue_item + queue_item_pos, (char*)&now, now_len);
+                    queue_item_pos += now_len;
 
-                    if(db.add(key, key_len, event->data, event->len)) {
-                        key[1] = 't';
-                        key[2] = 's';
+                    memcpy(queue_item + queue_item_pos, (char*)&(event->id_net), sizeof(event->id_net));
+                    queue_item_pos += sizeof(event->id_net);
 
-                        if(db.add(key, key_len, (char*)&now, now_len)) {
-                            key[1] = 'i';
-                            key[2] = 'd';
+                    // _max_id = htonll(max_id);
+                    // memcpy(queue_item + queue_item_pos, (char*)&_max_id, sizeof(_max_id));
+                    // queue_item_pos += sizeof(_max_id);
 
-                            // printf("about to save rid: %llu\n",ntohll(event->id_net));
+                    memcpy(queue_item + queue_item_pos, (char*)&_hostname_len, sizeof(_hostname_len));
+                    queue_item_pos += sizeof(_hostname_len);
 
-                            if(db.add(key, key_len, (char*)&(event->id_net),
-                                sizeof(event->id_net))) {
-                                bool rpr_ok = false;
+                    memcpy(queue_item + queue_item_pos, ctx->hostname, ctx->hostname_len);
+                    queue_item_pos += ctx->hostname_len;
 
-                                if(ctx->peers_count > 0) {
-                                    key[1] = 'p';
-                                    key[2] = 'r';
+                    memcpy(queue_item + queue_item_pos, (char*)&_port, sizeof(_port));
+                    queue_item_pos += sizeof(_port);
 
-                                    rpr_ok = db.add(
-                                        key, key_len,
-                                        serialized_peers,
-                                        serialized_peers_len
-                                    );
+                    memcpy(queue_item + queue_item_pos, serialized_peers, serialized_peers_len);
+                    queue_item_pos += serialized_peers_len;
 
-                                    if(!rpr_ok)
-                                        fprintf(stderr, "db.add(%s) failed: %s\n", key, db.error().name());
+                    const char* _queue_item = queue_item; // TODO
+                    queue.write(queue_item_pos, _queue_item);
 
-                                } else {
-                                    rpr_ok = true;
-                                }
-
-                                if(rpr_ok) {
-                                    key[1] = 'r';
-                                    key[2] = 'e';
-
-                                    size_t event_id_len = strlen(event->id);
-                                    key_len -= r_id_len;
-                                    key = (char*)realloc(key, key_len + event_id_len);
-
-                                    memcpy(key + key_len, event->id, event_id_len);
-                                    key_len += event_id_len;
-
-                                    auto _max_id = htonll(max_id);
-    // printf("repl_save: before db.add(%s)\n", key);
-                                    if(db.add(key, key_len, (char*)&_max_id, sizeof(_max_id))) {
-                                        ++num_inserted;
-                                        --max_id;
-
-                                    } else {
-                                        fprintf(stderr, "db.add(%s) failed: %s\n", key, db.error().name());
-                                        free(key);
-                                        break;
-                                    }
-
-                                } else {
-                                    free(key);
-                                    break;
-                                }
-
-                            } else {
-                                fprintf(stderr, "db.add(%s) failed: %s\n", key, db.error().name());
-                                free(key);
-                                break;
-                            }
-
-                        } else {
-                            fprintf(stderr, "db.add(%s) failed: %s\n", key, db.error().name());
-                            free(key);
-                            break;
-                        }
-
-                    } else {
-                        fprintf(stderr, "db.add(%s) failed: %s\n", key, db.error().name());
-                        free(key);
-                        break;
-                    }
-
-                    free(key);
+                    ++num_inserted;
+                    // --max_id;
                 }
 
                 if(num_inserted == ctx->events_count) {
@@ -336,14 +326,14 @@ namespace Skree {
             auto peer = ctx->peers[i];
 
             free(peer->hostname);
-            free(peer);
+            delete peer;
         }
 
         for(uint32_t i = 0; i < ctx->events_count; ++i) {
             auto event = ctx->events[i];
 
-            free(event->data);
-            free(event);
+            // free(event->data); // TODO
+            delete event;
         }
 
         free(ctx->hostname);
@@ -356,7 +346,8 @@ namespace Skree {
         in_packet_e_ctx* ctx,
         uint32_t replication_factor,
         Client* client,
-        uint64_t* task_ids
+        uint64_t* task_ids,
+        QueueDb& queue
     ) {
         short result = SAVE_EVENT_RESULT_F;
 
@@ -423,15 +414,19 @@ namespace Skree {
                     memcpy(key + 3 + ctx->event_name_len + 1, event->id,
                         strlen(event->id));
 
-                    if(db.add(key, key_len, event->data, event->len)) {
-                        free(key);
-                        ++num_inserted;
-
-                    } else {
-                        fprintf(stderr, "db.add(%s) failed: %s\n", key, db.error().name());
-                        free(key);
-                        break;
-                    }
+                    const char* event_data = event->data;
+                    queue.write(event->len, event_data); // TODO
+                    free(key);
+                    ++num_inserted;
+                    // if(db.add(key, key_len, event->data, event->len)) {
+                    //     free(key);
+                    //     ++num_inserted;
+                    //
+                    // } else {
+                    //     fprintf(stderr, "[save_event] db.add(%s) failed: %s\n", key, db.error().name());
+                    //     free(key);
+                    //     break;
+                    // }
 
                     _event_data = event->data;
                     Actions::R::out_add_event(r_req, max_id, event->len, _event_data);

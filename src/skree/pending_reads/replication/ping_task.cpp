@@ -36,17 +36,27 @@ namespace Skree {
                 const Skree::Base::PendingRead::QueueItem& item
             ) {
                 out_data_c_ctx* ctx = (out_data_c_ctx*)(item.ctx);
-                in_packet_r_ctx_event event {
+                auto it = server.known_events.find(ctx->event->id);
+
+                if(it == server.known_events.end()) {
+                    fprintf(stderr, "[PingTask] Got unknown event: %s\n", ctx->event->id);
+                    server.unfailover(ctx->failover_key);
+                    return; // TODO
+                }
+
+                auto queue = it->second->r_queue;
+                auto event = new in_packet_r_ctx_event {
                     .len = ctx->rin->len,
                     .data = ctx->rin->data,
-                    .id = (char*)malloc(21)
+                    .id = (char*)malloc(21),
+                    .id_net = htonll(ctx->rid)
                 };
 
-                sprintf(event.id, "%llu", ctx->rid);
+                sprintf(event->id, "%llu", ctx->rid);
 
                 packet_r_ctx_peer* peers [server.max_replication_factor];
                 in_packet_r_ctx_event* events [1];
-                events[0] = &event;
+                events[0] = event;
                 uint32_t peers_count = 0;
 
                 if(ctx->rpr != NULL) {
@@ -66,12 +76,11 @@ namespace Skree {
                             fprintf(stderr, "Invalid peer id: %s\n", peer_id);
 
                         } else {
-                            packet_r_ctx_peer* peer = (packet_r_ctx_peer*)malloc(
-                                sizeof(*peer));
-
-                            peer->hostname_len = delimiter - peer_id;
-                            peer->port = atoi(delimiter + 1);
-                            peer->hostname = (char*)malloc(peer->hostname_len + 1);
+                            auto peer = new packet_r_ctx_peer {
+                                .hostname_len = (uint32_t)(delimiter - peer_id),
+                                .port = (uint32_t)atoi(delimiter + 1),
+                                .hostname = (char*)malloc(delimiter - peer_id + 1)
+                            };
 
                             memcpy(peer->hostname, peer_id, peer->hostname_len);
                             peer->hostname[peer->hostname_len] = '\0';
@@ -93,7 +102,7 @@ namespace Skree {
                     .peers_count = peers_count
                 };
 
-                short result = server.repl_save(&r_ctx, client);
+                short result = server.repl_save(&r_ctx, client, *queue);
 
                 if(result == REPL_SAVE_RESULT_K) {
                     server.repl_clean(

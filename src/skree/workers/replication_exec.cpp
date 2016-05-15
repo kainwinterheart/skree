@@ -58,8 +58,17 @@ namespace Skree {
                         .events = events
                     };
 
+                    auto it = server.known_events.find(e_ctx.event_name);
+
+                    if(it == server.known_events.end()) {
+                        fprintf(stderr, "[ReplicationExec] Got unknown event: %s\n", e_ctx.event_name);
+                        continue; // TODO
+                    }
+
+                    auto queue = it->second->queue;
+
                     uint64_t task_ids[1];
-                    server.save_event(&e_ctx, 0, NULL, task_ids);
+                    server.save_event(&e_ctx, 0, NULL, task_ids, *queue);
 
                     // TODO: remove?
                     // {
@@ -134,8 +143,8 @@ namespace Skree {
 
                     server.unfailover(ctx->failover_key);
 
-                    free(ctx->data->data);
-                    free(ctx->data);
+                    // free(ctx->data->data);
+                    delete ctx->data;
                 }
 
                 pthread_mutex_destroy(ctx->mutex);

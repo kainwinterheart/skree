@@ -59,13 +59,14 @@
 #pragma clang diagnostic ignored "-Wold-style-cast"
 
 #include "src/skree/server.hpp"
+#include "src/skree/queue_db.hpp"
 
 static Skree::Utils::skree_modules_t skree_modules;
 static Skree::Utils::event_groups_t event_groups;
 static Skree::Utils::known_events_t known_events;
 
 int main(int argc, char** argv) {
-    std::string db_file_name;
+    std::string db_dir_name;
     std::string known_events_file_name;
     uint32_t my_port;
     uint32_t max_client_threads;
@@ -91,13 +92,13 @@ int main(int argc, char** argv) {
             "thread_count"
         );
 
-        TCLAP::ValueArg<std::string> _db_file_name(
+        TCLAP::ValueArg<std::string> _db_dir_name(
             "",
             "db",
-            "Database file",
+            "Database directory",
             true,
             "",
-            "file"
+            "db_dir"
         );
 
         TCLAP::ValueArg<std::string> _known_events_file_name(
@@ -106,19 +107,19 @@ int main(int argc, char** argv) {
             "Known events file",
             true,
             "",
-            "file"
+            "events_file"
         );
 
         cmd.add(_port);
         cmd.add(_max_client_threads);
-        cmd.add(_db_file_name);
+        cmd.add(_db_dir_name);
         cmd.add(_known_events_file_name);
 
         cmd.parse(argc, argv);
 
         my_port = _port.getValue();
         max_client_threads = _max_client_threads.getValue();
-        db_file_name = _db_file_name.getValue();
+        db_dir_name = _db_dir_name.getValue();
         known_events_file_name = _known_events_file_name.getValue();
 
     } catch(TCLAP::ArgException& e) {
@@ -128,6 +129,18 @@ int main(int argc, char** argv) {
     YAML::Node config = YAML::LoadFile(known_events_file_name);
 
     {
+        auto create_queue_db = [&db_dir_name](const std::string& name) {
+            std::string _queue_path (db_dir_name);
+            _queue_path.append("/");
+            _queue_path.append(name);
+
+            if(access(_queue_path.c_str(), R_OK) == -1) {
+                mkdir(_queue_path.c_str(), 0000755);
+            }
+
+            return new Skree::QueueDb (_queue_path.c_str(), 512 * 1024 * 1024);
+        };
+
         if(config.Type() != YAML::NodeType::Sequence) {
             fprintf(stderr, "Known events file should contain a sequence of event groups\n");
         }
@@ -216,6 +229,10 @@ int main(int argc, char** argv) {
                     known_event->group = event_group;
                     known_event->ttl = ttl;
 
+                    known_event->queue = create_queue_db(id);
+                    known_event->r_queue = create_queue_db(id + "/replication");
+                    known_event->re_queue = create_queue_db(id + "/replication_exec");
+
                     auto it = known_events.find(id_);
 
                     if(it == known_events.cend()) {
@@ -237,6 +254,7 @@ int main(int argc, char** argv) {
     printf("Running on port: %u\n", my_port);
     signal(SIGPIPE, SIG_IGN);
 
+    std::string db_file_name (db_dir_name + "/skree.kch");
     Skree::DbWrapper db;
 
     if(!db.open(

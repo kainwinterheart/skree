@@ -31,429 +31,325 @@ namespace Skree {
                 std::vector<std::string> keys;
                 uint64_t now = std::time(nullptr);
 
-                for(
-                    auto _event = server.known_events.cbegin();
-                    _event != server.known_events.cend();
-                    ++_event
-                ) {
-                    auto event = _event->second;
+                for(auto& _event : server.known_events) {
+                    // fprintf(stderr, "replication: before read\n");
+                    auto event = _event.second;
+                    auto queue = event->r_queue;
+                    auto item = queue->read();
+
+                    if(item == NULL) {
+                        // fprintf(stderr, "replication: empty queue\n");
+                        continue;
+                    }
+
+                    size_t item_pos = 0;
+
+                    uint32_t rin_len;
+                    memcpy(&rin_len, item + item_pos, sizeof(rin_len));
+                    item_pos += sizeof(rin_len);
+                    rin_len = ntohl(rin_len);
+
+                    // char rin [rin_len]; // TODO: malloc?
+                    // memcpy(rin, item + item_pos, rin_len);
+                    char* rin = item + item_pos;
+                    item_pos += rin_len;
+
+                    uint64_t rts;
+                    memcpy(&rts, item + item_pos, sizeof(rts));
+                    item_pos += sizeof(rts);
+                    rts = ntohll(rts);
+
+                    uint64_t rid_net;
+                    memcpy(&rid_net, item + item_pos, sizeof(rid_net));
+                    item_pos += sizeof(rid_net);
+
+                    uint64_t rid = ntohll(rid_net);
+
+                    // TODO: is max_id really needed here (or anywhere)?
+                    // item_pos += sizeof(uint64_t);
+
+                    uint32_t hostname_len;
+                    memcpy(&hostname_len, item + item_pos, sizeof(hostname_len));
+                    item_pos += sizeof(hostname_len);
+                    hostname_len = ntohl(hostname_len);
+
+                    char* hostname = item + item_pos;
+                    item_pos += hostname_len;
+
+                    uint32_t port;
+                    memcpy(&port, item + item_pos, sizeof(port));
+                    item_pos += sizeof(port);
+                    port = htonl(port);
+
+                    uint32_t peers_cnt;
+                    memcpy(&peers_cnt, item + item_pos, sizeof(peers_cnt));
+                    item_pos += sizeof(peers_cnt);
+                    peers_cnt = ntohl(peers_cnt);
+
+                    char* rpr = item + item_pos;
+
+                    char* peer_id = Utils::make_peer_id(hostname_len, hostname, port);
+                    uint32_t peer_id_len = strlen(peer_id);
+
                     // printf("repl thread: %s\n", event->id);
 
-                    for(
-                        auto _peer_id = peer_ids.cbegin();
-                        _peer_id != peer_ids.cend();
-                        ++_peer_id
-                    ) {
-                        size_t suffix_len =
-                            event->id_len
-                            + 1 // :
-                            + (*_peer_id)->len
-                        ;
+                    size_t suffix_len =
+                        event->id_len
+                        + 1 // :
+                        + peer_id_len
+                    ;
 
-                        char* suffix = (char*)malloc(
-                            suffix_len
-                            + 1 // :
-                            + 20 // wrinseq
-                            + 1 // \0
-                        );
-                        sprintf(suffix, "%s:%s", event->id, (*_peer_id)->data);
-                        // printf("repl thread: %s\n", suffix);
+                    // TODO
+                    char* suffix = (char*)malloc(
+                        suffix_len
+                        + 1 // :
+                        + 20 // wrinseq
+                        + 1 // \0
+                    );
+                    sprintf(suffix, "%s:%s", event->id, peer_id);
+                    // printf("repl thread: %s\n", suffix);
 
-                        std::string wrinseq_key("wrinseq:", 8);
-                        wrinseq_key.append(suffix, suffix_len);
+                    // TODO
+                    uint64_t rinseq;
+                    uint64_t wrinseq;
 
-                        std::string rinseq_key("rinseq:", 7);
-                        rinseq_key.append(suffix, suffix_len);
+                    suffix[suffix_len] = ':';
+                    ++suffix_len;
 
-                        keys.push_back(wrinseq_key);
-                        keys.push_back(rinseq_key);
-        // printf("replication_thread: before first db_get_keys\n");
-                        dbdata = server.db.db_get_keys(keys);
-                        // printf("replication_thread: after first db_get_keys\n");
-                        keys.clear();
+                    sprintf(suffix + suffix_len, "%llu", wrinseq);
+                    suffix_len += 20;
+                    size_t suffix_slen = strlen(suffix);
 
-                        if(dbdata == NULL) {
-                            fprintf(stderr, "db.accept_bulk failed: %s\n", server.db.error().name());
-                            exit(1);
-                        }
+                    // TODO: overflow
+                    if((rts + event->ttl) > now) {
+                        fprintf(stderr, "skip repl: not now, rts: %llu, now: %llu\n", rts, now);
+                        // free(rin);
+                        // free(rpr);
+                        free(item);
+                        free(suffix);
+                        queue->sync_read_offset(false);
+                        continue;
+                    }
 
-                        uint64_t rinseq;
-                        uint64_t wrinseq;
+                    char* failover_key = suffix;
+                    sprintf(failover_key + suffix_len - 20 - 1, "%llu", rid);
 
-                        auto next = [this, &wrinseq_key, &wrinseq](){
-                            uint64_t next_wrinseq = htonll(wrinseq + 1);
-                            uint64_t __wrinseq = htonll(wrinseq);
-        // printf("replication_thread: before db.cas()\n");
-                            if(!server.db.cas(
-                                wrinseq_key.c_str(),
-                                wrinseq_key.length(),
-                                (char*)&__wrinseq,
-                                sizeof(__wrinseq),
-                                (char*)&next_wrinseq,
-                                sizeof(next_wrinseq)
-                            )) {
-                                fprintf(
-                                    stderr, "db.cas(%s,%llu,%llu) failed: %s\n",
-                                    wrinseq_key.c_str(), wrinseq,
-                                    ntohll(next_wrinseq),
-                                    server.db.error().name()
-                                );
-                                exit(1);
-                            }
-        // printf("replication_thread: after db.cas()\n");
-                        };
+                    {
+                        failover_t::const_iterator it = server.failover.find(failover_key);
 
-                        {
-                            uint64_t* _rinseq = server.db.parse_db_value<uint64_t>(dbdata, &rinseq_key);
-                            uint64_t* _wrinseq = server.db.parse_db_value<uint64_t>(dbdata, &wrinseq_key);
-
-                            if(_rinseq == NULL) rinseq = 0;
-                            else {
-                                rinseq = ntohll(*_rinseq);
-                                free(_rinseq);
-                            }
-
-                            if(_wrinseq == NULL) {
-                                wrinseq = 0;
-                                uint64_t __wrinseq = htonll(wrinseq);
-
-                                if(!server.db.add(
-                                    wrinseq_key.c_str(),
-                                    wrinseq_key.length(),
-                                    (char*)&__wrinseq,
-                                    sizeof(__wrinseq)
-                                )) {
-                                    auto error = server.db.error();
-                                    fprintf(
-                                        stderr, "db.add(%s) failed: %s\n",
-                                        wrinseq_key.c_str(), error.name()
-                                    );
-
-                                    if(error.code() == kyotocabinet::BasicDB::Error::Code::DUPREC) {
-                                        next();
-                                        continue;
-
-                                    } else {
-                                        exit(1);
-                                    }
-                                }
-
-                            } else {
-                                wrinseq = ntohll(*_wrinseq);
-                                free(_wrinseq);
-                            }
-                        }
-
-                        delete dbdata;
-
-                        if(wrinseq >= rinseq) {
-                            // printf("Skip repl: %llu >= %llu\n", wrinseq, rinseq);
-                            free(suffix);
+                        if(it != server.failover.cend()) {
+                            // TODO: what should really happen here?
+                            fprintf(stderr, "skip repl: failover flag is set\n");
+                            // free(rin);
+                            // free(rpr);
+                            free(item);
+                            // free(suffix);
+                            free(failover_key);
+                            queue->sync_read_offset(false);
                             continue;
                         }
+                    }
 
-                        suffix[suffix_len] = ':';
-                        ++suffix_len;
+                    {
+                        no_failover_t::const_iterator it = server.no_failover.find(failover_key);
 
-                        sprintf(suffix + suffix_len, "%llu", wrinseq);
-                        suffix_len += 20;
-                        size_t suffix_slen = strlen(suffix);
-
-                        std::string rin_key("rin:", 4);
-                        rin_key.append(suffix, suffix_slen);
-
-                        std::string rts_key("rts:", 4);
-                        rts_key.append(suffix, suffix_slen);
-
-                        std::string rid_key("rid:", 4);
-                        rid_key.append(suffix, suffix_slen);
-
-                        std::string rpr_key("rpr:", 4);
-                        rpr_key.append(suffix, suffix_slen);
-
-                        keys.push_back(rin_key);
-                        keys.push_back(rts_key);
-                        keys.push_back(rid_key);
-                        keys.push_back(rpr_key);
-
-                        // for(
-                        //     std::vector<std::string>::const_iterator it = keys.cbegin();
-                        //     it != keys.cend();
-                        //     ++it
-                        //) {
-                        //
-                        //     printf("gotta ask for (%lu bytes) %s\n", it->size(), it->c_str());
-                        // }
-
-                        dbdata = server.db.db_get_keys(keys);
-                        keys.clear();
-
-                        if(dbdata == NULL) {
-                            fprintf(stderr, "db.accept_bulk failed: %s\n", server.db.error().name());
-                            exit(1);
-                        }
-
-                        uint32_t rin_len;
-                        size_t _rin_len;
-                        char* rin = server.db.parse_db_value<char>(dbdata, &rin_key, &_rin_len);
-                        rin_len = _rin_len;
-
-                        if(rin == NULL) {
-                            fprintf(stderr, "No data for replicated event: %s, rin_key: %s\n", suffix, rin_key.c_str());
-                            next();
-                            continue;
-                        }
-
-                        uint64_t rts;
-                        uint64_t rid;
-                        uint64_t rid_net;
-
-                        {
-                            uint64_t* _rts = server.db.parse_db_value<uint64_t>(dbdata, &rts_key);
-                            uint64_t* _rid = server.db.parse_db_value<uint64_t>(dbdata, &rid_key);
-
-                            if(_rts == NULL) {
-                                fprintf(stderr, "No timestamp for replicated event: %s\n", suffix);
-                                next();
-                                continue;
-
-                            } else {
-                                rts = ntohll(*_rts);
-                                // free(_rts);
-                            }
-
-                            if(_rid == NULL) {
-                                fprintf(stderr, "No remote id for replicated event: %s\n", suffix);
-                                next();
-                                continue;
-
-                            } else {
-                                rid_net = *_rid;
-                                // free(_rid);
-                                rid = ntohll(rid_net);
-                            }
-                        }
-
-                        size_t rpr_len;
-                        char* rpr = server.db.parse_db_value<char>(dbdata, &rpr_key, &rpr_len);
-
-                        delete dbdata;
-
-                        if((rts + event->ttl) > now) {
-                            // printf("skip repl: not now\n");
-                            free(rin);
-                            if(rpr != NULL) free(rpr);
-                            free(suffix);
-                            continue;
-                        }
-
-                        char* failover_key = suffix;
-                        sprintf(failover_key + suffix_len - 20 - 1, "%llu", rid);
-
-                        {
-                            failover_t::const_iterator it = server.failover.find(failover_key);
-
-                            if(it != server.failover.cend()) {
-                                free(rin);
-                                if(rpr != NULL) free(rpr);
+                        if(it != server.no_failover.cend()) {
+                            if((it->second + server.no_failover_time) > now) {
+                                // TODO: what should really happen here?
+                                fprintf(stderr, "skip repl: no_failover flag is set\n");
+                                // free(rin);
+                                // free(rpr);
+                                free(item);
                                 // free(suffix);
                                 free(failover_key);
+                                queue->sync_read_offset(false);
                                 continue;
+
+                            } else {
+                                server.no_failover.erase(it);
                             }
                         }
+                    }
 
-                        {
-                            no_failover_t::const_iterator it = server.no_failover.find(failover_key);
+                    // TODO: mark task as being processed before
+                    //       sync_read_offset() call so it won't be lost
+                    queue->sync_read_offset();
+                    fprintf(stderr, "replication: after sync_read_offset(), rid: %llu\n", rid);
 
-                            if(it != server.no_failover.cend()) {
-                                if((it->second + server.no_failover_time) > now) {
-                                    free(rin);
-                                    if(rpr != NULL) free(rpr);
-                                    // free(suffix);
-                                    free(failover_key);
-                                    continue;
+                    server.failover[failover_key] = 0;
 
-                                } else {
-                                    server.no_failover.erase(it);
-                                }
-                            }
-                        }
+                    pthread_mutex_lock(&(server.known_peers_mutex));
 
-                        server.failover[failover_key] = 0;
+                    _peer = server.known_peers.find(peer_id);
 
-                        pthread_mutex_lock(&(server.known_peers_mutex));
+                    if(_peer == server.known_peers.cend()) peer = NULL;
+                    else peer = _peer->second;
 
-                        _peer = server.known_peers.find((*_peer_id)->data);
+                    pthread_mutex_unlock(&(server.known_peers_mutex));
 
-                        if(_peer == server.known_peers.cend()) peer = NULL;
-                        else peer = _peer->second;
+                    fprintf(stderr, "Seems like I need to failover task %llu\n", rid);
 
-                        pthread_mutex_unlock(&(server.known_peers_mutex));
+                    if(peer == NULL) {
+                        size_t offset = 0;
+                        bool have_rpr = false;
 
-                        // printf("Seems like I need to failover task %llu\n", rid);
+                        uint32_t* count_replicas = (uint32_t*)malloc(sizeof(
+                            *count_replicas));
+                        uint32_t* acceptances = (uint32_t*)malloc(sizeof(
+                            *acceptances));
+                        uint32_t* pending = (uint32_t*)malloc(sizeof(
+                            *pending));
 
-                        if(peer == NULL) {
-                            size_t offset = 0;
-                            uint32_t peers_cnt = 0;
-                            bool have_rpr = false;
+                        *count_replicas = 0;
+                        *acceptances = 0;
+                        *pending = 0;
 
-                            uint32_t* count_replicas = (uint32_t*)malloc(sizeof(
-                                *count_replicas));
-                            uint32_t* acceptances = (uint32_t*)malloc(sizeof(
-                                *acceptances));
-                            uint32_t* pending = (uint32_t*)malloc(sizeof(
-                                *pending));
+                        pthread_mutex_t* mutex = (pthread_mutex_t*)malloc(sizeof(*mutex));
+                        pthread_mutex_init(mutex, NULL);
 
-                            *count_replicas = 0;
-                            *acceptances = 0;
-                            *pending = 0;
+                        auto data_str = new Utils::muh_str_t {
+                            .len = rin_len,
+                            .data = rin
+                        };
 
-                            pthread_mutex_t* mutex = (pthread_mutex_t*)malloc(sizeof(*mutex));
-                            pthread_mutex_init(mutex, NULL);
+                        auto __peer_id = new Utils::muh_str_t {
+                            .len = peer_id_len,
+                            .data = peer_id
+                        };
 
-                            Utils::muh_str_t* data_str = (Utils::muh_str_t*)malloc(sizeof(*data_str));
+                        if(peers_cnt > 0) {
+                            *count_replicas = peers_cnt;
 
-                            data_str->len = rin_len;
-                            data_str->data = rin;
+                            auto i_req = Skree::Actions::I::out_init(
+                                __peer_id, event, rid_net);
 
-                            if(rpr != NULL) {
-                                uint32_t _peers_cnt;
-                                memcpy(&_peers_cnt, rpr + offset, sizeof(_peers_cnt));
-                                peers_cnt = ntohl(_peers_cnt);
+                            if(peers_cnt > 0) {
+                                have_rpr = true;
+                                size_t peer_id_len;
+                                char* peer_id;
+                                auto _peers_cnt = peers_cnt; // TODO
 
-                                *count_replicas = peers_cnt;
+                                while(peers_cnt > 0) {
+                                    peer_id_len = strlen(rpr + offset); // TODO: get rid of this shit
+                                    peer_id = (char*)malloc(peer_id_len + 1);
+                                    memcpy(peer_id, rpr + offset, peer_id_len);
+                                    peer_id[peer_id_len] = '\0';
+                                    offset += peer_id_len + 1;
 
-                                Utils::muh_str_t* __peer_id = *_peer_id;
-                                auto i_req = Skree::Actions::I::out_init(
-                                    __peer_id, event, rid_net);
+                                    auto it = server.known_peers.find(peer_id);
 
-                                if(peers_cnt > 0) {
-                                    have_rpr = true;
+                                    if(it == server.known_peers.end()) {
+                                        ++(*acceptances);
 
-                                    while(peers_cnt > 0) {
-                                        size_t peer_id_len = strlen(rpr + offset); // TODO: get rid of this shit
-                                        char* peer_id = (char*)malloc(peer_id_len + 1);
-                                        memcpy(peer_id, rpr + offset, peer_id_len);
-                                        peer_id[peer_id_len] = '\0';
-                                        offset += peer_id_len + 1;
+                                    } else {
+                                        ++(*pending);
 
-                                        known_peers_t::const_iterator it = server.known_peers.find(peer_id);
+                                        auto ctx = new out_packet_i_ctx {
+                                            .count_replicas = count_replicas,
+                                            .pending = pending,
+                                            .acceptances = acceptances,
+                                            .mutex = mutex,
+                                            .event = event,
+                                            .data = data_str,
+                                            .peer_id = __peer_id,
+                                            .wrinseq = wrinseq, // TODO
+                                            .failover_key = failover_key,
+                                            .failover_key_len = suffix_len,
+                                            .rpr = rpr,
+                                            .peers_cnt = _peers_cnt, // TODO
+                                            .rid = rid
+                                        };
 
-                                        if(it == server.known_peers.cend()) {
-                                            ++(*acceptances);
+                                        const auto cb = new Skree::PendingReads::Callbacks::ReplicationProposeSelf(server);
+                                        const auto item = new Skree::Base::PendingRead::QueueItem {
+                                            .len = 1,
+                                            .cb = cb,
+                                            .ctx = (void*)ctx,
+                                            .opcode = true,
+                                            .noop = false
+                                        };
 
-                                        } else {
-                                            ++(*pending);
+                                        auto witem = new Skree::Base::PendingWrite::QueueItem {
+                                            .len = i_req->len,
+                                            .data = i_req->data,
+                                            .pos = 0,
+                                            .cb = item
+                                        };
 
-                                            out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(
-                                                sizeof(*ctx));
-
-                                            ctx->count_replicas = count_replicas;
-                                            ctx->pending = pending;
-                                            ctx->acceptances = acceptances;
-                                            ctx->mutex = mutex;
-                                            ctx->event = event;
-                                            ctx->data = data_str;
-                                            ctx->peer_id = *_peer_id;
-                                            ctx->wrinseq = wrinseq;
-                                            ctx->failover_key = failover_key;
-                                            ctx->failover_key_len = suffix_len;
-                                            ctx->rpr = rpr;
-                                            ctx->peers_cnt = peers_cnt;
-                                            ctx->rid = rid;
-
-                                            const auto cb = new Skree::PendingReads::Callbacks::ReplicationProposeSelf(server);
-                                            const auto item = new Skree::Base::PendingRead::QueueItem {
-                                                .len = 1,
-                                                .cb = cb,
-                                                .ctx = (void*)ctx,
-                                                .opcode = true,
-                                                .noop = false
-                                            };
-
-                                            auto witem = new Skree::Base::PendingWrite::QueueItem {
-                                                .len = i_req->len,
-                                                .data = i_req->data,
-                                                .pos = 0,
-                                                .cb = item
-                                            };
-
-                                            it->second->push_write_queue(witem);
-                                        }
-
-                                        --peers_cnt;
+                                        it->second->push_write_queue(witem);
                                     }
+
+                                    --peers_cnt;
                                 }
                             }
-
-                            if(!have_rpr) {
-                                out_packet_i_ctx* ctx = (out_packet_i_ctx*)malloc(sizeof(*ctx));
-
-                                ctx->count_replicas = count_replicas;
-                                ctx->pending = pending;
-                                ctx->acceptances = acceptances;
-                                ctx->mutex = mutex;
-                                ctx->event = event;
-                                ctx->data = data_str;
-                                ctx->peer_id = *_peer_id;
-                                ctx->wrinseq = wrinseq;
-                                ctx->failover_key = failover_key;
-                                ctx->failover_key_len = suffix_len;
-                                ctx->rpr = rpr;
-                                ctx->peers_cnt = 0;
-                                ctx->rid = rid;
-
-                                // server.push_replication_exec_queue(ctx); // TODO
-                                server.replication_exec_queue.push(ctx);
-                            }
-
-                        } else {
-                            // TODO: rin_str's type
-                            Utils::muh_str_t* rin_str = (Utils::muh_str_t*)malloc(sizeof(*rin_str));
-
-                            rin_str->len = rin_len;
-                            rin_str->data = rin;
-
-                            Utils::muh_str_t* rpr_str = NULL;
-
-                            if(rpr != NULL) {
-                                rpr_str = (Utils::muh_str_t*)malloc(sizeof(*rpr_str));
-                                rpr_str->len = strlen(rpr);
-                                rpr_str->data = rpr;
-                            }
-
-                            out_data_c_ctx* ctx = (out_data_c_ctx*)malloc(sizeof(*ctx));
-
-                            ctx->event = event;
-                            ctx->rin = rin_str;
-                            ctx->rpr = rpr_str;
-                            ctx->rid = rid;
-                            ctx->wrinseq = wrinseq;
-                            ctx->failover_key = failover_key;
-                            ctx->failover_key_len = suffix_len;
-
-                            const auto cb = new Skree::PendingReads::Callbacks::ReplicationPingTask(server);
-                            const auto item = new Skree::Base::PendingRead::QueueItem {
-                                .len = 1,
-                                .cb = cb,
-                                .ctx = (void*)ctx,
-                                .opcode = true,
-                                .noop = false
-                            };
-
-                            auto c_req = Skree::Actions::C::out_init(event, rid_net, rin_len, rin);
-
-                            auto witem = new Skree::Base::PendingWrite::QueueItem {
-                                .len = c_req->len,
-                                .data = c_req->data,
-                                .pos = 0,
-                                .cb = item
-                            };
-
-                            peer->push_write_queue(witem);
                         }
 
-                        next();
+                        if(!have_rpr) {
+                            auto ctx = new out_packet_i_ctx {
+                                .count_replicas = count_replicas,
+                                .pending = pending,
+                                .acceptances = acceptances,
+                                .mutex = mutex,
+                                .event = event,
+                                .data = data_str,
+                                .peer_id = __peer_id,
+                                .wrinseq = wrinseq, // TODO
+                                .failover_key = failover_key,
+                                .failover_key_len = suffix_len,
+                                .rpr = rpr, // TODO: why is it not NULL here?
+                                .peers_cnt = 0,
+                                .rid = rid
+                            };
+
+                            // server.push_replication_exec_queue(ctx); // TODO
+                            server.replication_exec_queue.push(ctx);
+                        }
+
+                    } else {
+                        // TODO: rin_str's type
+                        auto rin_str = new Utils::muh_str_t {
+                            .len = rin_len,
+                            .data = rin
+                        };
+
+                        Utils::muh_str_t* rpr_str = NULL;
+
+                        if(peers_cnt > 0) {
+                            rpr_str = new Utils::muh_str_t {
+                                .len = (uint32_t)strlen(rpr), // TODO: it is incorrect
+                                .data = rpr
+                            };
+                        }
+
+                        auto ctx = new out_data_c_ctx {
+                            .event = event,
+                            .rin = rin_str,
+                            .rpr = rpr_str, // TODO
+                            .rid = rid,
+                            .wrinseq = wrinseq, // TODO
+                            .failover_key = failover_key,
+                            .failover_key_len = suffix_len
+                        };
+
+                        const auto cb = new Skree::PendingReads::Callbacks::ReplicationPingTask(server);
+                        const auto item = new Skree::Base::PendingRead::QueueItem {
+                            .len = 1,
+                            .cb = cb,
+                            .ctx = (void*)ctx,
+                            .opcode = true,
+                            .noop = false
+                        };
+
+                        auto c_req = Skree::Actions::C::out_init(event, rid_net, rin_len, rin);
+
+                        auto witem = new Skree::Base::PendingWrite::QueueItem {
+                            .len = c_req->len,
+                            .data = c_req->data,
+                            .pos = 0,
+                            .cb = item
+                        };
+
+                        peer->push_write_queue(witem);
                     }
                 }
             }

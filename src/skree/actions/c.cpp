@@ -1,5 +1,9 @@
 #include "c.hpp"
 
+// debug
+#define PREV_SKREE_META_OPCODE_K SKREE_META_OPCODE_K
+#define SKREE_META_OPCODE_K SKREE_META_OPCODE_F
+
 namespace Skree {
     namespace Actions {
         void C::in(
@@ -13,9 +17,22 @@ namespace Skree {
             in_pos += sizeof(_tmp);
             uint32_t event_name_len = ntohl(_tmp);
 
-            char* event_name = (char*)malloc(event_name_len);
+            char event_name [event_name_len + 1];
             memcpy(event_name, in_data + in_pos, event_name_len);
             in_pos += sizeof(event_name_len);
+            event_name[event_name_len] = '\0';
+
+            auto eit = server.known_events.find(event_name);
+
+            if(eit == server.known_events.end()) {
+                fprintf(stderr, "[C::in] Got unknown event: %s\n", event_name);
+                out_data = (char*)malloc(1);
+                out_len += 1;
+                out_data[0] = SKREE_META_OPCODE_F;
+                return;
+            }
+
+            auto queue = eit->second->queue;
 
             uint64_t _tmp64;
             memcpy(&_tmp64, in_data + in_pos, sizeof(_tmp64));
@@ -96,7 +113,7 @@ namespace Skree {
                     .events = events
                 };
 
-                short result = server.save_event(&e_ctx, 0, NULL, NULL);
+                short result = server.save_event(&e_ctx, 0, NULL, NULL, *queue);
 
                 if(result != SAVE_EVENT_RESULT_K) {
                     fprintf(stderr, "save_event() failed: %s\n", server.db.error().name());
@@ -147,3 +164,5 @@ namespace Skree {
         }
     }
 }
+
+#define SKREE_META_OPCODE_K PREV_SKREE_META_OPCODE_K
