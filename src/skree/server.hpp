@@ -136,6 +136,7 @@ namespace Skree {
         void unfailover(char* failover_key);
         void begin_replication(out_packet_r_ctx*& r_ctx);
         void save_peers_to_discover();
+        void push_replication_exec_queue(out_packet_i_ctx* ctx);
     };
 }
 

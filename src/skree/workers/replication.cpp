@@ -301,8 +301,7 @@ namespace Skree {
                                 .rid = rid
                             };
 
-                            // server.push_replication_exec_queue(ctx); // TODO
-                            server.replication_exec_queue.push(ctx);
+                            server.push_replication_exec_queue(ctx);
                         }
 
                     } else {

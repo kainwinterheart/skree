@@ -214,7 +214,6 @@ namespace Skree {
                 // ;
                 // char r_id [21];
                 in_packet_r_ctx_event* event;
-                uint64_t queue_item_pos;
                 uint32_t event_len;
                 // uint64_t _max_id;
                 uint32_t _hostname_len = htonl(ctx->hostname_len);
@@ -249,50 +248,25 @@ namespace Skree {
                     //
                     // key[key_len] = '\0';
 
-                    queue_item_pos = 0;
-                    char queue_item [
-                        sizeof(event->len)
-                        + event->len
-                        + now_len
-                        + sizeof(event->id_net)
-                        // + sizeof(max_id)
-                        + sizeof(ctx->hostname_len)
-                        + ctx->hostname_len
-                        + sizeof(_port)
-                        + serialized_peers_len
-                    ];
-
                     event_len = htonl(event->len);
-                    memcpy(queue_item + queue_item_pos, (char*)&event_len, sizeof(event_len));
-                    queue_item_pos += sizeof(event_len);
 
-                    memcpy(queue_item + queue_item_pos, event->data, event->len);
-                    queue_item_pos += event->len;
+                    auto stream = queue.write();
 
-                    memcpy(queue_item + queue_item_pos, (char*)&now, now_len);
-                    queue_item_pos += now_len;
-
-                    memcpy(queue_item + queue_item_pos, (char*)&(event->id_net), sizeof(event->id_net));
-                    queue_item_pos += sizeof(event->id_net);
+                    stream->write(sizeof(event_len), &event_len);
+                    stream->write(event->len, event->data);
+                    stream->write(now_len, &now);
+                    stream->write(sizeof(event->id_net), &(event->id_net));
 
                     // _max_id = htonll(max_id);
                     // memcpy(queue_item + queue_item_pos, (char*)&_max_id, sizeof(_max_id));
                     // queue_item_pos += sizeof(_max_id);
 
-                    memcpy(queue_item + queue_item_pos, (char*)&_hostname_len, sizeof(_hostname_len));
-                    queue_item_pos += sizeof(_hostname_len);
+                    stream->write(sizeof(_hostname_len), &_hostname_len);
+                    stream->write(ctx->hostname_len, ctx->hostname);
+                    stream->write(sizeof(_port), &_port);
+                    stream->write(serialized_peers_len, serialized_peers);
 
-                    memcpy(queue_item + queue_item_pos, ctx->hostname, ctx->hostname_len);
-                    queue_item_pos += ctx->hostname_len;
-
-                    memcpy(queue_item + queue_item_pos, (char*)&_port, sizeof(_port));
-                    queue_item_pos += sizeof(_port);
-
-                    memcpy(queue_item + queue_item_pos, serialized_peers, serialized_peers_len);
-                    queue_item_pos += serialized_peers_len;
-
-                    const char* _queue_item = queue_item; // TODO
-                    queue.write(queue_item_pos, _queue_item);
+                    delete stream;
 
                     ++num_inserted;
                     // --max_id;
@@ -414,8 +388,10 @@ namespace Skree {
                     memcpy(key + 3 + ctx->event_name_len + 1, event->id,
                         strlen(event->id));
 
-                    const char* event_data = event->data;
-                    queue.write(event->len, event_data); // TODO
+                    auto stream = queue.write();
+                    stream->write(event->len, event->data); // TODO?
+                    delete stream;
+
                     free(key);
                     ++num_inserted;
                     // if(db.add(key, key_len, event->data, event->len)) {
@@ -875,5 +851,16 @@ namespace Skree {
             if(it != no_failover.cend())
                 no_failover.erase(it);
         }
+    }
+
+    void Server::push_replication_exec_queue(out_packet_i_ctx* ctx) {
+        // TODO
+        pthread_mutex_lock(&replication_exec_queue_mutex);
+
+        replication_exec_queue.push(ctx);
+
+        pthread_mutex_unlock(&replication_exec_queue_mutex);
+
+        // char queue_item
     }
 }

@@ -286,7 +286,7 @@ namespace Skree {
         delete rollback;
     }
 
-    void QueueDb::_write(uint64_t len, const void* src) {
+    void QueueDb::_write(uint64_t len, const unsigned char* src) {
         uint64_t rest = (file_size - write_page_offset);
 
         if(rest >= len) {
@@ -302,10 +302,8 @@ namespace Skree {
             }
 
             auto next = get_next_page();
-            next->_write(len, (const void*)(((intptr_t)src) + rest));
+            next->_write(len, src + rest);
         }
-
-        sync_write_offset();
     }
 
     char* QueueDb::read() {
@@ -353,19 +351,71 @@ namespace Skree {
         return out;
     }
 
-    void QueueDb::write(uint64_t len, const char*& data) {
-        if(len == 0) {
-            fprintf(stderr, "QueueDb: zero-length write, ignoring it\n");
-            return;
+    QueueDb::WriteStream* QueueDb::write() {
+        return new QueueDb::WriteStream (*this);
+    }
+
+    void QueueDb::WriteStream::write(uint64_t len, void* data) {
+        db._write(len, (const unsigned char*)data);
+        total_len += len;
+    }
+
+    QueueDb::WriteStream::WriteStream(QueueDb& _db) : db(_db) {
+        pthread_mutex_lock(&(db.write_page_mutex));
+
+        last_page = &db;
+
+        while(last_page->file_size == last_page->write_page_offset) {
+            last_page = last_page->get_next_page();
         }
 
-        pthread_mutex_lock(&write_page_mutex);
+        begin_offset = last_page->write_page_offset;
+        total_len = 0;
 
-        uint64_t _len = htonll(len);
+        const uint64_t _total_len (htonll(total_len));
+        db._write(sizeof(_total_len), (const unsigned char*)&_total_len);
+    }
 
-        _write(sizeof(len), &_len);
-        _write(len, (const void*)data);
+    QueueDb::WriteStream::~WriteStream() {
+        uint64_t end_offset = last_page->write_page_offset;
 
-        pthread_mutex_unlock(&write_page_mutex);
+        last_page->write_page_offset = begin_offset;
+
+        bool wrap = ((last_page->file_size - last_page->write_page_offset) < sizeof(total_len));
+        uint64_t next_end_offset;
+
+        if(wrap) {
+            auto& next = last_page->next_page;
+            next_end_offset = next->write_page_offset;
+            next->write_page_offset = 0;
+        }
+
+        if(total_len > 0) {
+            const uint64_t _total_len (htonll(total_len));
+            db._write(sizeof(_total_len), (const unsigned char*)&_total_len);
+
+            last_page->write_page_offset = end_offset;
+
+            if(wrap) {
+                auto& next = last_page->next_page;
+                next->write_page_offset = next_end_offset;
+            }
+
+            db.sync_write_offset();
+
+        } else {
+            fprintf(stderr, "QueueDb: zero-length write, ignoring it\n");
+
+            if(wrap) {
+                auto& next = last_page->next_page;
+
+                while(next->next_page != NULL) {
+                    next = next->next_page;
+                    next->write_page_offset = 0;
+                }
+            }
+        }
+
+        pthread_mutex_unlock(&(db.write_page_mutex));
     }
 }

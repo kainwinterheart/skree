@@ -57,7 +57,7 @@ namespace Skree {
             open_page(write_page_fh, O_RDWR, write_page_num, write_page);
         }
 
-        inline void _write(uint64_t len, const void* src);
+        inline void _write(uint64_t len, const unsigned char* src);
         inline read_rollback_t* _read(uint64_t len, unsigned char* dest);
         inline void _rollback_read(read_rollback_t* rollback);
         inline void _free_read_rollback(read_rollback_t* rollback) const;
@@ -121,8 +121,23 @@ namespace Skree {
         }
 
         char* read();
-        void write(uint64_t len, const char*& data);
         void sync_read_offset(bool commit = true);
+
+        class WriteStream {
+        private:
+            uint64_t begin_offset;
+            uint64_t total_len;
+            QueueDb& db;
+            QueueDb* last_page;
+        public:
+            WriteStream(QueueDb& _db);
+            ~WriteStream();
+            void write(uint64_t len, void* data);
+        };
+
+        friend class QueueDb::WriteStream;
+
+        QueueDb::WriteStream* write();
     };
 }
 
