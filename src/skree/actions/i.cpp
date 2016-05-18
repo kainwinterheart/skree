@@ -47,7 +47,7 @@ namespace Skree {
                 + 20 // rid
                 + 1 // \0
             );
-            sprintf(suffix, "%s:%s:%llu", event_id, peer_id->data, rid);
+            sprintf(suffix, "%s:%s:%lu", event_id, peer_id->data, rid);
 
             failover_t::const_iterator it = server.failover.find(suffix);
 

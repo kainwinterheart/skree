@@ -15,6 +15,7 @@ namespace Skree {
 // #include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cstdint>
 #include <stdio.h>
 
 namespace Skree {

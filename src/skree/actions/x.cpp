@@ -46,7 +46,7 @@ namespace Skree {
                 suffix_len
                 + 1 // \0
             );
-            sprintf(suffix, "%s:%s:%llu", event_id, peer_id->data, rid);
+            sprintf(suffix, "%s:%s:%lu", event_id, peer_id->data, rid);
 
             std::string rre_key("rre:", 4);
             rre_key.append(suffix, strlen(suffix));

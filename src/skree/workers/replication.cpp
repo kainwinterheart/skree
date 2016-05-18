@@ -95,13 +95,13 @@ namespace Skree {
                     suffix[suffix_len] = ':';
                     ++suffix_len;
 
-                    sprintf(suffix + suffix_len, "%llu", wrinseq);
+                    sprintf(suffix + suffix_len, "%lu", wrinseq);
                     suffix_len += 20;
                     size_t suffix_slen = strlen(suffix);
 
                     // TODO: overflow
                     if((rts + event->ttl) > now) {
-                        fprintf(stderr, "skip repl: not now, rts: %llu, now: %llu\n", rts, now);
+                        fprintf(stderr, "skip repl: not now, rts: %lu, now: %lu\n", rts, now);
                         // free(rin);
                         // free(rpr);
                         free(item);
@@ -111,7 +111,7 @@ namespace Skree {
                     }
 
                     char* failover_key = suffix;
-                    sprintf(failover_key + suffix_len - 20 - 1, "%llu", rid);
+                    sprintf(failover_key + suffix_len - 20 - 1, "%lu", rid);
 
                     {
                         failover_t::const_iterator it = server.failover.find(failover_key);
@@ -153,7 +153,7 @@ namespace Skree {
                     // TODO: mark task as being processed before
                     //       sync_read_offset() call so it won't be lost
                     queue->sync_read_offset();
-                    fprintf(stderr, "replication: after sync_read_offset(), rid: %llu\n", rid);
+                    fprintf(stderr, "replication: after sync_read_offset(), rid: %lu\n", rid);
 
                     server.failover[failover_key] = 0;
 
@@ -166,7 +166,7 @@ namespace Skree {
 
                     pthread_mutex_unlock(&(server.known_peers_mutex));
 
-                    fprintf(stderr, "Seems like I need to failover task %llu\n", rid);
+                    fprintf(stderr, "Seems like I need to failover task %lu\n", rid);
 
                     if(peer == NULL) {
                         size_t offset = 0;

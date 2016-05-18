@@ -10,11 +10,11 @@ namespace Skree {
                 pthread_mutex_lock(&(server.stat_mutex));
 
                 if(server.stat_num_inserts > 0)
-                    printf("number of inserts for last second: %llu\n",
+                    printf("number of inserts for last second: %lu\n",
                         server.stat_num_inserts);
 
                 if(server.stat_num_replications > 0)
-                    printf("number of replication inserts for last second: %llu\n",
+                    printf("number of replication inserts for last second: %lu\n",
                         server.stat_num_replications);
 
                 server.stat_num_inserts = 0;

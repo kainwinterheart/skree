@@ -52,7 +52,7 @@ namespace Skree {
 
         memcpy(file, path, path_len);
         file[path_len] = '/';
-        sprintf(file + path_len + 1, "%llu", num);
+        sprintf(file + path_len + 1, "%lu", num);
 
         if((flag & O_RDONLY) || (flag == O_RDONLY) || (flag & O_RDWR) || (flag == O_RDWR)) {
             access_flag |= R_OK;
@@ -104,7 +104,7 @@ namespace Skree {
             exit(1);
         }
 
-        addr = (char*)mmap(0, file_size, mmap_prot, MAP_FILE | MAP_SHARED | MAP_NOCACHE, fh, 0);
+        addr = (char*)mmap(0, file_size, mmap_prot, MAP_FILE | MAP_SHARED , fh, 0);//TODO: restore MAP_NOCACHE
 
         if(addr == MAP_FAILED) {
             perror("mmap");
@@ -290,7 +290,7 @@ namespace Skree {
         uint64_t rest = (file_size - write_page_offset);
 
         if(rest >= len) {
-            // printf("write_page: 0x%lx, write_page_offset: %llu, src: 0x%lx\n", (intptr_t)write_page, write_page_offset, (intptr_t)src);
+            // printf("write_page: 0x%lx, write_page_offset: %lu, src: 0x%lx\n", (intptr_t)write_page, write_page_offset, (intptr_t)src);
             memcpy(write_page + write_page_offset, src, len);
             write_page_offset += len;
 

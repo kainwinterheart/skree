@@ -66,8 +66,8 @@ namespace Skree {
                     .data = (char*)malloc(_tmp)
                 };
 
-                sprintf(event->id, "%llu", ntohll(_tmp64));
-                // printf("repl got id: %llu\n", ntohll(event->id_net));
+                sprintf(event->id, "%lu", ntohll(_tmp64));
+                // printf("repl got id: %lu\n", ntohll(event->id_net));
 
                 memcpy(event->data, in_data + in_pos, _tmp);
                 in_pos += _tmp;

@@ -70,7 +70,7 @@ namespace Skree {
             in_key[in_key_len] = ':';
             ++in_key_len;
 
-            sprintf(in_key + in_key_len, "%llu", rid);
+            sprintf(in_key + in_key_len, "%lu", rid);
 
             bool should_save_event = false;
 

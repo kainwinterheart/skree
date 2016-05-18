@@ -118,7 +118,7 @@ namespace Skree {
         QueueDb& queue
     ) {
         short result = REPL_SAVE_RESULT_F;
-        // printf("INCOMING REPLICATION: %llu\n", ctx->events_count);
+        // printf("INCOMING REPLICATION: %lu\n", ctx->events_count);
         char* _peer_id = client.get_peer_id();
         size_t _peer_id_len = strlen(_peer_id);
 
@@ -216,7 +216,7 @@ namespace Skree {
 
                 for(uint32_t i = 0; i < ctx->events_count; ++i) {
                     event = ctx->events[i];
-                    // sprintf(r_id, "%llu", max_id);
+                    // sprintf(r_id, "%lu", max_id);
 
                     // key_len = 0;
                     // r_id_len = strlen(r_id);
@@ -364,7 +364,7 @@ namespace Skree {
                     in_packet_e_ctx_event* event = ctx->events[_cnt];
 
                     event->id = (char*)malloc(21);
-                    sprintf(event->id, "%llu", max_id);
+                    sprintf(event->id, "%lu", max_id);
 
                     if(task_ids != NULL)
                         task_ids[_cnt] = max_id;
@@ -417,7 +417,7 @@ namespace Skree {
                             new std::list<packet_r_ctx_peer*>();
 
                         pthread_mutex_lock(&known_peers_mutex);
-// printf("REPLICATION ATTEMPT: %llu\n", known_peers.size());
+// printf("REPLICATION ATTEMPT: %lu\n", known_peers.size());
                         for(
                             auto it = known_peers.cbegin();
                             it != known_peers.cend();
@@ -510,7 +510,7 @@ namespace Skree {
 
         char* suffix = (char*)malloc(failover_key_len);
         memcpy(suffix, failover_key, failover_key_len);
-        sprintf(suffix + failover_key_len - 20 - 1, "%llu", wrinseq);
+        sprintf(suffix + failover_key_len - 20 - 1, "%lu", wrinseq);
         failover_key_slen = strlen(suffix);
 
         std::string rin_key("rin:", 4);
@@ -849,7 +849,7 @@ namespace Skree {
     }
 
     void Server::replication_exec(out_packet_i_ctx* ctx) {
-        // printf("Replication exec thread for task %llu\n", ctx->rid);
+        // printf("Replication exec thread for task %lu\n", ctx->rid);
 
         if(ctx->acceptances == ctx->count_replicas) {
             {
