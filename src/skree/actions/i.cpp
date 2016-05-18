@@ -62,7 +62,7 @@ namespace Skree {
 
                 uint64_t* _rinseq = server.db.parse_db_value<uint64_t>(dbdata, &rre_key);
 
-                if(_rinseq == NULL) {
+                if(_rinseq == nullptr) {
                     _out_data[0] = SKREE_META_OPCODE_F;
 
                 } else {

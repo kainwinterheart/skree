@@ -16,7 +16,7 @@ namespace Skree {
                     auto queue = event->r_queue;
                     auto item = queue->read();
 
-                    if(item == NULL) {
+                    if(item == nullptr) {
                         // fprintf(stderr, "replication: empty queue\n");
                         continue;
                     }
@@ -161,14 +161,14 @@ namespace Skree {
 
                     _peer = server.known_peers.find(peer_id);
 
-                    if(_peer == server.known_peers.cend()) peer = NULL;
+                    if(_peer == server.known_peers.cend()) peer = nullptr;
                     else peer = _peer->second;
 
                     pthread_mutex_unlock(&(server.known_peers_mutex));
 
                     fprintf(stderr, "Seems like I need to failover task %lu\n", rid);
 
-                    if(peer == NULL) {
+                    if(peer == nullptr) {
                         size_t offset = 0;
                         bool have_rpr = false;
 
@@ -184,7 +184,7 @@ namespace Skree {
                         *pending = 0;
 
                         pthread_mutex_t* mutex = (pthread_mutex_t*)malloc(sizeof(*mutex));
-                        pthread_mutex_init(mutex, NULL);
+                        pthread_mutex_init(mutex, nullptr);
 
                         auto data_str = new Utils::muh_str_t {
                             .len = rin_len,
@@ -275,7 +275,7 @@ namespace Skree {
                                 .wrinseq = wrinseq, // TODO
                                 .failover_key = failover_key,
                                 .failover_key_len = suffix_len,
-                                .rpr = rpr, // TODO: why is it not NULL here?
+                                .rpr = rpr, // TODO: why is it not nullptr here?
                                 .peers_cnt = 0,
                                 .rid = rid
                             };
@@ -290,7 +290,7 @@ namespace Skree {
                             .data = rin
                         };
 
-                        Utils::muh_str_t* rpr_str = NULL;
+                        Utils::muh_str_t* rpr_str = nullptr;
 
                         if(peers_cnt > 0) {
                             rpr_str = new Utils::muh_str_t {

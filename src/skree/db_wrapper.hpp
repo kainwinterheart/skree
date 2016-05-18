@@ -81,8 +81,8 @@ namespace Skree {
 
         virtual bool synchronize(
             bool hard = false,
-            kyotocabinet::BasicDB::FileProcessor * proc = NULL,
-            kyotocabinet::BasicDB::ProgressChecker * checker = NULL
+            kyotocabinet::BasicDB::FileProcessor * proc = nullptr,
+            kyotocabinet::BasicDB::ProgressChecker * checker = nullptr
         );
 
         virtual bool begin_transaction(bool hard = false);
@@ -108,9 +108,9 @@ namespace Skree {
         get_keys_result_t* db_get_keys(std::vector<std::string>& keys);
 
         template <typename T>
-        T* parse_db_value(Utils::muh_str_t* _value, size_t* size = NULL) {
-            if(_value == NULL) return NULL;
-            if(size != NULL) *size = _value->len;
+        T* parse_db_value(Utils::muh_str_t* _value, size_t* size = nullptr) {
+            if(_value == nullptr) return nullptr;
+            if(size != nullptr) *size = _value->len;
 
             T* value = (T*)malloc(_value->len);
             memcpy(value, _value->data, _value->len);
@@ -122,10 +122,10 @@ namespace Skree {
         }
 
         template <typename T>
-        T* parse_db_value(get_keys_result_t* map, std::string* key, size_t* size = NULL) {
+        T* parse_db_value(get_keys_result_t* map, std::string* key, size_t* size = nullptr) {
             get_keys_result_t::iterator it = map->find((char*)(key->c_str()));
 
-            if(it == map->end()) return NULL;
+            if(it == map->end()) return nullptr;
 
             return parse_db_value<T>(it->second, size);
         }

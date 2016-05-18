@@ -7,7 +7,7 @@ namespace Skree {
             const auto item = new Skree::Base::PendingRead::QueueItem {
                 .len = 0,
                 .cb = cb,
-                .ctx = NULL,
+                .ctx = nullptr,
                 .opcode = false,
                 .noop = true
             };

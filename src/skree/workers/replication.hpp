@@ -13,7 +13,7 @@ namespace Skree {
     namespace Workers {
         class Replication : public Skree::Base::Worker {
         public:
-            Replication(Skree::Server& _server, const void* _args = NULL)
+            Replication(Skree::Server& _server, const void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args) {}
 
             virtual void run() override;

@@ -163,6 +163,6 @@ namespace Skree {
         VisitorImpl visitor(out);
 
         if(accept_bulk(keys, &visitor, false)) return out;
-        else return NULL;
+        else return nullptr;
     }
 }

@@ -28,7 +28,7 @@ namespace Skree {
                 //
                 // pthread_mutex_unlock(ctx->mutex);
 
-                return NULL;
+                return nullptr;
             }
 
             void ReplicationPingTask::error(
@@ -59,7 +59,7 @@ namespace Skree {
                 events[0] = event;
                 uint32_t peers_count = 0;
 
-                if(ctx->rpr != NULL) {
+                if(ctx->rpr != nullptr) {
                     size_t rpr_len = ctx->rpr->len;
                     size_t rpr_offset = 0;
 
@@ -72,7 +72,7 @@ namespace Skree {
 
                         char* delimiter = rindex(peer_id, ':');
 
-                        if(delimiter == NULL) {
+                        if(delimiter == nullptr) {
                             fprintf(stderr, "Invalid peer id: %s\n", peer_id);
 
                         } else {

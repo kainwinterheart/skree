@@ -113,7 +113,7 @@ namespace Skree {
                     .events = events
                 };
 
-                short result = server.save_event(&e_ctx, 0, NULL, NULL, *queue);
+                short result = server.save_event(&e_ctx, 0, nullptr, nullptr, *queue);
 
                 if(result != SAVE_EVENT_RESULT_K) {
                     fprintf(stderr, "save_event() failed: %s\n", server.db.error().name());

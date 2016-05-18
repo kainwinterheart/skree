@@ -21,7 +21,7 @@ namespace Skree {
 
                 pthread_mutex_unlock(ctx->mutex);
 
-                return NULL;
+                return nullptr;
             }
 
             void ReplicationProposeSelf::error(

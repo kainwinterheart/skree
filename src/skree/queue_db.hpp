@@ -73,16 +73,16 @@ namespace Skree {
         ) : path(_path), file_size(_file_size), read_page_num(_read_page_num), write_page_num(_write_page_num), read_page_num_fh(_read_page_num_fh), write_page_num_fh(_write_page_num_fh) {
             close_fhs = false;
             path_len = strlen(path);
-            next_page = NULL;
-            pthread_mutex_init(&read_page_mutex, NULL);
-            pthread_mutex_init(&write_page_mutex, NULL);
+            next_page = nullptr;
+            pthread_mutex_init(&read_page_mutex, nullptr);
+            pthread_mutex_init(&write_page_mutex, nullptr);
 
-            read_page = NULL;
+            read_page = nullptr;
             read_page_fh = -1;
             read_page_offset = 0;
             open_read_page();
 
-            write_page = NULL;
+            write_page = nullptr;
             write_page_fh = -1;
             write_page_offset = 0;
             open_write_page();
@@ -91,17 +91,17 @@ namespace Skree {
         QueueDb(const char* _path, size_t _file_size) : path(_path), file_size(_file_size) {
             close_fhs = true;
             path_len = strlen(path);
-            next_page = NULL;
-            pthread_mutex_init(&read_page_mutex, NULL);
-            pthread_mutex_init(&write_page_mutex, NULL);
+            next_page = nullptr;
+            pthread_mutex_init(&read_page_mutex, nullptr);
+            pthread_mutex_init(&write_page_mutex, nullptr);
 
-            read_page = NULL;
+            read_page = nullptr;
             read_page_fh = -1;
             read_page_num_fh = -1;
             get_page_num("rpos", read_page_num_fh, read_page_num, read_page_offset);
             open_read_page();
 
-            write_page = NULL;
+            write_page = nullptr;
             write_page_fh = -1;
             write_page_num_fh = -1;
             get_page_num("wpos", write_page_num_fh, write_page_num, write_page_offset);

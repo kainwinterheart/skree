@@ -24,7 +24,7 @@ namespace Skree {
 
                 server.begin_replication(ctx);
 
-                return NULL;
+                return nullptr;
             }
 
             void Replication::error(

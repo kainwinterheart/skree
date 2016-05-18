@@ -7,11 +7,11 @@ namespace Skree {
         const Utils::known_events_t& _known_events
     )
     : db(_db), my_port(_my_port), max_client_threads(_max_client_threads), known_events(_known_events) {
-        pthread_mutex_init(&stat_mutex, NULL);
-        pthread_mutex_init(&new_clients_mutex, NULL);
-        pthread_mutex_init(&known_peers_mutex, NULL);
-        pthread_mutex_init(&me_mutex, NULL);
-        pthread_mutex_init(&peers_to_discover_mutex, NULL);
+        pthread_mutex_init(&stat_mutex, nullptr);
+        pthread_mutex_init(&new_clients_mutex, nullptr);
+        pthread_mutex_init(&known_peers_mutex, nullptr);
+        pthread_mutex_init(&me_mutex, nullptr);
+        pthread_mutex_init(&peers_to_discover_mutex, nullptr);
 
         load_peers_to_discover();
 
@@ -366,7 +366,7 @@ namespace Skree {
                     event->id = (char*)malloc(21);
                     sprintf(event->id, "%lu", max_id);
 
-                    if(task_ids != NULL)
+                    if(task_ids != nullptr)
                         task_ids[_cnt] = max_id;
 
                     uint32_t key_len =
@@ -449,7 +449,7 @@ namespace Skree {
 
                         if(r_ctx->sync) {
                             if(candidate_peer_ids->size() > 0) {
-                                result = SAVE_EVENT_RESULT_NULL;
+                                result = SAVE_EVENT_RESULT_nullptr;
 
                                 begin_replication(r_ctx);
                                 replication_began = true;
@@ -535,9 +535,9 @@ namespace Skree {
     }
 
     void Server::begin_replication(out_packet_r_ctx*& r_ctx) {
-        Client* peer = NULL;
+        Client* peer = nullptr;
 
-        while((peer == NULL) && (r_ctx->candidate_peer_ids->size() > 0)) {
+        while((peer == nullptr) && (r_ctx->candidate_peer_ids->size() > 0)) {
             char* peer_id = r_ctx->candidate_peer_ids->back();
             r_ctx->candidate_peer_ids->pop_back();
 
@@ -553,12 +553,12 @@ namespace Skree {
 
         bool done = false;
 
-        if(peer == NULL) {
+        if(peer == nullptr) {
             if(r_ctx->sync) {
                 uint32_t accepted_peers_count = r_ctx->accepted_peers->size();
 
                 if(accepted_peers_count >= r_ctx->replication_factor) {
-                    if(r_ctx->client != NULL) {
+                    if(r_ctx->client != nullptr) {
                         char* r_ans = (char*)malloc(1);
                         r_ans[0] = SKREE_META_OPCODE_K;
 
@@ -575,7 +575,7 @@ namespace Skree {
                     r_ctx->sync = false;
 
                 } else if(r_ctx->pending == 0) {
-                    if(r_ctx->client != NULL) {
+                    if(r_ctx->client != nullptr) {
                         char* r_ans = (char*)malloc(1);
                         r_ans[0] = SKREE_META_OPCODE_A;
 
@@ -603,7 +603,7 @@ namespace Skree {
                 r_ctx->sync
                 && (accepted_peers_count >= r_ctx->replication_factor)
             ) {
-                if(r_ctx->client != NULL) {
+                if(r_ctx->client != nullptr) {
                     char* r_ans = (char*)malloc(1);
                     r_ans[0] = SKREE_META_OPCODE_K;
 
@@ -755,7 +755,7 @@ namespace Skree {
 
         char* value = db.get(key, key_len, &value_len);
 
-        if(value != NULL) {
+        if(value != nullptr) {
             size_t offset = 0;
 
             size_t cnt;
@@ -878,7 +878,7 @@ namespace Skree {
             in_packet_e_ctx_event event {
                 .len = ctx->data->len,
                 .data = ctx->data->data,
-                .id = NULL
+                .id = nullptr
             };
 
             in_packet_e_ctx_event* events [1];
@@ -894,7 +894,7 @@ namespace Skree {
             auto queue = ctx->event->queue;
 
             uint64_t task_ids[1];
-            save_event(&e_ctx, 0, NULL, task_ids, *queue);
+            save_event(&e_ctx, 0, nullptr, task_ids, *queue);
 
             // TODO: remove?
             // {
@@ -908,7 +908,7 @@ namespace Skree {
             //         in_packet_e_ctx_event* event = *it;
             //
             //         free(event->data);
-            //         if(event->id != NULL) free(event->id);
+            //         if(event->id != nullptr) free(event->id);
             //         free(event);
             //     }
             //
@@ -926,7 +926,7 @@ namespace Skree {
                 ctx->wrinseq
             );
 
-            if(ctx->rpr != NULL) {
+            if(ctx->rpr != nullptr) {
                 // const muh_str_t*& peer_id, const known_event_t*& event,
                 // const uint64_t& rid
                 auto x_req = Skree::Actions::X::out_init(

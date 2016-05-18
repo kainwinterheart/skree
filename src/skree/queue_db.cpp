@@ -113,7 +113,7 @@ namespace Skree {
     }
 
     QueueDb* QueueDb::get_next_page() {
-        if(next_page != NULL) return next_page;
+        if(next_page != nullptr) return next_page;
 
         next_page = new QueueDb(
             path, file_size, read_page_num + 1,
@@ -191,7 +191,7 @@ namespace Skree {
     }
 
     void QueueDb::close_if_can() {
-        if(next_page == NULL) return;
+        if(next_page == nullptr) return;
 
         next_page->close_if_can();
 
@@ -218,7 +218,7 @@ namespace Skree {
         }
 
         while(
-            (next_page != NULL)
+            (next_page != nullptr)
             && (read_page == next_page->read_page)
             && (write_page == next_page->write_page)
         ) {
@@ -239,7 +239,7 @@ namespace Skree {
         uint64_t rest = (file_size - read_page_offset);
         auto rollback = new read_rollback_t {
             .l1 = 0,
-            .l2 = NULL
+            .l2 = nullptr
         };
 
         if(rest >= len) {
@@ -270,7 +270,7 @@ namespace Skree {
             read_page_offset -= rollback->l1;
         }
 
-        if(rollback->l2 != NULL) {
+        if(rollback->l2 != nullptr) {
             auto next = get_next_page();
             next->_rollback_read(rollback->l2);
         }
@@ -279,7 +279,7 @@ namespace Skree {
     }
 
     void QueueDb::_free_read_rollback(read_rollback_t* rollback) const {
-        if(rollback->l2 != NULL) {
+        if(rollback->l2 != nullptr) {
             _free_read_rollback(rollback->l2);
         }
 
@@ -319,12 +319,12 @@ namespace Skree {
         ) {
             pthread_mutex_unlock(&write_page_mutex);
             // TODO: read rollbacks may not be needed after this
-            return NULL;
+            return nullptr;
         }
 
         pthread_mutex_unlock(&write_page_mutex);
 
-        char* out = NULL;
+        char* out = nullptr;
         uint64_t len;
 
         // pthread_mutex_lock(&read_page_mutex);

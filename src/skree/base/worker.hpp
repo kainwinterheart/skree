@@ -18,7 +18,7 @@ namespace Skree {
             Skree::Server& server;
             const void* args;
         public:
-            Worker(Skree::Server& _server, const void* _args = NULL)
+            Worker(Skree::Server& _server, const void* _args = nullptr)
                 : server(_server), args(_args) {
             }
 
@@ -31,12 +31,12 @@ namespace Skree {
                     }
                 };
 
-                pthread_create(thread, NULL, __run, (void*)args);
+                pthread_create(thread, nullptr, __run, (void*)args);
             }
 
             virtual ~Worker() {
-                if(thread != NULL) {
-                    pthread_join(*thread, NULL);
+                if(thread != nullptr) {
+                    pthread_join(*thread, nullptr);
                     free(thread);
                 }
             }
@@ -51,7 +51,7 @@ namespace Skree {
             static void* __run(void* args) {
                 ((run_args*)args)->cb();
                 free(args);
-                return NULL;
+                return nullptr;
             }
         };
     }
