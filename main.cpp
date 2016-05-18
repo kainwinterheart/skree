@@ -231,7 +231,6 @@ int main(int argc, char** argv) {
 
                     known_event->queue = create_queue_db(id);
                     known_event->r_queue = create_queue_db(id + "/replication");
-                    known_event->re_queue = create_queue_db(id + "/replication_exec");
 
                     auto it = known_events.find(id_);
 

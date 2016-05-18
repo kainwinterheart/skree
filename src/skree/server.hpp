@@ -30,7 +30,6 @@ namespace Skree {
 #include "workers/synchronization.hpp"
 #include "workers/client.hpp"
 #include "workers/replication.hpp"
-#include "workers/replication_exec.hpp"
 #include "workers/discovery.hpp"
 #include "pending_reads/replication.hpp"
 #include "queue_db.hpp"
@@ -63,9 +62,6 @@ namespace Skree {
     class Server {
     private:
         std::queue<Workers::Client*> threads;
-        pthread_t discovery;
-        pthread_t replication;
-        pthread_t replication_exec;
         uint32_t max_client_threads;
         void load_peers_to_discover();
         static void socket_cb(struct ev_loop* loop, ev_io* watcher, int events);
@@ -102,8 +98,6 @@ namespace Skree {
         pthread_mutex_t me_mutex;
         peers_to_discover_t peers_to_discover;
         pthread_mutex_t peers_to_discover_mutex;
-        std::queue<out_packet_i_ctx*> replication_exec_queue;
-        pthread_mutex_t replication_exec_queue_mutex;
         const Utils::known_events_t& known_events;
 
         Server(
@@ -136,7 +130,7 @@ namespace Skree {
         void unfailover(char* failover_key);
         void begin_replication(out_packet_r_ctx*& r_ctx);
         void save_peers_to_discover();
-        void push_replication_exec_queue(out_packet_i_ctx* ctx);
+        void replication_exec(out_packet_i_ctx* ctx);
     };
 }
 

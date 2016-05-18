@@ -41,7 +41,7 @@ namespace Skree {
 
             void ReplicationProposeSelf::continue_replication_exec(out_packet_i_ctx*& ctx) {
                 if(*(ctx->pending) == 0) {
-                    server.push_replication_exec_queue(ctx);
+                    server.replication_exec(ctx);
                 }
             }
         }

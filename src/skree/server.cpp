@@ -12,7 +12,6 @@ namespace Skree {
         pthread_mutex_init(&known_peers_mutex, NULL);
         pthread_mutex_init(&me_mutex, NULL);
         pthread_mutex_init(&peers_to_discover_mutex, NULL);
-        pthread_mutex_init(&replication_exec_queue_mutex, NULL);
 
         load_peers_to_discover();
 
@@ -90,9 +89,6 @@ namespace Skree {
             )] = localhost8765;
         }
 
-        Skree::Workers::ReplicationExec replication_exec (*this);
-        replication_exec.start();
-
         Skree::Workers::Replication replication (*this);
         replication.start();
 
@@ -109,7 +105,6 @@ namespace Skree {
             delete thread; // TODO
         }
 
-        pthread_mutex_destroy(&replication_exec_queue_mutex);
         pthread_mutex_destroy(&peers_to_discover_mutex);
         pthread_mutex_destroy(&me_mutex);
         pthread_mutex_destroy(&known_peers_mutex);
@@ -853,14 +848,133 @@ namespace Skree {
         }
     }
 
-    void Server::push_replication_exec_queue(out_packet_i_ctx* ctx) {
-        // TODO
-        pthread_mutex_lock(&replication_exec_queue_mutex);
+    void Server::replication_exec(out_packet_i_ctx* ctx) {
+        // printf("Replication exec thread for task %llu\n", ctx->rid);
 
-        replication_exec_queue.push(ctx);
+        if(ctx->acceptances == ctx->count_replicas) {
+            {
+                auto it = failover.find(ctx->failover_key);
 
-        pthread_mutex_unlock(&replication_exec_queue_mutex);
+                if(it == failover.end()) {
+                    // TODO: cleanup
+                    return;
+                }
+            }
 
-        // char queue_item
+            {
+                auto it = no_failover.find(ctx->failover_key);
+
+                if(it != no_failover.end()) {
+                    if((it->second + no_failover_time) > std::time(nullptr)) {
+                        // TODO: cleanup
+                        return;
+
+                    } else {
+                        no_failover.erase(it);
+                    }
+                }
+            }
+
+            in_packet_e_ctx_event event {
+                .len = ctx->data->len,
+                .data = ctx->data->data,
+                .id = NULL
+            };
+
+            in_packet_e_ctx_event* events [1];
+            events[0] = &event;
+
+            in_packet_e_ctx e_ctx {
+                .cnt = 1,
+                .event_name_len = ctx->event->id_len,
+                .event_name = ctx->event->id,
+                .events = events
+            };
+
+            auto queue = ctx->event->queue;
+
+            uint64_t task_ids[1];
+            save_event(&e_ctx, 0, NULL, task_ids, *queue);
+
+            // TODO: remove?
+            // {
+            //     in_packet_e_ctx* ctx = (in_packet_e_ctx*)_ctx;
+            //
+            //     for(
+            //         std::list<in_packet_e_ctx_event*>::const_iterator it = ctx->events->cbegin();
+            //         it != ctx->events->cend();
+            //         ++it
+            //     ) {
+            //         in_packet_e_ctx_event* event = *it;
+            //
+            //         free(event->data);
+            //         if(event->id != NULL) free(event->id);
+            //         free(event);
+            //     }
+            //
+            //     free(ctx->event_name);
+            //     free(ctx->events);
+            //     free(ctx);
+            // }
+
+            failover[ctx->failover_key] = task_ids[0];
+
+            // TODO: this should probably make 'i' packet return 'f'
+            repl_clean(
+                ctx->failover_key_len,
+                ctx->failover_key,
+                ctx->wrinseq
+            );
+
+            if(ctx->rpr != NULL) {
+                // const muh_str_t*& peer_id, const known_event_t*& event,
+                // const uint64_t& rid
+                auto x_req = Skree::Actions::X::out_init(
+                    ctx->peer_id, ctx->event, ctx->rid);
+                size_t offset = 0;
+
+                while(ctx->peers_cnt > 0) {
+                    size_t peer_id_len = strlen(ctx->rpr + offset);
+                    char* peer_id = ctx->rpr + offset;
+                    offset += peer_id_len + 1;
+
+                    auto it = known_peers.find(peer_id);
+
+                    if(it != known_peers.end()) {
+                        auto item = new Skree::Base::PendingWrite::QueueItem {
+                            .len = x_req->len,
+                            .data = x_req->data,
+                            .pos = 0,
+                            .cb = Skree::PendingReads::noop(*this)
+                        };
+
+                        it->second->push_write_queue(item);
+                    }
+
+                    --(ctx->peers_cnt);
+                }
+            }
+
+        } else {
+            // TODO: think about repl_clean()
+            repl_clean(
+                ctx->failover_key_len,
+                ctx->failover_key,
+                ctx->wrinseq
+            );
+
+            unfailover(ctx->failover_key);
+
+            // free(ctx->data->data);
+            delete ctx->data;
+        }
+
+        pthread_mutex_destroy(ctx->mutex);
+
+        free(ctx->mutex);
+        free(ctx->acceptances);
+        free(ctx->pending);
+        free(ctx->count_replicas);
+        free(ctx);
     }
 }

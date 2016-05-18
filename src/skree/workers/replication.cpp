@@ -3,33 +3,12 @@
 namespace Skree {
     namespace Workers {
         void Replication::run() {
+            known_peers_t::const_iterator _peer;
+            Skree::Client* peer;
+            uint64_t now;
+
             while(true) {
-                std::vector<Utils::muh_str_t*> peer_ids;
-
-                pthread_mutex_lock(&(server.peers_to_discover_mutex));
-
-                for(
-                    auto it = server.peers_to_discover.cbegin();
-                    it != server.peers_to_discover.cend();
-                    ++it
-                ) {
-                    Utils::muh_str_t* item = (Utils::muh_str_t*)malloc(sizeof(*item));
-
-                    item->len = strlen(it->first);
-                    item->data = it->first;
-
-                    peer_ids.push_back(item);
-                }
-
-                pthread_mutex_unlock(&(server.peers_to_discover_mutex));
-
-                std::random_shuffle(peer_ids.begin(), peer_ids.end());
-
-                known_peers_t::const_iterator _peer;
-                Skree::Client* peer;
-                get_keys_result_t* dbdata;
-                std::vector<std::string> keys;
-                uint64_t now = std::time(nullptr);
+                now = std::time(nullptr);
 
                 for(auto& _event : server.known_events) {
                     // fprintf(stderr, "replication: before read\n");
@@ -301,7 +280,7 @@ namespace Skree {
                                 .rid = rid
                             };
 
-                            server.push_replication_exec_queue(ctx);
+                            server.replication_exec(ctx);
                         }
 
                     } else {

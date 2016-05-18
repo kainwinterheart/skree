@@ -405,15 +405,6 @@ namespace Skree {
 
         } else {
             fprintf(stderr, "QueueDb: zero-length write, ignoring it\n");
-
-            if(wrap) {
-                auto& next = last_page->next_page;
-
-                while(next->next_page != NULL) {
-                    next = next->next_page;
-                    next->write_page_offset = 0;
-                }
-            }
         }
 
         pthread_mutex_unlock(&(db.write_page_mutex));
