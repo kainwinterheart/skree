@@ -58,9 +58,10 @@ namespace Skree {
                 std::vector<std::string> keys;
                 keys.push_back(rre_key);
 
-                get_keys_result_t* dbdata = server.db.db_get_keys(keys);
+                // TODO
+                // get_keys_result_t* dbdata = server.db.db_get_keys(keys);
 
-                uint64_t* _rinseq = server.db.parse_db_value<uint64_t>(dbdata, &rre_key);
+                uint64_t* _rinseq = NULL;//server.db.parse_db_value<uint64_t>(dbdata, &rre_key);
 
                 if(_rinseq == NULL) {
                     _out_data[0] = SKREE_META_OPCODE_F;

@@ -24,7 +24,6 @@ namespace Skree {
 
 #include "client.hpp"
 #include "workers/client.hpp"
-#include "db_wrapper.hpp"
 #include "actions/e.hpp"
 #include "actions/r.hpp"
 #include "workers/synchronization.hpp"
@@ -78,8 +77,6 @@ namespace Skree {
         pthread_mutex_t stat_mutex;
         pthread_mutex_t new_clients_mutex;
 
-        DbWrapper& db;
-
         char* my_hostname;
         uint32_t my_hostname_len;
         uint32_t my_port;
@@ -101,7 +98,7 @@ namespace Skree {
         const Utils::known_events_t& known_events;
 
         Server(
-            DbWrapper& _db, uint32_t _my_port,
+            uint32_t _my_port,
             uint32_t _max_client_threads,
             const Utils::known_events_t& _known_events
         );

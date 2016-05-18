@@ -78,8 +78,8 @@ namespace Skree {
 
             if(it == server.wip.cend()) {
                 // TODO: check iterator position
-                if(server.db.check(in_key, in_key_len) > 0)
-                    should_save_event = true;
+                // if(server.db.check(in_key, in_key_len) > 0) // TODO
+                    // should_save_event = true; // TODO: is not working now
 
                 _out_data[0] = SKREE_META_OPCODE_K;
 
@@ -116,12 +116,14 @@ namespace Skree {
                 short result = server.save_event(&e_ctx, 0, NULL, NULL, *queue);
 
                 if(result != SAVE_EVENT_RESULT_K) {
-                    fprintf(stderr, "save_event() failed: %s\n", server.db.error().name());
+                    // TODO
+                    // fprintf(stderr, "save_event() failed: %s\n", server.db.error().name());
                     exit(1);
                 }
 
-                if(!server.db.remove(in_key, strlen(in_key)))
-                    fprintf(stderr, "db.remove failed: %s\n", server.db.error().name());
+                // TODO
+                // if(!server.db.remove(in_key, strlen(in_key)))
+                //     fprintf(stderr, "db.remove failed: %s\n", server.db.error().name());
             }
 
             free(in_key);

@@ -117,7 +117,8 @@ namespace Skree {
 
         next_page = new QueueDb(
             path, file_size, read_page_num + 1,
-            write_page_num + 1, read_page_num_fh, write_page_num_fh
+            write_page_num + 1, read_page_num_fh,
+            write_page_num_fh, kv
         );
 
         return next_page;
@@ -402,11 +403,11 @@ namespace Skree {
             }
 
             db.sync_write_offset();
+            pthread_mutex_unlock(&(db.write_page_mutex));
 
         } else {
-            fprintf(stderr, "QueueDb: zero-length write, ignoring it\n");
+            pthread_mutex_unlock(&(db.write_page_mutex));
+            throw new std::logic_error("QueueDb: zero-length write, ignoring it");
         }
-
-        pthread_mutex_unlock(&(db.write_page_mutex));
     }
 }

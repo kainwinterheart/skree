@@ -2,11 +2,13 @@
 
 namespace Skree {
     Server::Server(
-        DbWrapper& _db, uint32_t _my_port,
+        uint32_t _my_port,
         uint32_t _max_client_threads,
         const Utils::known_events_t& _known_events
     )
-    : db(_db), my_port(_my_port), max_client_threads(_max_client_threads), known_events(_known_events) {
+    : my_port(_my_port),
+      max_client_threads(_max_client_threads),
+      known_events(_known_events) {
         pthread_mutex_init(&stat_mutex, NULL);
         pthread_mutex_init(&new_clients_mutex, NULL);
         pthread_mutex_init(&known_peers_mutex, NULL);
@@ -177,6 +179,8 @@ namespace Skree {
             if(!keep_peer_id) free(_peer_id);
         }
 
+        auto& db = *(queue.kv);
+
     // printf("repl_save: before begin_transaction\n");
         if(db.begin_transaction()) {
     // printf("repl_save: after begin_transaction\n");
@@ -210,7 +214,7 @@ namespace Skree {
                 // char r_id [21];
                 in_packet_r_ctx_event* event;
                 uint32_t event_len;
-                // uint64_t _max_id;
+                uint64_t _max_id;
                 uint32_t _hostname_len = htonl(ctx->hostname_len);
                 uint32_t _port = htonl(ctx->port);
 
@@ -244,6 +248,7 @@ namespace Skree {
                     // key[key_len] = '\0';
 
                     event_len = htonl(event->len);
+                    _max_id = htonll(max_id);
 
                     auto stream = queue.write();
 
@@ -251,11 +256,7 @@ namespace Skree {
                     stream->write(event->len, event->data);
                     stream->write(now_len, &now);
                     stream->write(sizeof(event->id_net), &(event->id_net));
-
-                    // _max_id = htonll(max_id);
-                    // memcpy(queue_item + queue_item_pos, (char*)&_max_id, sizeof(_max_id));
-                    // queue_item_pos += sizeof(_max_id);
-
+                    stream->write(sizeof(_max_id), &_max_id);
                     stream->write(sizeof(_hostname_len), &_hostname_len);
                     stream->write(ctx->hostname_len, ctx->hostname);
                     stream->write(sizeof(_port), &_port);
@@ -264,7 +265,7 @@ namespace Skree {
                     delete stream;
 
                     ++num_inserted;
-                    // --max_id;
+                    --max_id;
                 }
 
                 if(num_inserted == ctx->events_count) {
@@ -337,6 +338,8 @@ namespace Skree {
             ctx->cnt
         );
         bool replication_began = false;
+
+        auto& db = *(queue.kv);
 
         if(db.begin_transaction()) {
             int64_t max_id = db.increment(
@@ -500,38 +503,39 @@ namespace Skree {
         const char* failover_key,
         uint64_t wrinseq
     ) {
-        size_t failover_key_slen = strlen(failover_key);
-        std::vector<std::string> keys;
-
-        std::string rre_key("rre:", 4);
-        rre_key.append(failover_key, failover_key_slen);
-
-        keys.push_back(rre_key);
-
-        char* suffix = (char*)malloc(failover_key_len);
-        memcpy(suffix, failover_key, failover_key_len);
-        sprintf(suffix + failover_key_len - 20 - 1, "%llu", wrinseq);
-        failover_key_slen = strlen(suffix);
-
-        std::string rin_key("rin:", 4);
-        rin_key.append(suffix, failover_key_len);
-
-        std::string rts_key("rts:", 4);
-        rts_key.append(suffix, failover_key_len);
-
-        std::string rid_key("rid:", 4);
-        rid_key.append(suffix, failover_key_len);
-
-        std::string rpr_key("rpr:", 4);
-        rpr_key.append(suffix, failover_key_len);
-
-        keys.push_back(rin_key);
-        keys.push_back(rts_key);
-        keys.push_back(rid_key);
-        keys.push_back(rpr_key);
-
-        if(db.remove_bulk(keys) == -1)
-            fprintf(stderr, "db.remove_bulk failed: %s\n", db.error().name());
+        // TODO
+        // size_t failover_key_slen = strlen(failover_key);
+        // std::vector<std::string> keys;
+        //
+        // std::string rre_key("rre:", 4);
+        // rre_key.append(failover_key, failover_key_slen);
+        //
+        // keys.push_back(rre_key);
+        //
+        // char* suffix = (char*)malloc(failover_key_len);
+        // memcpy(suffix, failover_key, failover_key_len);
+        // sprintf(suffix + failover_key_len - 20 - 1, "%llu", wrinseq);
+        // failover_key_slen = strlen(suffix);
+        //
+        // std::string rin_key("rin:", 4);
+        // rin_key.append(suffix, failover_key_len);
+        //
+        // std::string rts_key("rts:", 4);
+        // rts_key.append(suffix, failover_key_len);
+        //
+        // std::string rid_key("rid:", 4);
+        // rid_key.append(suffix, failover_key_len);
+        //
+        // std::string rpr_key("rpr:", 4);
+        // rpr_key.append(suffix, failover_key_len);
+        //
+        // keys.push_back(rin_key);
+        // keys.push_back(rts_key);
+        // keys.push_back(rid_key);
+        // keys.push_back(rpr_key);
+        //
+        // if(db.remove_bulk(keys) == -1)
+        //     fprintf(stderr, "db.remove_bulk failed: %s\n", db.error().name());
     }
 
     void Server::begin_replication(out_packet_r_ctx*& r_ctx) {
@@ -744,8 +748,9 @@ namespace Skree {
         const char* key = "peers_to_discover";
         const size_t key_len = strlen(key);
 
-        if(!db.set(key, key_len, dump, dump_len))
-            fprintf(stderr, "Failed to save peers list: %s\n", db.error().name());
+        // TODO
+        // if(!db.set(key, key_len, dump, dump_len))
+        //     fprintf(stderr, "Failed to save peers list: %s\n", db.error().name());
     }
 
     void Server::load_peers_to_discover() {
@@ -753,7 +758,8 @@ namespace Skree {
         const size_t key_len = strlen(key);
         size_t value_len;
 
-        char* value = db.get(key, key_len, &value_len);
+        // TODO
+        char* value = NULL;//db.get(key, key_len, &value_len);
 
         if(value != NULL) {
             size_t offset = 0;

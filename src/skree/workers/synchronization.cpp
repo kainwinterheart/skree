@@ -5,7 +5,7 @@ namespace Skree {
         void Synchronization::run() {
             while(true) {
                 sleep(1);
-                server.db.synchronize();
+                // server.db.synchronize();
 
                 pthread_mutex_lock(&(server.stat_mutex));
 

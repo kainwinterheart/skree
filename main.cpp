@@ -253,21 +253,7 @@ int main(int argc, char** argv) {
     printf("Running on port: %u\n", my_port);
     signal(SIGPIPE, SIG_IGN);
 
-    std::string db_file_name (db_dir_name + "/skree.kch");
-    Skree::DbWrapper db;
-
-    if(!db.open(
-        db_file_name,
-        kyotocabinet::HashDB::OWRITER
-        | kyotocabinet::HashDB::OCREATE
-        | kyotocabinet::HashDB::ONOLOCK
-        | kyotocabinet::HashDB::OAUTOTRAN
-    )) {
-        printf("Failed to open database: %s\n", db.error().name());
-        return 1;
-    }
-
-    Skree::Server server (db, my_port, max_client_threads, known_events);
+    Skree::Server server (my_port, max_client_threads, known_events);
 
     return 0;
 }

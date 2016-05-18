@@ -44,8 +44,10 @@ namespace Skree {
 
                     uint64_t rid = ntohll(rid_net);
 
-                    // TODO: is max_id really needed here (or anywhere)?
-                    // item_pos += sizeof(uint64_t);
+                    uint64_t wrinseq;
+                    memcpy(&wrinseq, item + item_pos, sizeof(wrinseq));
+                    item_pos += sizeof(wrinseq);
+                    wrinseq = ntohll(wrinseq);
 
                     uint32_t hostname_len;
                     memcpy(&hostname_len, item + item_pos, sizeof(hostname_len));
@@ -87,10 +89,6 @@ namespace Skree {
                     );
                     sprintf(suffix, "%s:%s", event->id, peer_id);
                     // printf("repl thread: %s\n", suffix);
-
-                    // TODO
-                    uint64_t rinseq;
-                    uint64_t wrinseq;
 
                     suffix[suffix_len] = ':';
                     ++suffix_len;
