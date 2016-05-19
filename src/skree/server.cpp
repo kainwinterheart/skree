@@ -497,7 +497,7 @@ namespace Skree {
     void Server::repl_clean(
         size_t failover_key_len,
         const char* failover_key,
-        uint64_t wrinseq
+        uint64_t rid
     ) {
         // TODO
         // size_t failover_key_slen = strlen(failover_key);
@@ -925,7 +925,7 @@ namespace Skree {
             repl_clean(
                 ctx->failover_key_len,
                 ctx->failover_key,
-                ctx->wrinseq
+                ctx->rid
             );
 
             if(ctx->rpr != NULL) {
@@ -962,7 +962,7 @@ namespace Skree {
             repl_clean(
                 ctx->failover_key_len,
                 ctx->failover_key,
-                ctx->wrinseq
+                ctx->rid
             );
 
             unfailover(ctx->failover_key);

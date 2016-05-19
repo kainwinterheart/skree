@@ -121,7 +121,7 @@ namespace Skree {
         void repl_clean(
             size_t failover_key_len,
             const char* failover_key,
-            uint64_t wrinseq
+            uint64_t rid
         );
 
         void unfailover(char* failover_key);

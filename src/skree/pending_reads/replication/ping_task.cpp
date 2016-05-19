@@ -15,7 +15,7 @@ namespace Skree {
                     server.repl_clean(
                         ctx->failover_key_len,
                         ctx->failover_key,
-                        ctx->wrinseq
+                        ctx->rid
                     );
 
                     server.unfailover(ctx->failover_key);
@@ -108,7 +108,7 @@ namespace Skree {
                     server.repl_clean(
                         ctx->failover_key_len,
                         ctx->failover_key,
-                        ctx->wrinseq
+                        ctx->rid
                     );
 
                 } else if(result == REPL_SAVE_RESULT_F) {

@@ -12,7 +12,6 @@ namespace Skree {
         Utils::muh_str_t* rin;
         Utils::muh_str_t* rpr;
         uint64_t rid;
-        uint64_t wrinseq;
         uint64_t failover_key_len;
         char* failover_key;
     };

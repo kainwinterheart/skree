@@ -74,6 +74,16 @@ namespace Skree {
 
                     // printf("repl thread: %s\n", event->id);
 
+                    // TODO: overflow
+                    if((rts + event->ttl) > now) {
+                        fprintf(stderr, "skip repl: not now, rts: %llu, now: %llu\n", rts, now);
+                        // free(rin);
+                        // free(rpr);
+                        free(item);
+                        queue->sync_read_offset(false);
+                        continue;
+                    }
+
                     size_t suffix_len =
                         event->id_len
                         + 1 // :
@@ -81,40 +91,27 @@ namespace Skree {
                     ;
 
                     // TODO
-                    char* suffix = (char*)malloc(
+                    char* failover_key = (char*)malloc(
                         suffix_len
                         + 1 // :
                         + 20 // wrinseq
                         + 1 // \0
                     );
-                    sprintf(suffix, "%s:%s", event->id, peer_id);
+                    sprintf(failover_key, "%s:%s", event->id, peer_id);
                     // printf("repl thread: %s\n", suffix);
 
-                    suffix[suffix_len] = ':';
+                    failover_key[suffix_len] = ':';
                     ++suffix_len;
 
-                    sprintf(suffix + suffix_len, "%llu", rid);
-                    suffix_len += 20;
-                    size_t suffix_slen = strlen(suffix);
+                    sprintf(failover_key + suffix_len, "%llu", rid);
+                    // suffix_len += 20;
 
-                    // TODO: overflow
-                    if((rts + event->ttl) > now) {
-                        fprintf(stderr, "skip repl: not now, rts: %llu, now: %llu\n", rts, now);
-                        // free(rin);
-                        // free(rpr);
-                        free(item);
-                        free(suffix);
-                        queue->sync_read_offset(false);
-                        continue;
-                    }
-
-                    char* failover_key = suffix;
-                    sprintf(failover_key + suffix_len - 20 - 1, "%llu", rid);
+                    suffix_len = strlen(failover_key);
 
                     {
-                        failover_t::const_iterator it = server.failover.find(failover_key);
+                        auto it = server.failover.find(failover_key);
 
-                        if(it != server.failover.cend()) {
+                        if(it != server.failover.end()) {
                             // TODO: what should really happen here?
                             fprintf(stderr, "skip repl: failover flag is set\n");
                             // free(rin);
@@ -128,9 +125,9 @@ namespace Skree {
                     }
 
                     {
-                        no_failover_t::const_iterator it = server.no_failover.find(failover_key);
+                        auto it = server.no_failover.find(failover_key);
 
-                        if(it != server.no_failover.cend()) {
+                        if(it != server.no_failover.end()) {
                             if((it->second + server.no_failover_time) > now) {
                                 // TODO: what should really happen here?
                                 fprintf(stderr, "skip repl: no_failover flag is set\n");
@@ -197,67 +194,65 @@ namespace Skree {
                         if(peers_cnt > 0) {
                             *count_replicas = peers_cnt;
 
-                            auto i_req = Skree::Actions::I::out_init(
-                                __peer_id, event, rid_net);
+                            auto i_req = Skree::Actions::I::out_init(__peer_id, event, rid_net);
 
-                            if(peers_cnt > 0) {
-                                have_rpr = true;
-                                size_t peer_id_len;
-                                char* peer_id;
-                                auto _peers_cnt = peers_cnt; // TODO
+                            have_rpr = true;
+                            size_t peer_id_len;
+                            char* peer_id;
+                            auto _peers_cnt = peers_cnt; // TODO
 
-                                while(peers_cnt > 0) {
-                                    peer_id_len = strlen(rpr + offset); // TODO: get rid of this shit
-                                    peer_id = (char*)malloc(peer_id_len + 1);
-                                    memcpy(peer_id, rpr + offset, peer_id_len);
-                                    peer_id[peer_id_len] = '\0';
-                                    offset += peer_id_len + 1;
+                            while(peers_cnt > 0) {
+                                peer_id_len = strlen(rpr + offset); // TODO: get rid of this shit
+                                peer_id = rpr + offset;
+                                offset += peer_id_len + 1;
 
-                                    auto it = server.known_peers.find(peer_id);
+                                auto it = server.known_peers.find(peer_id);
 
-                                    if(it == server.known_peers.end()) {
-                                        ++(*acceptances);
+                                if(it == server.known_peers.end()) {
+                                    pthread_mutex_lock(mutex);
+                                    ++(*acceptances);
+                                    pthread_mutex_unlock(mutex);
 
-                                    } else {
-                                        ++(*pending);
+                                } else {
+                                    pthread_mutex_lock(mutex);
+                                    ++(*pending);
+                                    pthread_mutex_unlock(mutex);
 
-                                        auto ctx = new out_packet_i_ctx {
-                                            .count_replicas = count_replicas,
-                                            .pending = pending,
-                                            .acceptances = acceptances,
-                                            .mutex = mutex,
-                                            .event = event,
-                                            .data = data_str,
-                                            .peer_id = __peer_id,
-                                            .wrinseq = rid,
-                                            .failover_key = failover_key,
-                                            .failover_key_len = suffix_len,
-                                            .rpr = rpr,
-                                            .peers_cnt = _peers_cnt, // TODO
-                                            .rid = rid
-                                        };
+                                    auto ctx = new out_packet_i_ctx {
+                                        .count_replicas = count_replicas,
+                                        .pending = pending,
+                                        .acceptances = acceptances,
+                                        .mutex = mutex,
+                                        .event = event,
+                                        .data = data_str,
+                                        .peer_id = __peer_id,
+                                        .failover_key = failover_key,
+                                        .failover_key_len = suffix_len,
+                                        .rpr = rpr,
+                                        .peers_cnt = _peers_cnt, // TODO
+                                        .rid = rid
+                                    };
 
-                                        const auto cb = new Skree::PendingReads::Callbacks::ReplicationProposeSelf(server);
-                                        const auto item = new Skree::Base::PendingRead::QueueItem {
-                                            .len = 1,
-                                            .cb = cb,
-                                            .ctx = (void*)ctx,
-                                            .opcode = true,
-                                            .noop = false
-                                        };
+                                    const auto cb = new Skree::PendingReads::Callbacks::ReplicationProposeSelf(server);
+                                    const auto item = new Skree::Base::PendingRead::QueueItem {
+                                        .len = 1,
+                                        .cb = cb,
+                                        .ctx = (void*)ctx,
+                                        .opcode = true,
+                                        .noop = false
+                                    };
 
-                                        auto witem = new Skree::Base::PendingWrite::QueueItem {
-                                            .len = i_req->len,
-                                            .data = i_req->data,
-                                            .pos = 0,
-                                            .cb = item
-                                        };
+                                    auto witem = new Skree::Base::PendingWrite::QueueItem {
+                                        .len = i_req->len,
+                                        .data = i_req->data,
+                                        .pos = 0,
+                                        .cb = item
+                                    };
 
-                                        it->second->push_write_queue(witem);
-                                    }
-
-                                    --peers_cnt;
+                                    it->second->push_write_queue(witem);
                                 }
+
+                                --peers_cnt;
                             }
                         }
 
@@ -270,7 +265,6 @@ namespace Skree {
                                 .event = event,
                                 .data = data_str,
                                 .peer_id = __peer_id,
-                                .wrinseq = rid,
                                 .failover_key = failover_key,
                                 .failover_key_len = suffix_len,
                                 .rpr = rpr, // TODO: why is it not NULL here?
@@ -302,7 +296,6 @@ namespace Skree {
                             .rin = rin_str,
                             .rpr = rpr_str, // TODO
                             .rid = rid,
-                            .wrinseq = rid,
                             .failover_key = failover_key,
                             .failover_key_len = suffix_len
                         };
