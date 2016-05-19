@@ -124,18 +124,18 @@ namespace Skree {
         char* _peer_id = client.get_peer_id();
         size_t _peer_id_len = strlen(_peer_id);
 
-        uint64_t increment_key_len = 7 + ctx->event_name_len;
-        char increment_key [increment_key_len + 1 + _peer_id_len];
+        // uint64_t increment_key_len = 7 + ctx->event_name_len;
+        // char increment_key [increment_key_len + 1 + _peer_id_len];
+        //
+        // sprintf(increment_key, "rinseq:");
+        // // printf("EVENT_NAME_LEN: %lu\n", ctx->event_name_len);
+        // memcpy(increment_key + 7, ctx->event_name, ctx->event_name_len);
+        // increment_key[increment_key_len] = ':';
+        // ++increment_key_len;
+        // memcpy(increment_key + increment_key_len, _peer_id, _peer_id_len);
+        // increment_key_len += _peer_id_len;
 
-        sprintf(increment_key, "rinseq:");
-        // printf("EVENT_NAME_LEN: %lu\n", ctx->event_name_len);
-        memcpy(increment_key + 7, ctx->event_name, ctx->event_name_len);
-        increment_key[increment_key_len] = ':';
-        ++increment_key_len;
-        memcpy(increment_key + increment_key_len, _peer_id, _peer_id_len);
-        increment_key_len += _peer_id_len;
-
-        uint32_t num_inserted = 0;
+        // uint32_t num_inserted = 0;
 
         uint32_t _peers_cnt = htonl(ctx->peers_count);
         uint64_t serialized_peers_len = sizeof(_peers_cnt);
@@ -179,26 +179,26 @@ namespace Skree {
             if(!keep_peer_id) free(_peer_id);
         }
 
-        auto& db = *(queue.kv);
+        // auto& db = *(queue.kv);
 
     // printf("repl_save: before begin_transaction\n");
-        if(db.begin_transaction()) {
+        // if(db.begin_transaction()) {
     // printf("repl_save: after begin_transaction\n");
             // TODO: is it really necessary?
-            int64_t max_id = db.increment(
-                increment_key,
-                increment_key_len,
-                ctx->events_count,
-                0
-            );
+            // int64_t max_id = db.increment(
+            //     increment_key,
+            //     increment_key_len,
+            //     ctx->events_count,
+            //     0
+            // );
 
-            if(max_id == kyotocabinet::INT64MIN) {
-                if(!db.end_transaction(false)) {
-                    fprintf(stderr, "Failed to abort transaction: %s\n", db.error().name());
-                    exit(1);
-                }
-
-            } else {
+            // if(max_id == kyotocabinet::INT64MIN) {
+            //     if(!db.end_transaction(false)) {
+            //         fprintf(stderr, "Failed to abort transaction: %s\n", db.error().name());
+            //         exit(1);
+            //     }
+            //
+            // } else {
                 uint64_t now = htonll(std::time(nullptr));
                 size_t now_len = sizeof(now);
                 // uint32_t r_id_len;
@@ -214,7 +214,7 @@ namespace Skree {
                 // char r_id [21];
                 in_packet_r_ctx_event* event;
                 uint32_t event_len;
-                uint64_t _max_id;
+                // uint64_t _max_id;
                 uint32_t _hostname_len = htonl(ctx->hostname_len);
                 uint32_t _port = htonl(ctx->port);
 
@@ -248,7 +248,7 @@ namespace Skree {
                     // key[key_len] = '\0';
 
                     event_len = htonl(event->len);
-                    _max_id = htonll(max_id);
+                    // _max_id = htonll(max_id);
 
                     auto stream = queue.write();
 
@@ -256,7 +256,7 @@ namespace Skree {
                     stream->write(event->len, event->data);
                     stream->write(now_len, &now);
                     stream->write(sizeof(event->id_net), &(event->id_net));
-                    stream->write(sizeof(_max_id), &_max_id);
+                    // stream->write(sizeof(_max_id), &_max_id);
                     stream->write(sizeof(_hostname_len), &_hostname_len);
                     stream->write(ctx->hostname_len, ctx->hostname);
                     stream->write(sizeof(_port), &_port);
@@ -264,31 +264,31 @@ namespace Skree {
 
                     delete stream;
 
-                    ++num_inserted;
-                    --max_id;
+                    // ++num_inserted;
+                    // --max_id;
                 }
 
-                if(num_inserted == ctx->events_count) {
-                    if(db.end_transaction(true)) {
+                // if(num_inserted == ctx->events_count) {
+                //     if(db.end_transaction(true)) {
                         pthread_mutex_lock(&stat_mutex);
-                        stat_num_replications += num_inserted;
+                        stat_num_replications += ctx->events_count;
                         pthread_mutex_unlock(&stat_mutex);
 
                         result = REPL_SAVE_RESULT_K;
 
-                    } else {
-                        fprintf(stderr, "Failed to commit transaction: %s\n", db.error().name());
-                        exit(1);
-                    }
-
-                } else {
-                    if(!db.end_transaction(false)) {
-                        fprintf(stderr, "Failed to abort transaction: %s\n", db.error().name());
-                        exit(1);
-                    }
-                }
-            }
-        }
+                //     } else {
+                //         fprintf(stderr, "Failed to commit transaction: %s\n", db.error().name());
+                //         exit(1);
+                //     }
+                //
+                // } else {
+                //     if(!db.end_transaction(false)) {
+                //         fprintf(stderr, "Failed to abort transaction: %s\n", db.error().name());
+                //         exit(1);
+                //     }
+                // }
+            // }
+        // }
 
         free(serialized_peers);
 
@@ -324,12 +324,6 @@ namespace Skree {
         if(replication_factor > max_replication_factor)
             replication_factor = max_replication_factor;
 
-        uint64_t increment_key_len = 6 + ctx->event_name_len;
-        char* increment_key = (char*)malloc(increment_key_len);
-
-        sprintf(increment_key, "inseq:");
-        memcpy(increment_key + 6, ctx->event_name, ctx->event_name_len);
-
         const char* _event_name = ctx->event_name;
         auto r_req = Actions::R::out_init(
             *this,
@@ -342,12 +336,7 @@ namespace Skree {
         auto& db = *(queue.kv);
 
         if(db.begin_transaction()) {
-            int64_t max_id = db.increment(
-                increment_key,
-                increment_key_len,
-                ctx->cnt,
-                0
-            );
+            int64_t max_id = db.increment("inseq", 5, ctx->cnt, 0);
 
             if(max_id == kyotocabinet::INT64MIN) {
                 fprintf(stderr, "Increment failed: %s\n", db.error().name());
@@ -358,39 +347,46 @@ namespace Skree {
                 }
 
             } else {
-                uint32_t _cnt = ctx->cnt;
+                uint32_t _cnt = 0;
                 uint32_t num_inserted = 0;
                 const char* _event_data;
+                max_id -= ctx->cnt;
+                uint64_t _max_id;
 
-                while(_cnt > 0) {
-                    --_cnt;
+                while(_cnt < ctx->cnt) {
+                    ++max_id;
                     in_packet_e_ctx_event* event = ctx->events[_cnt];
+                    ++_cnt;
 
-                    event->id = (char*)malloc(21);
-                    sprintf(event->id, "%llu", max_id);
+                    // TODO: is this really necessary?
+                    // event->id = (char*)malloc(21);
+                    // sprintf(event->id, "%llu", max_id);
 
                     if(task_ids != NULL)
                         task_ids[_cnt] = max_id;
 
-                    uint32_t key_len =
-                        3 // in:
-                        + ctx->event_name_len
-                        + 1 // :
-                        + strlen(event->id)
-                    ;
-                    char* key = (char*)malloc(key_len);
+                    // uint32_t key_len =
+                    //     3 // in:
+                    //     + ctx->event_name_len
+                    //     + 1 // :
+                    //     + strlen(event->id)
+                    // ;
+                    // char* key = (char*)malloc(key_len);
+                    //
+                    // sprintf(key, "in:");
+                    // memcpy(key + 3, ctx->event_name, ctx->event_name_len);
+                    // key[3 + ctx->event_name_len] = ':';
+                    // memcpy(key + 3 + ctx->event_name_len + 1, event->id,
+                    //     strlen(event->id));
 
-                    sprintf(key, "in:");
-                    memcpy(key + 3, ctx->event_name, ctx->event_name_len);
-                    key[3 + ctx->event_name_len] = ':';
-                    memcpy(key + 3 + ctx->event_name_len + 1, event->id,
-                        strlen(event->id));
+                    _max_id = htonll(max_id);
 
                     auto stream = queue.write();
-                    stream->write(event->len, event->data); // TODO?
+                    stream->write(sizeof(_max_id), &_max_id);
+                    stream->write(event->len, event->data);
                     delete stream;
 
-                    free(key);
+                    // free(key);
                     ++num_inserted;
                     // if(db.add(key, key_len, event->data, event->len)) {
                     //     free(key);
@@ -402,10 +398,8 @@ namespace Skree {
                     //     break;
                     // }
 
-                    _event_data = event->data;
+                    _event_data = event->data; // TODO
                     Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
-
-                    --max_id;
                 }
 
                 if(num_inserted == ctx->cnt) {
@@ -436,18 +430,17 @@ namespace Skree {
                             candidate_peer_ids->end()
                         );
 
-                        out_packet_r_ctx* r_ctx =
-                            (out_packet_r_ctx*)malloc(sizeof(*r_ctx));
-
-                        r_ctx->sync = (replication_factor > 0);
-                        r_ctx->replication_factor = replication_factor;
-                        r_ctx->pending = 0;
-                        r_ctx->client = client;
-                        r_ctx->candidate_peer_ids = candidate_peer_ids;
-                        r_ctx->accepted_peers = accepted_peers;
-                        // TODO: use muh_str_t for r_req
-                        r_ctx->r_req = r_req->data;
-                        r_ctx->r_len = r_req->len;
+                        auto r_ctx = new out_packet_r_ctx {
+                            .sync = (replication_factor > 0),
+                            .replication_factor = replication_factor,
+                            .pending = 0,
+                            .client = client,
+                            .candidate_peer_ids = candidate_peer_ids,
+                            .accepted_peers = accepted_peers,
+                            // TODO: use muh_str_t for r_req
+                            .r_req = r_req->data,
+                            .r_len = r_req->len
+                        };
                         /*****************************/
 
                         if(r_ctx->sync) {
@@ -459,6 +452,7 @@ namespace Skree {
 
                             } else {
                                 result = SAVE_EVENT_RESULT_A;
+                                delete r_ctx;
                             }
 
                         } else {
@@ -467,6 +461,9 @@ namespace Skree {
                             if(candidate_peer_ids->size() > 0) {
                                 begin_replication(r_ctx);
                                 replication_began = true;
+
+                            } else {
+                                delete r_ctx;
                             }
                         }
 
@@ -492,8 +489,7 @@ namespace Skree {
             exit(1);
         }
 
-        free(increment_key);
-        // TODO: if(!replication_began) free(r_req);
+        if(!replication_began) free(r_req); // TODO?
 
         return result;
     }

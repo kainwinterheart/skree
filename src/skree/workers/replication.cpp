@@ -44,10 +44,10 @@ namespace Skree {
 
                     uint64_t rid = ntohll(rid_net);
 
-                    uint64_t wrinseq;
-                    memcpy(&wrinseq, item + item_pos, sizeof(wrinseq));
-                    item_pos += sizeof(wrinseq);
-                    wrinseq = ntohll(wrinseq);
+                    // uint64_t wrinseq;
+                    // memcpy(&wrinseq, item + item_pos, sizeof(wrinseq));
+                    // item_pos += sizeof(wrinseq);
+                    // wrinseq = ntohll(wrinseq);
 
                     uint32_t hostname_len;
                     memcpy(&hostname_len, item + item_pos, sizeof(hostname_len));
@@ -93,7 +93,7 @@ namespace Skree {
                     suffix[suffix_len] = ':';
                     ++suffix_len;
 
-                    sprintf(suffix + suffix_len, "%llu", wrinseq);
+                    sprintf(suffix + suffix_len, "%llu", rid);
                     suffix_len += 20;
                     size_t suffix_slen = strlen(suffix);
 
@@ -229,7 +229,7 @@ namespace Skree {
                                             .event = event,
                                             .data = data_str,
                                             .peer_id = __peer_id,
-                                            .wrinseq = wrinseq, // TODO
+                                            .wrinseq = rid,
                                             .failover_key = failover_key,
                                             .failover_key_len = suffix_len,
                                             .rpr = rpr,
@@ -270,7 +270,7 @@ namespace Skree {
                                 .event = event,
                                 .data = data_str,
                                 .peer_id = __peer_id,
-                                .wrinseq = wrinseq, // TODO
+                                .wrinseq = rid,
                                 .failover_key = failover_key,
                                 .failover_key_len = suffix_len,
                                 .rpr = rpr, // TODO: why is it not NULL here?
@@ -302,7 +302,7 @@ namespace Skree {
                             .rin = rin_str,
                             .rpr = rpr_str, // TODO
                             .rid = rid,
-                            .wrinseq = wrinseq, // TODO
+                            .wrinseq = rid,
                             .failover_key = failover_key,
                             .failover_key_len = suffix_len
                         };
