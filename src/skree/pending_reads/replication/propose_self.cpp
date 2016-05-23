@@ -11,15 +11,12 @@ namespace Skree {
                 out_packet_i_ctx* ctx = (out_packet_i_ctx*)(item.ctx);
 
                 pthread_mutex_lock(ctx->mutex);
-
                 --(*(ctx->pending));
 
                 if(args.data[0] == SKREE_META_OPCODE_K)
                     ++(*(ctx->acceptances));
 
                 continue_replication_exec(ctx);
-
-                pthread_mutex_unlock(ctx->mutex);
 
                 return NULL;
             }
@@ -31,17 +28,18 @@ namespace Skree {
                 out_packet_i_ctx* ctx = (out_packet_i_ctx*)(item.ctx);
 
                 pthread_mutex_lock(ctx->mutex);
-
                 --(*(ctx->pending));
 
                 continue_replication_exec(ctx);
-
-                pthread_mutex_unlock(ctx->mutex);
             }
 
             void ReplicationProposeSelf::continue_replication_exec(out_packet_i_ctx*& ctx) {
                 if(*(ctx->pending) == 0) {
+                    pthread_mutex_unlock(ctx->mutex);
                     server.replication_exec(ctx);
+
+                } else {
+                    pthread_mutex_unlock(ctx->mutex);
                 }
             }
         }

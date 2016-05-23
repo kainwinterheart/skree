@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
                 mkdir(_queue_path.c_str(), 0000755);
             }
 
-            return new Skree::QueueDb (_queue_path.c_str(), 512 * 1024 * 1024);
+            return new Skree::QueueDb (_queue_path.c_str(), 256 * 1024 * 1024);
         };
 
         if(config.Type() != YAML::NodeType::Sequence) {
@@ -231,6 +231,7 @@ int main(int argc, char** argv) {
 
                     known_event->queue = create_queue_db(id);
                     known_event->r_queue = create_queue_db(id + "/replication");
+                    known_event->r2_queue = create_queue_db(id + "/replication_failover");
 
                     auto it = known_events.find(id_);
 

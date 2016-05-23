@@ -25,7 +25,7 @@ namespace Skree {
 
             static Utils::muh_str_t* out_init(
                 Utils::muh_str_t*& peer_id,
-                Utils::known_event_t*& event,
+                const Utils::known_event_t& event,
                 const uint64_t& rid
             );
         };

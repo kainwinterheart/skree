@@ -24,7 +24,7 @@ namespace Skree {
             ) override;
 
             static Utils::muh_str_t* out_init(
-                Utils::known_event_t*& event, const uint64_t& rid_net,
+                const Utils::known_event_t& event, const uint64_t& rid_net,
                 const uint64_t& rin_len, char*& rin
             );
         };

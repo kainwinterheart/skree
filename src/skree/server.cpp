@@ -119,196 +119,93 @@ namespace Skree {
         Client& client,
         QueueDb& queue
     ) {
-        short result = REPL_SAVE_RESULT_F;
         // printf("INCOMING REPLICATION: %llu\n", ctx->events_count);
-        char* _peer_id = client.get_peer_id();
-        size_t _peer_id_len = strlen(_peer_id);
-
-        // uint64_t increment_key_len = 7 + ctx->event_name_len;
-        // char increment_key [increment_key_len + 1 + _peer_id_len];
-        //
-        // sprintf(increment_key, "rinseq:");
-        // // printf("EVENT_NAME_LEN: %lu\n", ctx->event_name_len);
-        // memcpy(increment_key + 7, ctx->event_name, ctx->event_name_len);
-        // increment_key[increment_key_len] = ':';
-        // ++increment_key_len;
-        // memcpy(increment_key + increment_key_len, _peer_id, _peer_id_len);
-        // increment_key_len += _peer_id_len;
-
-        // uint32_t num_inserted = 0;
-
         uint32_t _peers_cnt = htonl(ctx->peers_count);
         uint64_t serialized_peers_len = sizeof(_peers_cnt);
         char* serialized_peers = (char*)malloc(serialized_peers_len);
         memcpy(serialized_peers, &_peers_cnt, serialized_peers_len);
 
-        for(uint32_t i = 0; i < ctx->peers_count; ++i) {
-            auto peer = ctx->peers[i];
-            char* _peer_id = Utils::make_peer_id(peer->hostname_len,
-                peer->hostname, peer->port);
+        packet_r_ctx_peer* peer;
+        char* _peer_id;
+        bool keep_peer_id;
+        uint64_t _peer_id_len;
+        peers_to_discover_t::const_iterator prev_item;
+        bool _save_peers_to_discover = false;
 
-            bool keep_peer_id = false;
-            size_t _peer_id_len = strlen(_peer_id);
+        for(uint32_t i = 0; i < ctx->peers_count; ++i) {
+            peer = ctx->peers[i];
+            _peer_id = Utils::make_peer_id(peer->hostname_len, peer->hostname, peer->port);
+
+            keep_peer_id = false;
+            _peer_id_len = strlen(_peer_id);
 
             pthread_mutex_lock(&peers_to_discover_mutex);
 
-            peers_to_discover_t::const_iterator prev_item =
-                peers_to_discover.find(_peer_id);
+            prev_item = peers_to_discover.find(_peer_id);
 
             if(prev_item == peers_to_discover.cend()) {
-                peer_to_discover_t* peer_to_discover = (peer_to_discover_t*)malloc(
-                    sizeof(*peer_to_discover));
+                peers_to_discover[_peer_id] = new peer_to_discover_t {
+                    .host = peer->hostname,
+                    .port = peer->port
+                };
 
-                peer_to_discover->host = peer->hostname;
-                peer_to_discover->port = peer->port;
-
-                peers_to_discover[_peer_id] = peer_to_discover;
                 keep_peer_id = true;
-                save_peers_to_discover();
+                _save_peers_to_discover = true;
             }
 
             pthread_mutex_unlock(&peers_to_discover_mutex);
 
-            serialized_peers = (char*)realloc(serialized_peers,
-                serialized_peers_len + _peer_id_len);
+            serialized_peers = (char*)realloc(serialized_peers, serialized_peers_len + _peer_id_len);
 
-            memcpy(serialized_peers + serialized_peers_len,
-                _peer_id, _peer_id_len);
+            memcpy(serialized_peers + serialized_peers_len, _peer_id, _peer_id_len);
             serialized_peers_len += _peer_id_len;
 
             if(!keep_peer_id) free(_peer_id);
-        }
-
-        // auto& db = *(queue.kv);
-
-    // printf("repl_save: before begin_transaction\n");
-        // if(db.begin_transaction()) {
-    // printf("repl_save: after begin_transaction\n");
-            // TODO: is it really necessary?
-            // int64_t max_id = db.increment(
-            //     increment_key,
-            //     increment_key_len,
-            //     ctx->events_count,
-            //     0
-            // );
-
-            // if(max_id == kyotocabinet::INT64MIN) {
-            //     if(!db.end_transaction(false)) {
-            //         fprintf(stderr, "Failed to abort transaction: %s\n", db.error().name());
-            //         exit(1);
-            //     }
-            //
-            // } else {
-                uint64_t now = htonll(std::time(nullptr));
-                size_t now_len = sizeof(now);
-                // uint32_t r_id_len;
-                // uint32_t event_id_len;
-                // uint32_t key_len;
-                // uint32_t base_key_len =
-                //     4 // rin: | rts: | rid: | rpr:
-                //     + ctx->event_name_len
-                //     + 1 // :
-                //     + _peer_id_len
-                //     + 1 // :
-                // ;
-                // char r_id [21];
-                in_packet_r_ctx_event* event;
-                uint32_t event_len;
-                // uint64_t _max_id;
-                uint32_t _hostname_len = htonl(ctx->hostname_len);
-                uint32_t _port = htonl(ctx->port);
-
-                for(uint32_t i = 0; i < ctx->events_count; ++i) {
-                    event = ctx->events[i];
-                    // sprintf(r_id, "%llu", max_id);
-
-                    // key_len = 0;
-                    // r_id_len = strlen(r_id);
-                    // event_id_len = strlen(event->id);
-                    // char key [base_key_len + std::max(r_id_len, event_id_len) + 1];
-                    //
-                    // sprintf(key, "rin:");
-                    // key_len += 4;
-                    //
-                    // memcpy(key + key_len, ctx->event_name, ctx->event_name_len);
-                    // key_len += ctx->event_name_len;
-                    //
-                    // key[key_len] = ':';
-                    // ++key_len;
-                    //
-                    // memcpy(key + key_len, _peer_id, _peer_id_len);
-                    // key_len += _peer_id_len;
-                    //
-                    // key[key_len] = ':';
-                    // ++key_len;
-                    //
-                    // memcpy(key + key_len, r_id, r_id_len);
-                    // key_len += r_id_len;
-                    //
-                    // key[key_len] = '\0';
-
-                    event_len = htonl(event->len);
-                    // _max_id = htonll(max_id);
-
-                    auto stream = queue.write();
-
-                    stream->write(sizeof(event_len), &event_len);
-                    stream->write(event->len, event->data);
-                    stream->write(now_len, &now);
-                    stream->write(sizeof(event->id_net), &(event->id_net));
-                    // stream->write(sizeof(_max_id), &_max_id);
-                    stream->write(sizeof(_hostname_len), &_hostname_len);
-                    stream->write(ctx->hostname_len, ctx->hostname);
-                    stream->write(sizeof(_port), &_port);
-                    stream->write(serialized_peers_len, serialized_peers);
-
-                    delete stream;
-
-                    // ++num_inserted;
-                    // --max_id;
-                }
-
-                // if(num_inserted == ctx->events_count) {
-                //     if(db.end_transaction(true)) {
-                        pthread_mutex_lock(&stat_mutex);
-                        stat_num_replications += ctx->events_count;
-                        pthread_mutex_unlock(&stat_mutex);
-
-                        result = REPL_SAVE_RESULT_K;
-
-                //     } else {
-                //         fprintf(stderr, "Failed to commit transaction: %s\n", db.error().name());
-                //         exit(1);
-                //     }
-                //
-                // } else {
-                //     if(!db.end_transaction(false)) {
-                //         fprintf(stderr, "Failed to abort transaction: %s\n", db.error().name());
-                //         exit(1);
-                //     }
-                // }
-            // }
-        // }
-
-        free(serialized_peers);
-
-        for(uint32_t i = 0; i < ctx->peers_count; ++i) {
-            auto peer = ctx->peers[i];
 
             free(peer->hostname);
             delete peer;
         }
 
+        if(_save_peers_to_discover) {
+            save_peers_to_discover();
+        }
+
+        uint64_t now = htonll(std::time(nullptr));
+        size_t now_len = sizeof(now);
+        in_packet_r_ctx_event* event;
+        uint32_t event_len;
+        uint32_t _hostname_len = htonl(ctx->hostname_len);
+        uint32_t _port = htonl(ctx->port);
+
         for(uint32_t i = 0; i < ctx->events_count; ++i) {
-            auto event = ctx->events[i];
+            event = ctx->events[i];
+            event_len = htonl(event->len);
+
+            auto stream = queue.write();
+
+            stream->write(sizeof(event_len), &event_len);
+            stream->write(event->len, event->data);
+            stream->write(now_len, &now);
+            stream->write(sizeof(event->id_net), &(event->id_net)); // == rid
+            stream->write(sizeof(_hostname_len), &_hostname_len);
+            stream->write(ctx->hostname_len, ctx->hostname);
+            stream->write(sizeof(_port), &_port);
+            stream->write(serialized_peers_len, serialized_peers);
+
+            delete stream;
 
             // free(event->data); // TODO
             delete event;
         }
 
+        pthread_mutex_lock(&stat_mutex);
+        stat_num_replications += ctx->events_count;
+        pthread_mutex_unlock(&stat_mutex);
+
+        free(serialized_peers);
         free(ctx->hostname);
 
-        return result;
+        return REPL_SAVE_RESULT_K;
     }
 
     // TODO: get rid of ctx
@@ -836,16 +733,16 @@ namespace Skree {
 
     void Server::unfailover(char* failover_key) {
         {
-            failover_t::const_iterator it = failover.find(failover_key);
+            auto it = failover.find(failover_key);
 
-            if(it != failover.cend())
+            if(it != failover.end())
                 failover.erase(it);
         }
 
         {
-            no_failover_t::const_iterator it = no_failover.find(failover_key);
+            auto it = no_failover.find(failover_key);
 
-            if(it != no_failover.cend())
+            if(it != no_failover.end())
                 no_failover.erase(it);
         }
     }
@@ -931,8 +828,7 @@ namespace Skree {
             if(ctx->rpr != NULL) {
                 // const muh_str_t*& peer_id, const known_event_t*& event,
                 // const uint64_t& rid
-                auto x_req = Skree::Actions::X::out_init(
-                    ctx->peer_id, ctx->event, ctx->rid);
+                auto x_req = Skree::Actions::X::out_init(ctx->peer_id, *(ctx->event), ctx->rid);
                 size_t offset = 0;
 
                 while(ctx->peers_cnt > 0) {

@@ -69,7 +69,7 @@ namespace Skree {
 
         Utils::muh_str_t* X::out_init(
             Utils::muh_str_t*& peer_id,
-            Utils::known_event_t*& event,
+            const Utils::known_event_t& event,
             const uint64_t& rid
         ) {
             Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
@@ -78,8 +78,8 @@ namespace Skree {
                 out->len
                 + sizeof(peer_id->len)
                 + peer_id->len
-                + event->id_len_size
-                + event->id_len
+                + event.id_len_size
+                + event.id_len
                 + sizeof(rid)
             );
 
@@ -92,11 +92,11 @@ namespace Skree {
             memcpy(out->data + out->len, peer_id->data, peer_id->len);
             out->len += peer_id->len;
 
-            memcpy(out->data + out->len, (char*)&(event->id_len_net), event->id_len_size);
-            out->len += event->id_len_size;
+            memcpy(out->data + out->len, (char*)&(event.id_len_net), event.id_len_size);
+            out->len += event.id_len_size;
 
-            memcpy(out->data + out->len, event->id, event->id_len);
-            out->len += event->id_len;
+            memcpy(out->data + out->len, event.id, event.id_len);
+            out->len += event.id_len;
 
             uint64_t rid_net = htonll(rid);
             memcpy(out->data + out->len, (char*)&rid_net, sizeof(rid_net));

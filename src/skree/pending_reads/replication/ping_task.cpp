@@ -24,10 +24,6 @@ namespace Skree {
                     error(client, item); // calls server.unfailover() by itself
                 }
 
-                // pthread_mutex_lock(ctx->mutex);
-                //
-                // pthread_mutex_unlock(ctx->mutex);
-
                 return NULL;
             }
 
@@ -36,15 +32,7 @@ namespace Skree {
                 const Skree::Base::PendingRead::QueueItem& item
             ) {
                 out_data_c_ctx* ctx = (out_data_c_ctx*)(item.ctx);
-                auto it = server.known_events.find(ctx->event->id);
 
-                if(it == server.known_events.end()) {
-                    fprintf(stderr, "[PingTask] Got unknown event: %s\n", ctx->event->id);
-                    server.unfailover(ctx->failover_key);
-                    return; // TODO
-                }
-
-                auto queue = it->second->r_queue;
                 auto event = new in_packet_r_ctx_event {
                     .len = ctx->rin->len,
                     .data = ctx->rin->data,
@@ -62,15 +50,15 @@ namespace Skree {
                 if(ctx->rpr != NULL) {
                     size_t rpr_len = ctx->rpr->len;
                     size_t rpr_offset = 0;
+                    size_t peer_id_len;
+                    char* peer_id;
+                    char* delimiter;
 
                     while(rpr_offset < rpr_len) {
-                        size_t peer_id_len = strlen(ctx->rpr->data + rpr_offset);
-                        char* peer_id = (char*)malloc(peer_id_len + 1);
-                        memcpy(peer_id, ctx->rpr->data + rpr_offset, peer_id_len);
-                        peer_id[peer_id_len] = '\0';
+                        peer_id_len = strlen(ctx->rpr->data + rpr_offset);
+                        peer_id = ctx->rpr->data + rpr_offset;
                         rpr_offset += peer_id_len + 1;
-
-                        char* delimiter = rindex(peer_id, ':');
+                        delimiter = rindex(peer_id, ':');
 
                         if(delimiter == NULL) {
                             fprintf(stderr, "Invalid peer id: %s\n", peer_id);
@@ -86,6 +74,10 @@ namespace Skree {
                             peer->hostname[peer->hostname_len] = '\0';
 
                             peers[ peers_count++ ] = peer;
+
+                            if(peers_count == server.max_replication_factor) {
+                                break;
+                            }
                         }
                     }
                 }
@@ -102,7 +94,7 @@ namespace Skree {
                     .peers_count = peers_count
                 };
 
-                short result = server.repl_save(&r_ctx, client, *queue);
+                short result = server.repl_save(&r_ctx, client, *(ctx->event->r_queue));
 
                 if(result == REPL_SAVE_RESULT_K) {
                     server.repl_clean(
@@ -121,10 +113,6 @@ namespace Skree {
                 }
 
                 server.unfailover(ctx->failover_key);
-
-                // pthread_mutex_lock(ctx->mutex);
-                //
-                // pthread_mutex_unlock(ctx->mutex);
             }
         }
     }

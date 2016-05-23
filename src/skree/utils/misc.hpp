@@ -91,6 +91,7 @@ namespace Skree {
             uint32_t id_len_size;
             QueueDb* queue;
             QueueDb* r_queue;
+            QueueDb* r2_queue;
         };
 
         typedef std::unordered_map<char*, skree_module_t*, char_pointer_hasher, char_pointer_comparator> skree_modules_t;

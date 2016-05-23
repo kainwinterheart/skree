@@ -1,7 +1,7 @@
 #ifndef _SKREE_QUEUEDB_H_
 #define _SKREE_QUEUEDB_H_
 
-#define SKREE_QUEUEDB_ZERO_BATCH_SIZE 4096
+#define SKREE_QUEUEDB_ZERO_BATCH_SIZE (4 * 1024 * 1024)
 
 #include "utils/misc.hpp"
 #include "db_wrapper.hpp"
@@ -72,84 +72,14 @@ namespace Skree {
             const char* _path, size_t _file_size, uint64_t _read_page_num,
             uint64_t _write_page_num, int _read_page_num_fh, int _write_page_num_fh,
             DbWrapper* _kv
-        )
-        : path(_path),
-          file_size(_file_size),
-          kv(_kv),
-          read_page_num(_read_page_num),
-          write_page_num(_write_page_num),
-          read_page_num_fh(_read_page_num_fh),
-          write_page_num_fh(_write_page_num_fh) {
-            close_fhs = false;
-            path_len = strlen(path);
-            next_page = NULL;
-            pthread_mutex_init(&read_page_mutex, NULL);
-            pthread_mutex_init(&write_page_mutex, NULL);
-
-            read_page = NULL;
-            read_page_fh = -1;
-            read_page_offset = 0;
-            open_read_page();
-
-            write_page = NULL;
-            write_page_fh = -1;
-            write_page_offset = 0;
-            open_write_page();
-        }
+        );
     public:
         DbWrapper* kv;
 
-        QueueDb(const char* _path, size_t _file_size) : path(_path), file_size(_file_size) {
-            close_fhs = true;
-            path_len = strlen(path);
-            next_page = NULL;
-            pthread_mutex_init(&read_page_mutex, NULL);
-            pthread_mutex_init(&write_page_mutex, NULL);
+        QueueDb(const char* _path, size_t _file_size);
+        ~QueueDb();
 
-            read_page = NULL;
-            read_page_fh = -1;
-            read_page_num_fh = -1;
-            get_page_num("rpos", read_page_num_fh, read_page_num, read_page_offset);
-            open_read_page();
-
-            write_page = NULL;
-            write_page_fh = -1;
-            write_page_num_fh = -1;
-            get_page_num("wpos", write_page_num_fh, write_page_num, write_page_offset);
-            open_write_page();
-
-            kv = new DbWrapper;
-
-            std::string db_file_name (path, path_len);
-            db_file_name.append("/skree.kch");
-
-            if(!kv->open(
-                db_file_name,
-                kyotocabinet::HashDB::OWRITER
-                | kyotocabinet::HashDB::OCREATE
-                | kyotocabinet::HashDB::ONOLOCK
-                | kyotocabinet::HashDB::OAUTOTRAN
-            )) {
-                fprintf(stderr, "Failed to open database: %s\n", kv->error().name());
-                exit(1);
-            }
-        }
-
-        ~QueueDb() {
-            pthread_mutex_destroy(&write_page_mutex);
-            pthread_mutex_destroy(&read_page_mutex);
-
-            if(close_fhs) {
-                close(read_page_num_fh);
-                close(write_page_num_fh);
-                close(read_page_fh);
-                close(write_page_fh);
-            }
-
-            delete kv;
-        }
-
-        char* read();
+        char* read(uint64_t* len = NULL);
         void sync_read_offset(bool commit = true);
 
         class WriteStream {
@@ -167,6 +97,7 @@ namespace Skree {
         friend class QueueDb::WriteStream;
 
         QueueDb::WriteStream* write();
+        void write(uint64_t len, void* data);
     };
 }
 
