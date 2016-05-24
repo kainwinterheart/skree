@@ -230,6 +230,7 @@ int main(int argc, char** argv) {
                     known_event->ttl = ttl;
 
                     known_event->queue = create_queue_db(id);
+                    known_event->queue2 = create_queue_db(id + "/failover");
                     known_event->r_queue = create_queue_db(id + "/replication");
                     known_event->r2_queue = create_queue_db(id + "/replication_failover");
 

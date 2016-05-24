@@ -71,9 +71,9 @@ namespace Skree {
 
             bool should_save_event = false;
 
-            wip_t::const_iterator it = server.wip.find(rid);
+            auto it = server.wip.find(rid);
 
-            if(it == server.wip.cend()) {
+            if(it == server.wip.end()) {
                 // TODO: check iterator position
                 // if(server.db.check(in_key, in_key_len) > 0) // TODO
                     // should_save_event = true; // TODO: is not working now

@@ -9,11 +9,15 @@ namespace Skree {
     : my_port(_my_port),
       max_client_threads(_max_client_threads),
       known_events(_known_events) {
-        pthread_mutex_init(&stat_mutex, NULL);
         pthread_mutex_init(&new_clients_mutex, NULL);
         pthread_mutex_init(&known_peers_mutex, NULL);
         pthread_mutex_init(&me_mutex, NULL);
         pthread_mutex_init(&peers_to_discover_mutex, NULL);
+
+        stat_num_inserts = 0;
+        stat_num_replications = 0;
+        stat_num_repl_it = 0;
+        stat_num_proc_it = 0;
 
         load_peers_to_discover();
 
@@ -97,6 +101,9 @@ namespace Skree {
         Skree::Workers::Discovery discovery (*this);
         discovery.start();
 
+        Skree::Workers::Processor processor (*this);
+        processor.start();
+
         ev_run(loop, 0); // TODO
     }
 
@@ -111,7 +118,6 @@ namespace Skree {
         pthread_mutex_destroy(&me_mutex);
         pthread_mutex_destroy(&known_peers_mutex);
         pthread_mutex_destroy(&new_clients_mutex);
-        pthread_mutex_destroy(&stat_mutex);
     }
 
     short Server::repl_save(
@@ -198,9 +204,7 @@ namespace Skree {
             delete event;
         }
 
-        pthread_mutex_lock(&stat_mutex);
         stat_num_replications += ctx->events_count;
-        pthread_mutex_unlock(&stat_mutex);
 
         free(serialized_peers);
         free(ctx->hostname);
@@ -301,9 +305,7 @@ namespace Skree {
 
                 if(num_inserted == ctx->cnt) {
                     if(db.end_transaction(true)) {
-                        pthread_mutex_lock(&stat_mutex);
                         stat_num_inserts += num_inserted;
-                        pthread_mutex_unlock(&stat_mutex);
 
                         /*****************************/
                         std::vector<char*>* candidate_peer_ids = new std::vector<char*>();

@@ -20,6 +20,8 @@ namespace Skree {
                     }
                 }
 
+                ++(server.stat_num_repl_it);
+
                 if(!active) {
                     sleep(1);
                 }
@@ -111,7 +113,7 @@ namespace Skree {
         }
 
         bool Replication::failover(const uint64_t& now, const Utils::known_event_t& event) {
-            auto& queue = *(event.queue);
+            auto& queue = *(event.r_queue);
             auto& queue_r2 = *(event.r2_queue);
             uint64_t item_len;
             auto _item = queue_r2.read(&item_len);

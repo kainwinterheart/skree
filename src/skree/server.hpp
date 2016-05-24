@@ -27,15 +27,16 @@ namespace Skree {
 #include "actions/e.hpp"
 #include "actions/r.hpp"
 #include "workers/synchronization.hpp"
-#include "workers/client.hpp"
 #include "workers/replication.hpp"
 #include "workers/discovery.hpp"
 #include "pending_reads/replication.hpp"
 #include "queue_db.hpp"
+#include "workers/processor.hpp"
 
 #include <stdexcept>
 #include <functional>
 #include <algorithm>
+#include <atomic>
 
 namespace Skree {
     struct new_client_t {
@@ -72,9 +73,11 @@ namespace Skree {
         uint32_t max_replication_factor = 3;
         uint64_t job_time = 10 * 60;
 
-        uint64_t stat_num_inserts;
-        uint64_t stat_num_replications;
-        pthread_mutex_t stat_mutex;
+        std::atomic<uint_fast64_t> stat_num_inserts;
+        std::atomic<uint_fast64_t> stat_num_replications;
+        std::atomic<uint_fast64_t> stat_num_repl_it;
+        std::atomic<uint_fast64_t> stat_num_proc_it;
+
         pthread_mutex_t new_clients_mutex;
 
         char* my_hostname;

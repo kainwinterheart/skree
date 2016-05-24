@@ -90,6 +90,7 @@ namespace Skree {
             uint32_t ttl;
             uint32_t id_len_size;
             QueueDb* queue;
+            QueueDb* queue2;
             QueueDb* r_queue;
             QueueDb* r2_queue;
         };
