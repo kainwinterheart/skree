@@ -18,6 +18,7 @@ namespace Skree {
         stat_num_replications = 0;
         stat_num_repl_it = 0;
         stat_num_proc_it = 0;
+        stat_num_requests = 0;
 
         load_peers_to_discover();
 

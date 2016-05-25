@@ -77,6 +77,7 @@ namespace Skree {
         std::atomic<uint_fast64_t> stat_num_replications;
         std::atomic<uint_fast64_t> stat_num_repl_it;
         std::atomic<uint_fast64_t> stat_num_proc_it;
+        std::atomic<uint_fast64_t> stat_num_requests;
 
         pthread_mutex_t new_clients_mutex;
 

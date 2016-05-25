@@ -166,16 +166,13 @@ namespace Skree {
             size_t total = 0;
             char batch [SKREE_QUEUEDB_ZERO_BATCH_SIZE];
             memset(batch, 0, SKREE_QUEUEDB_ZERO_BATCH_SIZE);
-            size_t written;
 
             while(total < file_size) {
-                written = ::write(fh, batch, (
+                total += ::write(fh, batch, (
                     ((file_size - total) > SKREE_QUEUEDB_ZERO_BATCH_SIZE)
                         ? SKREE_QUEUEDB_ZERO_BATCH_SIZE
                         : (file_size - total)
                 ));
-
-                total += written;
             }
 
             close(fh);
@@ -332,8 +329,8 @@ namespace Skree {
             read_page_offset += len;
             rollback->l1 = len;
 
-            for(int i = 0; i < len; ++i)
-                printf("read byte [%d]: 0x%.2X\n", i,dest[i]);
+            // for(int i = 0; i < len; ++i)
+            //     printf("read byte [%d]: 0x%.2X\n", i,dest[i]);
 
         } else {
             if(rest > 0) {

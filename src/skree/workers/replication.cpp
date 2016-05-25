@@ -254,18 +254,20 @@ namespace Skree {
 
             // TODO: overflow
             if((item->rts + event.ttl) > now) {
-                fprintf(stderr, "skip repl: not now, rts: %llu, now: %llu\n", item->rts, now);
+                // fprintf(stderr, "skip repl: not now, rts: %llu, now: %llu\n", item->rts, now);
                 cleanup();
                 queue.sync_read_offset(false);
                 return false;
             }
 
             {
+                // fprintf(stderr, "asd1\n");
                 auto it = server.failover.find(item->failover_key);
+                // fprintf(stderr, "asd2\n");
 
                 if(it != server.failover.end()) {
                     // TODO: what should really happen here?
-                    fprintf(stderr, "skip repl: failover flag is set\n");
+                    // fprintf(stderr, "skip repl: failover flag is set\n");
                     cleanup();
                     queue.sync_read_offset(false);
                     return false;
@@ -274,7 +276,7 @@ namespace Skree {
 
             if(check_no_failover(now, *item)) {
                 // TODO: what should really happen here?
-                fprintf(stderr, "skip repl: no_failover flag is set\n");
+                // fprintf(stderr, "skip repl: no_failover flag is set\n");
                 cleanup();
                 queue.sync_read_offset(false);
                 return false;
@@ -287,24 +289,24 @@ namespace Skree {
 
             if(queue_r2.kv->add(item->failover_key, item->failover_key_len, "1", 1)) {
                 queue_r2.write(item_len, _item);
-                fprintf(
-                    stderr,
-                    "Key %s for event %s has been added to r2_queue\n",
-                    item->failover_key,
-                    event.id
-                );
+                // fprintf(
+                //     stderr,
+                //     "Key %s for event %s has been added to r2_queue\n",
+                //     item->failover_key,
+                //     event.id
+                // );
 
             } else {
-                fprintf(
-                    stderr,
-                    "Key %s for event %s already exists in r2_queue\n",
-                    item->failover_key,
-                    event.id
-                );
+                // fprintf(
+                //     stderr,
+                //     "Key %s for event %s already exists in r2_queue\n",
+                //     item->failover_key,
+                //     event.id
+                // );
             }
 
             queue.sync_read_offset();
-            fprintf(stderr, "replication: after sync_read_offset(), rid: %llu\n", item->rid);
+            // fprintf(stderr, "replication: after sync_read_offset(), rid: %llu\n", item->rid);
 
             pthread_mutex_lock(&(server.known_peers_mutex));
 
@@ -315,7 +317,7 @@ namespace Skree {
 
             pthread_mutex_unlock(&(server.known_peers_mutex));
 
-            fprintf(stderr, "Seems like I need to failover task %llu\n", item->rid);
+            // fprintf(stderr, "Seems like I need to failover task %llu\n", item->rid);
 
             if(peer == NULL) {
                 size_t offset = 0;

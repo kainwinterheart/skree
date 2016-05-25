@@ -169,7 +169,7 @@ namespace Skree {
             known_peers_t::const_iterator _peer;
             Skree::Client* peer;
             // fprintf(stderr, "processor: before read\n");
-            auto& queue = *(event.r_queue);
+            auto& queue = *(event.queue);
             uint64_t item_len;
             auto _item = queue.read(&item_len);
 
@@ -188,7 +188,7 @@ namespace Skree {
 
             if(check_wip(now, *item)) {
                 // TODO: what should really happen here?
-                fprintf(stderr, "skip repl: no_failover flag is set\n");
+                // fprintf(stderr, "skip repl: no_failover flag is set\n");
                 cleanup();
                 queue.sync_read_offset(false);
                 return false;
@@ -196,28 +196,28 @@ namespace Skree {
 
             server.wip[item->id] = now;
 
-            auto& queue_r2 = *(event.r2_queue);
+            auto& queue_r2 = *(event.queue2);
 
             if(queue_r2.kv->add((char*)&(item->id_net), sizeof(item->id_net), "1", 1)) {
                 queue_r2.write(item_len, _item);
-                fprintf(
-                    stderr,
-                    "Key %llu for event %s has been added to queue2\n",
-                    item->id,
-                    event.id
-                );
+                // fprintf(
+                //     stderr,
+                //     "Key %llu for event %s has been added to queue2\n",
+                //     item->id,
+                //     event.id
+                // );
 
             } else {
-                fprintf(
-                    stderr,
-                    "Key %llu for event %s already exists in queue2\n",
-                    item->id,
-                    event.id
-                );
+                // fprintf(
+                //     stderr,
+                //     "Key %llu for event %s already exists in queue2\n",
+                //     item->id,
+                //     event.id
+                // );
             }
 
             queue.sync_read_offset();
-            fprintf(stderr, "processor: after sync_read_offset(), rid: %llu\n", item->id);
+            // fprintf(stderr, "processor: after sync_read_offset(), rid: %llu\n", item->id);
 
             return true;
         }

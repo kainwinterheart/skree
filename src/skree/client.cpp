@@ -26,6 +26,7 @@ namespace Skree {
                     uint64_t _out_len = 0; // TODO: get rid of this
                     handlers[opcode]->in(item.len, args.data, _out_len, args.out_data);
                     args.out_len = _out_len;
+                    ++(server.stat_num_requests);
 
                     return (Skree::Base::PendingWrite::QueueItem*)NULL;
                 };
