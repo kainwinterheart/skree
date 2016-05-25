@@ -1,6 +1,4 @@
-#ifndef _SKREE_ACTIONS_E_H_
-#define _SKREE_ACTIONS_E_H_
-
+#pragma once
 #include "../base/action.hpp"
 #include "../utils/misc.hpp"
 
@@ -42,5 +40,3 @@ namespace Skree {
         };
     }
 }
-
-#endif

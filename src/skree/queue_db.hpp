@@ -1,6 +1,4 @@
-#ifndef _SKREE_QUEUEDB_H_
-#define _SKREE_QUEUEDB_H_
-
+#pragma once
 #define SKREE_QUEUEDB_ZERO_BATCH_SIZE (4 * 1024 * 1024)
 
 #include "utils/misc.hpp"
@@ -79,7 +77,7 @@ namespace Skree {
         QueueDb(const char* _path, size_t _file_size);
         ~QueueDb();
 
-        char* read(uint64_t* len = NULL);
+        char* read(uint64_t* len = nullptr);
         void sync_read_offset(bool commit = true);
 
         class WriteStream {
@@ -101,4 +99,3 @@ namespace Skree {
     };
 }
 
-#endif

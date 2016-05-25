@@ -1,10 +1,8 @@
-#ifndef _SKREE_SERVER_H_
-#define _SKREE_SERVER_H_
-
+#pragma once
 #define SAVE_EVENT_RESULT_F 0
 #define SAVE_EVENT_RESULT_A 1
 #define SAVE_EVENT_RESULT_K 2
-#define SAVE_EVENT_RESULT_NULL 3
+#define SAVE_EVENT_RESULT_nullptr 3
 
 #define REPL_SAVE_RESULT_F 0
 #define REPL_SAVE_RESULT_K 1
@@ -135,4 +133,3 @@ namespace Skree {
     };
 }
 
-#endif

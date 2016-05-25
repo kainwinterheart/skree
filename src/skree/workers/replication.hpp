@@ -1,5 +1,4 @@
-#ifndef _SKREE_WORKERS_REPLICATION_H_
-#define _SKREE_WORKERS_REPLICATION_H_
+#pragma once
 
 #include "../base/worker.hpp"
 #include "../utils/misc.hpp"
@@ -13,7 +12,7 @@ namespace Skree {
     namespace Workers {
         class Replication : public Skree::Base::Worker {
         public:
-            Replication(Skree::Server& _server, const void* _args = NULL)
+            Replication(Skree::Server& _server, const void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args) {}
 
             virtual void run() override;
@@ -48,5 +47,3 @@ namespace Skree {
 }
 
 #include "../server.hpp" // sorry
-
-#endif

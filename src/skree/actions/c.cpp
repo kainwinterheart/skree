@@ -48,27 +48,6 @@ namespace Skree {
             out_data = (char*)malloc(1);
             out_len += 1;
 
-            // size_t in_key_len = 3;
-            // char* in_key = (char*)malloc(
-            //     3 // in:
-            //     + event_name_len
-            //     + 1 // :
-            //     + 20
-            //     + 1 // \0
-            // );
-            //
-            // in_key[0] = 'i';
-            // in_key[1] = 'n';
-            // in_key[2] = ':';
-            //
-            // memcpy(in_key + in_key_len, event_name, event_name_len);
-            // in_key_len += event_name_len;
-            //
-            // in_key[in_key_len] = ':';
-            // ++in_key_len;
-            //
-            // sprintf(in_key + in_key_len, "%llu", rid);
-
             bool should_save_event = false;
 
             auto it = server.wip.find(rid);
@@ -110,7 +89,7 @@ namespace Skree {
                     .events = events
                 };
 
-                short result = server.save_event(&e_ctx, 0, NULL, NULL, *(eit->second->queue));
+                short result = server.save_event(&e_ctx, 0, nullptr, nullptr, *(eit->second->queue));
 
                 if(result != SAVE_EVENT_RESULT_K) {
                     // TODO

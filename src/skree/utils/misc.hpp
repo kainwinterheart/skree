@@ -1,13 +1,5 @@
-#ifndef _SKREE_UTILS_MISC_H_
-#define _SKREE_UTILS_MISC_H_
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wundef"
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#pragma clang diagnostic ignored "-Wc++98-compat"
-#pragma clang diagnostic ignored "-Wpadded"
+#pragma once
 #include <ev.h>
-#pragma clang diagnostic pop
 
 #include <functional>
 #include <unordered_map>
@@ -150,4 +142,3 @@ namespace Skree {
     }
 }
 
-#endif

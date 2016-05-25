@@ -1,6 +1,4 @@
-#ifndef _SKREE_BASE_PENDINGWRITE_H_
-#define _SKREE_BASE_PENDINGWRITE_H_
-
+#pragma once
 namespace Skree {
     namespace Base {
         namespace PendingWrite {
@@ -27,4 +25,3 @@ namespace Skree {
     }
 }
 
-#endif

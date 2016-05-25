@@ -66,7 +66,7 @@ namespace Skree {
             uint64_t item_len;
             auto _item = queue_r2.read(&item_len);
 
-            if(_item == NULL) {
+            if(_item == nullptr) {
                 // fprintf(stderr, "processor: empty queue\n");
                 return false;
             }
@@ -173,7 +173,7 @@ namespace Skree {
             uint64_t item_len;
             auto _item = queue.read(&item_len);
 
-            if(_item == NULL) {
+            if(_item == nullptr) {
                 // fprintf(stderr, "processor: empty queue\n");
                 return false;
             }

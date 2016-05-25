@@ -57,9 +57,9 @@ namespace Skree {
             // TODO
             // get_keys_result_t* dbdata = server.db.db_get_keys(keys);
 
-            uint64_t* _rinseq = NULL;//server.db.parse_db_value<uint64_t>(dbdata, &rre_key);
+            uint64_t* _rinseq = nullptr;//server.db.parse_db_value<uint64_t>(dbdata, &rre_key);
 
-            if(_rinseq != NULL) {
+            if(_rinseq != nullptr) {
                 server.repl_clean(suffix_len, suffix, ntohll(*_rinseq));
                 free(_rinseq);
             }

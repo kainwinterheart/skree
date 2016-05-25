@@ -1,6 +1,4 @@
-#ifndef _SKREE_BASE_PENDINGREAD_H_
-#define _SKREE_BASE_PENDINGREAD_H_
-
+#pragma once
 namespace Skree {
     namespace Base {
         namespace PendingRead {
@@ -59,4 +57,3 @@ namespace Skree {
     }
 }
 
-#endif

@@ -1,5 +1,4 @@
-#ifndef _SKREE_WORKERS_DISCOVERY_H_
-#define _SKREE_WORKERS_DISCOVERY_H_
+#pragma once
 
 #include "../base/worker.hpp"
 #include "../client.hpp"
@@ -14,7 +13,7 @@ namespace Skree {
     namespace Workers {
         class Discovery : public Skree::Base::Worker {
         public:
-            Discovery(Skree::Server& _server, const void* _args = NULL)
+            Discovery(Skree::Server& _server, const void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args) {}
 
             virtual void run() override;
@@ -43,4 +42,3 @@ namespace Skree {
 
 #include "../server.hpp" // sorry
 
-#endif

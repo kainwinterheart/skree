@@ -118,7 +118,7 @@ namespace Skree {
             uint64_t item_len;
             auto _item = queue_r2.read(&item_len);
 
-            if(_item == NULL) {
+            if(_item == nullptr) {
                 // fprintf(stderr, "replication: empty queue\n");
                 return false;
             }
@@ -237,7 +237,7 @@ namespace Skree {
             uint64_t item_len;
             auto _item = queue.read(&item_len);
 
-            if(_item == NULL) {
+            if(_item == nullptr) {
                 // fprintf(stderr, "replication: empty queue\n");
                 return false;
             }
@@ -312,14 +312,14 @@ namespace Skree {
 
             _peer = server.known_peers.find(item->peer_id);
 
-            if(_peer == server.known_peers.cend()) peer = NULL;
+            if(_peer == server.known_peers.cend()) peer = nullptr;
             else peer = _peer->second;
 
             pthread_mutex_unlock(&(server.known_peers_mutex));
 
             // fprintf(stderr, "Seems like I need to failover task %llu\n", item->rid);
 
-            if(peer == NULL) {
+            if(peer == nullptr) {
                 size_t offset = 0;
                 bool have_rpr = false;
 
@@ -332,7 +332,7 @@ namespace Skree {
                 *pending = 0;
 
                 pthread_mutex_t* mutex = (pthread_mutex_t*)malloc(sizeof(*mutex));
-                pthread_mutex_init(mutex, NULL);
+                pthread_mutex_init(mutex, nullptr);
 
                 auto data_str = new Utils::muh_str_t {
                     .len = item->rin_len,
@@ -381,7 +381,7 @@ namespace Skree {
                                 .peer_id = __peer_id,
                                 .failover_key = item->failover_key,
                                 .failover_key_len = item->failover_key_len,
-                                .rpr = item->rpr,
+                                .rpr = item->rpr, // TODO: why is it not nullptr here?
                                 .peers_cnt = _peers_cnt, // TODO
                                 .rid = item->rid
                             };
@@ -420,7 +420,7 @@ namespace Skree {
                         .peer_id = __peer_id,
                         .failover_key = item->failover_key,
                         .failover_key_len = item->failover_key_len,
-                        .rpr = item->rpr, // TODO: why is it not NULL here?
+                        .rpr = item->rpr, // TODO: why is it not nullptr here?
                         .peers_cnt = 0,
                         .rid = item->rid
                     };
@@ -435,7 +435,7 @@ namespace Skree {
                     .data = item->rin
                 };
 
-                Utils::muh_str_t* rpr_str = NULL;
+                Utils::muh_str_t* rpr_str = nullptr;
 
                 if(item->peers_cnt > 0) {
                     rpr_str = new Utils::muh_str_t {

@@ -18,7 +18,7 @@ namespace Skree {
 
                 continue_replication_exec(ctx);
 
-                return NULL;
+                return nullptr;
             }
 
             void ReplicationProposeSelf::error(

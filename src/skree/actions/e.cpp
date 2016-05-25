@@ -46,7 +46,7 @@ namespace Skree {
 
                 event->len = ntohl(_tmp);
                 event->data = (char*)(in_data + in_pos);
-                event->id = NULL;
+                event->id = nullptr;
 
                 in_pos += event->len;
 
@@ -64,7 +64,7 @@ namespace Skree {
                 .events = events
             };
 
-            short result = server.save_event(&ctx, ntohl(_tmp), &client, NULL, *queue);
+            short result = server.save_event(&ctx, ntohl(_tmp), &client, nullptr, *queue);
 
             out_data = (char*)malloc(1);
             out_len += 1;
@@ -79,9 +79,9 @@ namespace Skree {
                 case SAVE_EVENT_RESULT_K:
                     out_data[0] = SKREE_META_OPCODE_K;
                     break;
-                case SAVE_EVENT_RESULT_NULL:
+                case SAVE_EVENT_RESULT_nullptr:
                     free(out_data);
-                    out_data = NULL;
+                    out_data = nullptr;
                     out_len = 0;
                     break;
                 default:

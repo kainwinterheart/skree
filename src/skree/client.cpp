@@ -8,7 +8,7 @@ namespace Skree {
         const char& opcode, char*& out_data,
         size_t& out_len, const size_t& in_packet_len
     ) {
-        if(handlers[opcode] == NULL) {
+        if(handlers[opcode] == nullptr) {
             printf("Unknown packet header: 0x%.2X\n", opcode);
 
         } else {
@@ -28,7 +28,7 @@ namespace Skree {
                     args.out_len = _out_len;
                     ++(server.stat_num_requests);
 
-                    return (Skree::Base::PendingWrite::QueueItem*)NULL;
+                    return (Skree::Base::PendingWrite::QueueItem*)nullptr;
                 };
 
                 uint32_t _tmp;
@@ -43,7 +43,7 @@ namespace Skree {
                     const auto _item = new Skree::Base::PendingRead::QueueItem {
                         .len = _tmp,
                         .cb = cb,
-                        .ctx = NULL,
+                        .ctx = nullptr,
                         .opcode = false,
                         .noop = false
                     };
@@ -51,14 +51,14 @@ namespace Skree {
                     push_pending_reads_queue(_item, true);
                 }
 
-                return (Skree::Base::PendingWrite::QueueItem*)NULL;
+                return (Skree::Base::PendingWrite::QueueItem*)nullptr;
             };
 
             const auto cb = new Skree::PendingReads::Callbacks::OrdinaryPacket<decltype(_cb)>(server, _cb);
             const auto item = new Skree::Base::PendingRead::QueueItem {
                 .len = 4,
                 .cb = cb,
-                .ctx = NULL,
+                .ctx = nullptr,
                 .opcode = false,
                 .noop = false
             };
@@ -73,7 +73,7 @@ namespace Skree {
             size_t out_len = 0;
 
             char opcode = read_queue[0];
-            char* out_data = NULL;
+            char* out_data = nullptr;
 
             if(!pending_reads.empty()) {
                 // Pending reads queue is a top priority callback
@@ -133,12 +133,12 @@ namespace Skree {
 #endif
                             auto new_item = _cb->run(*this, __item, _args);
 
-                            if(new_item != NULL) {
+                            if(new_item != nullptr) {
                                 push_write_queue(new_item);
                             }
                             // ***
 
-                            return (Skree::Base::PendingWrite::QueueItem*)NULL;
+                            return (Skree::Base::PendingWrite::QueueItem*)nullptr;
                         };
 
                         uint32_t _tmp;
@@ -148,8 +148,8 @@ namespace Skree {
                         if(_tmp == 0) {
                             const Skree::Base::PendingRead::QueueItem __item {
                                 .len = 0,
-                                .cb = NULL,
-                                .ctx = NULL,
+                                .cb = nullptr,
+                                .ctx = nullptr,
                                 .opcode = false,
                                 .noop = false
                             };
@@ -161,7 +161,7 @@ namespace Skree {
                             const auto __item = new Skree::Base::PendingRead::QueueItem {
                                 .len = _tmp,
                                 .cb = cb,
-                                .ctx = NULL,
+                                .ctx = nullptr,
                                 .opcode = false,
                                 .noop = false
                             };
@@ -171,14 +171,14 @@ namespace Skree {
                             push_pending_reads_queue(__item, true);
                         }
 
-                        return (Skree::Base::PendingWrite::QueueItem*)NULL;
+                        return (Skree::Base::PendingWrite::QueueItem*)nullptr;
                     };
 
                     const auto cb = new Skree::PendingReads::Callbacks::OrdinaryPacket<decltype(_cb)>(server, _cb);
                     const auto item = new Skree::Base::PendingRead::QueueItem {
                         .len = 4,
                         .cb = cb,
-                        .ctx = NULL,
+                        .ctx = nullptr,
                         .opcode = false,
                         .noop = false
                     };
@@ -213,7 +213,7 @@ namespace Skree {
                         auto new_item = _cb->run(*this, *item, args);
                         in_packet_len += (item->len - in_packet_len);
 
-                        if(new_item != NULL) {
+                        if(new_item != nullptr) {
                             push_write_queue(new_item);
                         }
                         // ***
@@ -273,15 +273,15 @@ namespace Skree {
 
     Client::Client(int _fh, struct ev_loop* _loop, sockaddr_in* _s_in, socklen_t _s_in_len, Server& _server)
         : fh(_fh), loop(_loop), s_in(_s_in), s_in_len(_s_in_len), server(_server) {
-        read_queue = NULL;
-        peer_name = NULL;
-        peer_id = NULL;
-        conn_name = NULL;
-        conn_id = NULL;
+        read_queue = nullptr;
+        peer_name = nullptr;
+        peer_id = nullptr;
+        conn_name = nullptr;
+        conn_id = nullptr;
         conn_port = 0;
         read_queue_length = 0;
         read_queue_mapped_length = 0;
-        pthread_mutex_init(&write_queue_mutex, NULL);
+        pthread_mutex_init(&write_queue_mutex, nullptr);
 
         fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
 
@@ -313,7 +313,7 @@ namespace Skree {
         close(fh);
         free(s_in);
 
-        if(peer_id != NULL) {
+        if(peer_id != nullptr) {
             known_peers_t::const_iterator known_peer = server.known_peers.find(peer_id);
 
             if(known_peer != server.known_peers.cend())
@@ -322,7 +322,7 @@ namespace Skree {
             free(peer_id);
         }
 
-        if(conn_id != NULL) {
+        if(conn_id != nullptr) {
             known_peers_t::const_iterator known_peer = server.known_peers_by_conn_id.find(conn_id);
 
             if(known_peer != server.known_peers_by_conn_id.cend())
@@ -356,15 +356,15 @@ namespace Skree {
 
         pthread_mutex_destroy(&write_queue_mutex);
 
-        if(read_queue != NULL) free(read_queue);
-        if(peer_name != NULL) free(peer_name);
-        if(conn_name != NULL) free(conn_name);
+        if(read_queue != nullptr) free(read_queue);
+        if(peer_name != nullptr) free(peer_name);
+        if(conn_name != nullptr) free(conn_name);
     }
 
     void Client::push_read_queue(size_t len, char* data) {
         size_t offset = read_queue_length;
 
-        if(read_queue == NULL) {
+        if(read_queue == nullptr) {
             read_queue_length = len;
             read_queue_mapped_length = server.read_size +
                 ((read_queue_length > server.read_size) ? read_queue_length : 0);
@@ -405,7 +405,7 @@ namespace Skree {
 
         pthread_mutex_unlock(&write_queue_mutex);
 
-        return NULL;
+        return nullptr;
     }
 
     void Client::push_write_queue(
@@ -493,7 +493,7 @@ namespace Skree {
         if(events & EV_WRITE) {
             auto item = client->get_pending_write();
 
-            if(item != NULL) {
+            if(item != nullptr) {
                 int written = write(
                     _watcher->fd,
                     (item->data + item->pos),

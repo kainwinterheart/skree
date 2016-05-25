@@ -35,7 +35,7 @@ namespace Skree {
                     socklen_t addr_len;
                     bool connected = false;
 
-                    for(addrinfo* ai_it = service_info; ai_it != NULL; ai_it = ai_it->ai_next) {
+                    for(addrinfo* ai_it = service_info; ai_it != nullptr; ai_it = ai_it->ai_next) {
                         if((fh = socket(ai_it->ai_family, ai_it->ai_socktype, ai_it->ai_protocol)) == -1) {
                             perror("socket");
                             continue;
@@ -185,7 +185,7 @@ namespace Skree {
             const auto item = new Skree::Base::PendingRead::QueueItem {
                 .len = 1,
                 .cb = cb,
-                .ctx = NULL,
+                .ctx = nullptr,
                 .opcode = true,
                 .noop = false
             };
@@ -264,7 +264,7 @@ namespace Skree {
                     server.save_peers_to_discover();
             }
 
-            return (Skree::Base::PendingWrite::QueueItem*)NULL;
+            return (Skree::Base::PendingWrite::QueueItem*)nullptr;
         }
 
         Skree::Base::PendingWrite::QueueItem* Discovery::cb5(
@@ -303,7 +303,7 @@ namespace Skree {
                     const auto item = new Skree::Base::PendingRead::QueueItem {
                         .len = 1,
                         .cb = cb,
-                        .ctx = NULL,
+                        .ctx = nullptr,
                         .opcode = true,
                         .noop = false
                     };
@@ -324,7 +324,7 @@ namespace Skree {
                 args.stop = true;
             }
 
-            return (Skree::Base::PendingWrite::QueueItem*)NULL;
+            return (Skree::Base::PendingWrite::QueueItem*)nullptr;
         }
 
         Skree::Base::PendingWrite::QueueItem* Discovery::cb2(
@@ -399,7 +399,7 @@ namespace Skree {
                     const auto item = new Skree::Base::PendingRead::QueueItem {
                         .len = 1,
                         .cb = cb,
-                        .ctx = NULL,
+                        .ctx = nullptr,
                         .opcode = true,
                         .noop = false
                     };
@@ -423,7 +423,7 @@ namespace Skree {
                 args.stop = true;
             }
 
-            return (Skree::Base::PendingWrite::QueueItem*)NULL;
+            return (Skree::Base::PendingWrite::QueueItem*)nullptr;
         }
     }
 }

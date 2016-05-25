@@ -1,6 +1,4 @@
-#ifndef _SKREE_ACTIONS_H_H_
-#define _SKREE_ACTIONS_H_H_
-
+#pragma once
 #include "../base/action.hpp"
 #include "../server.hpp"
 
@@ -30,4 +28,3 @@ namespace Skree {
     }
 }
 
-#endif

@@ -1,6 +1,4 @@
-#ifndef _SKREE_PENDINGREADS_NOOP_H_
-#define _SKREE_PENDINGREADS_NOOP_H_
-
+#pragma once
 #include "../base/pending_read.hpp"
 #include "../server.hpp"
 #include <stdexcept>
@@ -27,4 +25,3 @@ namespace Skree {
     }
 }
 
-#endif
