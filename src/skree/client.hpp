@@ -1,6 +1,4 @@
-#ifndef _SKREE_CLIENT_H_
-#define _SKREE_CLIENT_H_
-
+#pragma once
 namespace Skree {
     class Client;
 }
@@ -131,5 +129,3 @@ namespace Skree {
         );
     };
 }
-
-#endif

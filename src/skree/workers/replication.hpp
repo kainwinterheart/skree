@@ -1,5 +1,4 @@
-#ifndef _SKREE_WORKERS_REPLICATION_H_
-#define _SKREE_WORKERS_REPLICATION_H_
+#pragma once
 
 #include "../base/worker.hpp"
 #include "../utils/misc.hpp"
@@ -22,5 +21,3 @@ namespace Skree {
 }
 
 #include "../server.hpp" // sorry
-
-#endif

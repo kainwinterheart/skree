@@ -1,6 +1,4 @@
-#ifndef _SKREE_BASE_WORKER_H_
-#define _SKREE_BASE_WORKER_H_
-
+#pragma once
 namespace Skree {
     class Server;
 }
@@ -57,4 +55,3 @@ namespace Skree {
     }
 }
 
-#endif

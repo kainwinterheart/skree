@@ -1,5 +1,4 @@
-#ifndef _SKREE_WORKERS_SYNCHRONIZATION_H_
-#define _SKREE_WORKERS_SYNCHRONIZATION_H_
+#pragma once
 
 #include "../base/worker.hpp"
 #include <unistd.h>
@@ -18,4 +17,3 @@ namespace Skree {
 
 #include "../server.hpp" // sorry
 
-#endif

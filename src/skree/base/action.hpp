@@ -1,6 +1,4 @@
-#ifndef _SKREE_BASE_ACTION_H_
-#define _SKREE_BASE_ACTION_H_
-
+#pragma once
 namespace Skree {
     namespace Base {
         class Action;
@@ -40,4 +38,3 @@ namespace Skree {
     }
 }
 
-#endif

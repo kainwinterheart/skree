@@ -1,6 +1,4 @@
-#ifndef _SKREE_PENDINGREADS_ORDINARYPACKET_H_
-#define _SKREE_PENDINGREADS_ORDINARYPACKET_H_
-
+#pragma once
 #include "../base/pending_read.hpp"
 
 namespace Skree {
@@ -27,4 +25,3 @@ namespace Skree {
     }
 }
 
-#endif

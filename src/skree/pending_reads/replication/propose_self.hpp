@@ -1,6 +1,4 @@
-#ifndef _SKREE_PENDINGREADS_REPLICATION_PROPOSESELF_H_
-#define _SKREE_PENDINGREADS_REPLICATION_PROPOSESELF_H_
-
+#pragma once
 #include "../../base/pending_read.hpp"
 #include "../../actions/r.hpp"
 #include "../../meta/opcodes.hpp"
@@ -31,4 +29,3 @@ namespace Skree {
     }
 }
 
-#endif

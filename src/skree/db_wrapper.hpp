@@ -1,27 +1,6 @@
-#ifndef _SKREE_DBWRAPPER_H_
-#define _SKREE_DBWRAPPER_H_
+#pragma once
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wreserved-id-macro"
-#pragma clang diagnostic ignored "-Wc++98-compat-pedantic"
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#pragma clang diagnostic ignored "-Wconversion"
-#pragma clang diagnostic ignored "-Wshorten-64-to-32"
-#pragma clang diagnostic ignored "-Wsign-conversion"
-#pragma clang diagnostic ignored "-Wimplicit-fallthrough"
-#pragma clang diagnostic ignored "-Wfloat-equal"
-#pragma clang diagnostic ignored "-Wformat-nonliteral"
-#pragma clang diagnostic ignored "-Wextra-semi"
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#pragma clang diagnostic ignored "-Wdocumentation"
-#pragma clang diagnostic ignored "-Wcast-align"
-#pragma clang diagnostic ignored "-Wshadow"
-#pragma clang diagnostic ignored "-Wpadded"
-#pragma clang diagnostic ignored "-Wswitch-enum"
-#pragma clang diagnostic ignored "-Warray-bounds-pointer-arithmetic"
-#pragma clang diagnostic ignored "-Wweak-vtables"
 #include <kchashdb.h>
-#pragma clang diagnostic pop
 
 #include "utils/misc.hpp"
 // #include <pthread.h>
@@ -139,4 +118,3 @@ namespace Skree {
     };
 }
 
-#endif

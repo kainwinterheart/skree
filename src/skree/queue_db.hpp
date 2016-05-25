@@ -1,6 +1,4 @@
-#ifndef _SKREE_QUEUEDB_H_
-#define _SKREE_QUEUEDB_H_
-
+#pragma once
 #define SKREE_QUEUEDB_ZERO_BATCH_SIZE 4096
 
 #include "utils/misc.hpp"
@@ -141,4 +139,3 @@ namespace Skree {
     };
 }
 
-#endif

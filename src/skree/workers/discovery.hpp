@@ -1,5 +1,4 @@
-#ifndef _SKREE_WORKERS_DISCOVERY_H_
-#define _SKREE_WORKERS_DISCOVERY_H_
+#pragma once
 
 #include "../base/worker.hpp"
 #include "../client.hpp"
@@ -43,4 +42,3 @@ namespace Skree {
 
 #include "../server.hpp" // sorry
 
-#endif
