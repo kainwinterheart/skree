@@ -1,8 +1,8 @@
 #include "c.hpp"
 
 // debug
-#define PREV_SKREE_META_OPCODE_K SKREE_META_OPCODE_K
-#define SKREE_META_OPCODE_K SKREE_META_OPCODE_F
+// #define PREV_SKREE_META_OPCODE_K SKREE_META_OPCODE_K
+// #define SKREE_META_OPCODE_K SKREE_META_OPCODE_F
 
 namespace Skree {
     namespace Actions {
@@ -48,61 +48,51 @@ namespace Skree {
             out_data = (char*)malloc(1);
             out_len += 1;
 
-            bool should_save_event = false;
+            uint64_t now = std::time(nullptr);
+            auto state = server.get_event_state(rid, *(eit->second), now);
 
-            auto it = server.wip.find(rid);
+            if(state == SKREE_META_EVENTSTATE_PROCESSED) {
+                out_data[0] = SKREE_META_OPCODE_K; // event is processed, everything is fine
 
-            if(it == server.wip.end()) {
-                // TODO: check iterator position
-                // if(server.db.check(in_key, in_key_len) > 0) // TODO
-                    // should_save_event = true; // TODO: is not working now
-
-                out_data[0] = SKREE_META_OPCODE_K;
-
-            } else {
-                // TODO: check for overflow
-                if((it->second + server.job_time) <= std::time(nullptr)) {
-                    should_save_event = true;
-                    out_data[0] = SKREE_META_OPCODE_K;
-                    auto _wip = server.wip;
-                    _wip.erase(it);
-
-                } else {
-                    out_data[0] = SKREE_META_OPCODE_F;
-                }
-            }
-
-            if(should_save_event) {
+            } else if(state == SKREE_META_EVENTSTATE_LOST) {
+                out_data[0] = SKREE_META_OPCODE_K; // event has been lost, but just enqueued
+                                                   // again and will be re-replicated
                 in_packet_e_ctx_event event {
-                    .len = rin_len,
-                    .data = rin
+                   .len = rin_len,
+                   .data = rin
                 };
 
                 in_packet_e_ctx_event* events [1];
-
                 events[0] = &event;
 
                 in_packet_e_ctx e_ctx {
-                    .cnt = 1,
-                    .event_name_len = event_name_len,
-                    .event_name = event_name,
-                    .events = events
+                   .cnt = 1,
+                   .event_name_len = event_name_len,
+                   .event_name = event_name,
+                   .events = events
                 };
 
-                short result = server.save_event(&e_ctx, 0, nullptr, nullptr, *(eit->second->queue));
+                short result = server.save_event(
+                   &e_ctx,
+                   0, // TODO: should wait for synchronous replication
+                   nullptr,
+                   nullptr,
+                   *(eit->second->queue)
+                );
 
                 if(result != SAVE_EVENT_RESULT_K) {
-                    // TODO
-                    // fprintf(stderr, "save_event() failed: %s\n", server.db.error().name());
-                    exit(1);
+                   // TODO
+                   // fprintf(stderr, "save_event() failed: %s\n", server.db.error().name());
+                   exit(1);
                 }
 
                 // TODO
                 // if(!server.db.remove(in_key, strlen(in_key)))
                 //     fprintf(stderr, "db.remove failed: %s\n", server.db.error().name());
-            }
 
-            // free(in_key);
+            } else {
+                out_data[0] = SKREE_META_OPCODE_F; // event state is not terminal
+            }
         }
 
         Utils::muh_str_t* C::out_init(
@@ -143,4 +133,4 @@ namespace Skree {
     }
 }
 
-#define SKREE_META_OPCODE_K PREV_SKREE_META_OPCODE_K
+// #define SKREE_META_OPCODE_K PREV_SKREE_META_OPCODE_K

@@ -79,7 +79,7 @@ namespace Skree {
                 case SAVE_EVENT_RESULT_K:
                     out_data[0] = SKREE_META_OPCODE_K;
                     break;
-                case SAVE_EVENT_RESULT_nullptr:
+                case SAVE_EVENT_RESULT_NULL:
                     free(out_data);
                     out_data = nullptr;
                     out_len = 0;

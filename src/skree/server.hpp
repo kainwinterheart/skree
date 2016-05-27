@@ -2,7 +2,7 @@
 #define SAVE_EVENT_RESULT_F 0
 #define SAVE_EVENT_RESULT_A 1
 #define SAVE_EVENT_RESULT_K 2
-#define SAVE_EVENT_RESULT_nullptr 3
+#define SAVE_EVENT_RESULT_NULL 3
 
 #define REPL_SAVE_RESULT_F 0
 #define REPL_SAVE_RESULT_K 1
@@ -30,6 +30,7 @@ namespace Skree {
 #include "pending_reads/replication.hpp"
 #include "queue_db.hpp"
 #include "workers/processor.hpp"
+#include "meta/states.hpp"
 
 #include <stdexcept>
 #include <functional>
@@ -92,6 +93,7 @@ namespace Skree {
         pthread_mutex_t known_peers_mutex;
         no_failover_t no_failover;
         wip_t wip;
+        pthread_mutex_t wip_mutex;
         failover_t failover;
         me_t me;
         pthread_mutex_t me_mutex;
@@ -130,6 +132,11 @@ namespace Skree {
         void begin_replication(out_packet_r_ctx*& r_ctx);
         void save_peers_to_discover();
         void replication_exec(out_packet_i_ctx* ctx);
+
+        short get_event_state(
+            uint64_t& id,
+            const Utils::known_event_t& event,
+            const uint64_t& now
+        );
     };
 }
-

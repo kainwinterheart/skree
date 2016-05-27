@@ -219,7 +219,7 @@ namespace Skree {
                 key_removed = kv.remove(item->failover_key, item->failover_key_len);
 
                 if(!key_removed) {
-                    key_removed = !kv.check(item->failover_key, item->failover_key_len);
+                    key_removed = (kv.check(item->failover_key, item->failover_key_len) <= 0);
                 }
             }
 

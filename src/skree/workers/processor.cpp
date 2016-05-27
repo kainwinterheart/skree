@@ -44,22 +44,6 @@ namespace Skree {
             return out;
         }
 
-        bool Processor::check_wip(const uint64_t& now, const Processor::QueueItem& item) {
-            auto it = server.wip.find(item.id);
-
-            if(it != server.wip.end()) {
-                // TODO: check for overflow
-                if((it->second + server.job_time) > now) {
-                    return true; // It is ok to wait
-
-                } else {
-                    server.wip.erase(it);
-                }
-            }
-
-            return false; // It is not ok to wait
-        }
-
         bool Processor::failover(const uint64_t& now, const Utils::known_event_t& event) {
             auto& queue = *(event.queue);
             auto& queue_r2 = *(event.queue2);
@@ -79,73 +63,49 @@ namespace Skree {
             };
 
             bool key_removed = false;
-            auto do_failover = [&kv, &queue, &queue_r2, &item, &_item, &item_len, &key_removed, &event](){
-                auto commit = [&kv, &queue_r2, &event](){
-                    if(kv.end_transaction(true)) {
-                        return true;
+            bool repeat = false;
+            auto state = server.get_event_state(item->id, event, now);
 
-                    } else {
-                        fprintf(
-                            stderr,
-                            "Can't abort transaction for event %s: %s\n",
-                            event.id,
-                            kv.error().name()
-                        );
+            if(
+                (state == SKREE_META_EVENTSTATE_PENDING)
+                || (state == SKREE_META_EVENTSTATE_PROCESSING)
+            ) {
+                repeat = true;
 
-                        return false;
-                    }
+            } else if(state == SKREE_META_EVENTSTATE_LOST) {
+                in_packet_e_ctx_event _event {
+                   .len = item->len,
+                   .data = item->data
                 };
 
-                if(kv.begin_transaction()) {
-                    if(kv.cas(
-                        (char*)&(item->id_net),
-                        sizeof(item->id_net),
-                        "1", 1,
-                        "1", 1
-                    )) {
-                        if(kv.remove((char*)&(item->id_net), sizeof(item->id_net))) {
-                            queue.write(item_len, _item);
+                in_packet_e_ctx_event* events [1];
+                events[0] = &_event;
 
-                            if(!commit()) {
-                                return false;
+                in_packet_e_ctx e_ctx {
+                   .cnt = 1,
+                   .event_name_len = event.id_len,
+                   .event_name = event.id,
+                   .events = events
+                };
 
-                            } else {
-                                key_removed = true;
-                                return true;
-                            }
+                short result = server.save_event(
+                   &e_ctx,
+                   0, // TODO: should wait for synchronous replication
+                   nullptr,
+                   nullptr,
+                   queue
+                );
 
-                        } else {
-                            fprintf(
-                                stderr,
-                                "Can't remove key %llu of event %s: %s\n",
-                                item->id,
-                                event.id,
-                                kv.error().name()
-                            );
-
-                            commit();
-                            return false;
-                        }
-
-                    } else if(!commit()) {
-                        return false;
-                    }
+                if(result == SAVE_EVENT_RESULT_K) {
+                    kv.remove((char*)&(item->id_net), sizeof(item->id_net));
+                    key_removed = true; // TODO: hack?
 
                 } else {
-                    fprintf(
-                        stderr,
-                        "Can't create transaction for event %s: %s\n",
-                        event.id,
-                        kv.error().name()
-                    );
-
-                    return false;
+                    repeat = true;
                 }
+            }
 
-                return true;
-            };
-
-            if(check_wip(now, *item) || !do_failover()) {
+            if(repeat) {
                 queue_r2.sync_read_offset(false);
                 cleanup();
                 return false;
@@ -155,13 +115,12 @@ namespace Skree {
                 key_removed = kv.remove((char*)&(item->id_net), sizeof(item->id_net));
 
                 if(!key_removed) {
-                    key_removed = !kv.check((char*)&(item->id_net), sizeof(item->id_net));
+                    key_removed = (kv.check((char*)&(item->id_net), sizeof(item->id_net)) <= 0);
                 }
             }
 
             queue_r2.sync_read_offset(key_removed);
             cleanup();
-
             return true;
         }
 
@@ -186,7 +145,7 @@ namespace Skree {
                 free(_item);
             };
 
-            if(check_wip(now, *item)) {
+            if(server.get_event_state(item->id, event, now) == SKREE_META_EVENTSTATE_PROCESSING) {
                 // TODO: what should really happen here?
                 // fprintf(stderr, "skip repl: no_failover flag is set\n");
                 cleanup();
@@ -198,7 +157,7 @@ namespace Skree {
 
             auto& queue_r2 = *(event.queue2);
 
-            if(queue_r2.kv->add((char*)&(item->id_net), sizeof(item->id_net), "1", 1)) {
+            if(queue_r2.kv->cas((char*)&(item->id_net), sizeof(item->id_net), "0", 1, "1", 1)) {
                 queue_r2.write(item_len, _item);
                 // fprintf(
                 //     stderr,

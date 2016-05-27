@@ -13,6 +13,7 @@ namespace Skree {
         pthread_mutex_init(&known_peers_mutex, nullptr);
         pthread_mutex_init(&me_mutex, nullptr);
         pthread_mutex_init(&peers_to_discover_mutex, nullptr);
+        pthread_mutex_init(&wip_mutex, nullptr);
 
         stat_num_inserts = 0;
         stat_num_replications = 0;
@@ -115,6 +116,7 @@ namespace Skree {
             delete thread; // TODO
         }
 
+        pthread_mutex_destroy(&wip_mutex);
         pthread_mutex_destroy(&peers_to_discover_mutex);
         pthread_mutex_destroy(&me_mutex);
         pthread_mutex_destroy(&known_peers_mutex);
@@ -221,8 +223,6 @@ namespace Skree {
         uint64_t* task_ids,
         QueueDb& queue
     ) {
-        short result = SAVE_EVENT_RESULT_F;
-
         if(replication_factor > max_replication_factor)
             replication_factor = max_replication_factor;
 
@@ -233,160 +233,123 @@ namespace Skree {
             _event_name,
             ctx->cnt
         );
+
+        short result = SAVE_EVENT_RESULT_F;
         bool replication_began = false;
-
         auto& db = *(queue.kv);
+        int64_t max_id = db.increment("inseq", 5, ctx->cnt, 0);
 
-        if(db.begin_transaction()) {
-            int64_t max_id = db.increment("inseq", 5, ctx->cnt, 0);
+        if(max_id == kyotocabinet::INT64MIN) {
+            fprintf(stderr, "Increment failed: %s\n", db.error().name());
 
-            if(max_id == kyotocabinet::INT64MIN) {
-                fprintf(stderr, "Increment failed: %s\n", db.error().name());
+            if(!db.end_transaction(false)) {
+                fprintf(stderr, "Failed to abort transaction: %s\n", db.error().name());
+                exit(1);
+            }
 
-                if(!db.end_transaction(false)) {
-                    fprintf(stderr, "Failed to abort transaction: %s\n", db.error().name());
-                    exit(1);
-                }
+        } else {
+            uint32_t _cnt = 0;
+            uint32_t num_inserted = 0;
+            const char* _event_data;
+            max_id -= ctx->cnt;
+            uint64_t _max_id;
 
-            } else {
-                uint32_t _cnt = 0;
-                uint32_t num_inserted = 0;
-                const char* _event_data;
-                max_id -= ctx->cnt;
-                uint64_t _max_id;
+            while(_cnt < ctx->cnt) {
+                ++max_id;
+                in_packet_e_ctx_event* event = ctx->events[_cnt];
+                ++_cnt;
 
-                while(_cnt < ctx->cnt) {
-                    ++max_id;
-                    in_packet_e_ctx_event* event = ctx->events[_cnt];
-                    ++_cnt;
+                // TODO: is this really necessary?
+                // event->id = (char*)malloc(21);
+                // sprintf(event->id, "%lu", max_id);
 
-                    // TODO: is this really necessary?
-                    // event->id = (char*)malloc(21);
-                    // sprintf(event->id, "%lu", max_id);
+                _max_id = htonll(max_id);
 
-                    if(task_ids != nullptr)
-                        task_ids[_cnt] = max_id;
-
-                    // uint32_t key_len =
-                    //     3 // in:
-                    //     + ctx->event_name_len
-                    //     + 1 // :
-                    //     + strlen(event->id)
-                    // ;
-                    // char* key = (char*)malloc(key_len);
-                    //
-                    // sprintf(key, "in:");
-                    // memcpy(key + 3, ctx->event_name, ctx->event_name_len);
-                    // key[3 + ctx->event_name_len] = ':';
-                    // memcpy(key + 3 + ctx->event_name_len + 1, event->id,
-                    //     strlen(event->id));
-
-                    _max_id = htonll(max_id);
-
+                if(db.add((char*)&_max_id, sizeof(_max_id), "0", 1)) {
                     auto stream = queue.write();
                     stream->write(sizeof(_max_id), &_max_id);
                     stream->write(event->len, event->data);
                     delete stream;
 
-                    // free(key);
+                    if(task_ids != nullptr)
+                        task_ids[_cnt] = max_id;
+
                     ++num_inserted;
-                    // if(db.add(key, key_len, event->data, event->len)) {
-                    //     free(key);
-                    //     ++num_inserted;
-                    //
-                    // } else {
-                    //     fprintf(stderr, "[save_event] db.add(%s) failed: %s\n", key, db.error().name());
-                    //     free(key);
-                    //     break;
-                    // }
 
                     _event_data = event->data; // TODO
                     Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
-                }
-
-                if(num_inserted == ctx->cnt) {
-                    if(db.end_transaction(true)) {
-                        stat_num_inserts += num_inserted;
-
-                        /*****************************/
-                        std::vector<char*>* candidate_peer_ids = new std::vector<char*>();
-                        std::list<packet_r_ctx_peer*>* accepted_peers =
-                            new std::list<packet_r_ctx_peer*>();
-
-                        pthread_mutex_lock(&known_peers_mutex);
-// printf("REPLICATION ATTEMPT: %lu\n", known_peers.size());
-                        for(
-                            auto it = known_peers.cbegin();
-                            it != known_peers.cend();
-                            ++it
-                        ) {
-                            candidate_peer_ids->push_back(it->first);
-                        }
-
-                        pthread_mutex_unlock(&known_peers_mutex);
-
-                        std::random_shuffle(
-                            candidate_peer_ids->begin(),
-                            candidate_peer_ids->end()
-                        );
-
-                        auto r_ctx = new out_packet_r_ctx {
-                            .sync = (replication_factor > 0),
-                            .replication_factor = replication_factor,
-                            .pending = 0,
-                            .client = client,
-                            .candidate_peer_ids = candidate_peer_ids,
-                            .accepted_peers = accepted_peers,
-                            // TODO: use muh_str_t for r_req
-                            .r_req = r_req->data,
-                            .r_len = r_req->len
-                        };
-                        /*****************************/
-
-                        if(r_ctx->sync) {
-                            if(candidate_peer_ids->size() > 0) {
-                                result = SAVE_EVENT_RESULT_nullptr;
-
-                                begin_replication(r_ctx);
-                                replication_began = true;
-
-                            } else {
-                                result = SAVE_EVENT_RESULT_A;
-                                delete r_ctx;
-                            }
-
-                        } else {
-                            result = SAVE_EVENT_RESULT_K;
-
-                            if(candidate_peer_ids->size() > 0) {
-                                begin_replication(r_ctx);
-                                replication_began = true;
-
-                            } else {
-                                delete r_ctx;
-                            }
-                        }
-
-                    } else {
-                        fprintf(stderr, "Failed to commit transaction: %s\n",
-                            db.error().name());
-                        exit(1);
-                    }
 
                 } else {
-                    fprintf(stderr, "Batch insert failed\n");
-
-                    if(!db.end_transaction(false)) {
-                        fprintf(stderr, "Failed to abort transaction: %s\n",
-                            db.error().name());
-                        exit(1);
-                    }
+                    fprintf(stderr, "[save_event] db.add(%llu) failed: %s\n", max_id, db.error().name());
+                    break;
                 }
             }
 
-        } else {
-            fprintf(stderr, "Failed to start transaction: %s\n", db.error().name());
-            exit(1);
+            if(num_inserted == ctx->cnt) {
+                stat_num_inserts += num_inserted;
+
+                /*****************************/
+                std::vector<char*>* candidate_peer_ids = new std::vector<char*>();
+                std::list<packet_r_ctx_peer*>* accepted_peers =
+                    new std::list<packet_r_ctx_peer*>();
+
+                pthread_mutex_lock(&known_peers_mutex);
+// printf("REPLICATION ATTEMPT: %lu\n", known_peers.size());
+                for(
+                    auto it = known_peers.cbegin();
+                    it != known_peers.cend();
+                    ++it
+                ) {
+                    candidate_peer_ids->push_back(it->first);
+                }
+
+                pthread_mutex_unlock(&known_peers_mutex);
+
+                std::random_shuffle(
+                    candidate_peer_ids->begin(),
+                    candidate_peer_ids->end()
+                );
+
+                auto r_ctx = new out_packet_r_ctx {
+                    .sync = (replication_factor > 0),
+                    .replication_factor = replication_factor,
+                    .pending = 0,
+                    .client = client,
+                    .candidate_peer_ids = candidate_peer_ids,
+                    .accepted_peers = accepted_peers,
+                    // TODO: use muh_str_t for r_req
+                    .r_req = r_req->data,
+                    .r_len = r_req->len
+                };
+                /*****************************/
+
+                if(r_ctx->sync) {
+                    if(candidate_peer_ids->size() > 0) {
+                        result = SAVE_EVENT_RESULT_NULL;
+
+                        begin_replication(r_ctx);
+                        replication_began = true;
+
+                    } else {
+                        result = SAVE_EVENT_RESULT_A;
+                        delete r_ctx;
+                    }
+
+                } else {
+                    result = SAVE_EVENT_RESULT_K;
+
+                    if(candidate_peer_ids->size() > 0) {
+                        begin_replication(r_ctx);
+                        replication_began = true;
+
+                    } else {
+                        delete r_ctx;
+                    }
+                }
+
+            } else {
+                fprintf(stderr, "Batch insert failed\n");
+            }
         }
 
         if(!replication_began) free(r_req); // TODO?
@@ -877,5 +840,51 @@ namespace Skree {
         free(ctx->pending);
         free(ctx->count_replicas);
         free(ctx);
+    }
+
+    short Server::get_event_state(
+        uint64_t& id,
+        const Utils::known_event_t& event,
+        const uint64_t& now
+    ) {
+        pthread_mutex_lock(&wip_mutex);
+        auto it = wip.find(id);
+
+        if(it != wip.end()) {
+            // TODO: check for overflow
+            if((it->second + job_time) > now) {
+                pthread_mutex_unlock(&wip_mutex);
+                return SKREE_META_EVENTSTATE_PROCESSING; // It is ok to wait
+
+            } else {
+                wip.erase(it); // TODO: this should not be here
+                pthread_mutex_unlock(&wip_mutex);
+                return SKREE_META_EVENTSTATE_LOST; // TODO: this could possibly flap
+            }
+        }
+
+        pthread_mutex_unlock(&wip_mutex);
+
+        auto& queue = *(event.queue2);
+        auto& kv = *(queue.kv);
+        uint64_t id_net = htonll(id);
+
+        if(kv.cas((char*)&id_net, sizeof(id_net), "1", 1, "1", 1)) { // TODO: this could possibly flap too
+            return SKREE_META_EVENTSTATE_LOST;
+        }
+
+        // TODO: personal keys for events
+        // size_t _last_id_size;
+        // char* _last_id = kv.get("last", 4, &_last_id_size);
+        //
+        // if(_last_id_size == sizeof(uint64_t)) {
+        //     uint64_t last_id = ntohll(*(uint64_t*)_last_id);
+        //
+        //     if(last_id >= id) { // TODO: this also could possibly flap
+        //         return SKREE_META_EVENTSTATE_PROCESSED;
+        //     }
+        // }
+
+        return SKREE_META_EVENTSTATE_PENDING; // It is not ok to wait
     }
 }
