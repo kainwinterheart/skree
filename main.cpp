@@ -28,6 +28,10 @@
 #include "src/skree/server.hpp"
 #include "src/skree/queue_db.hpp"
 
+#ifdef __linux__
+    std::string YAML::detail::node_data::empty_scalar="";
+#endif
+
 static Skree::Utils::skree_modules_t skree_modules;
 static Skree::Utils::event_groups_t event_groups;
 static Skree::Utils::known_events_t known_events;
