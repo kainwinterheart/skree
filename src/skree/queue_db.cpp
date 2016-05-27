@@ -134,7 +134,7 @@ namespace Skree {
 
         memcpy(file, path, path_len);
         file[path_len] = '/';
-        sprintf(file + path_len + 1, "%llu", num);
+        sprintf(file + path_len + 1, "%lu", num);
 
         if((flag & O_RDONLY) || (flag == O_RDONLY) || (flag & O_RDWR) || (flag == O_RDWR)) {
             access_flag |= R_OK;

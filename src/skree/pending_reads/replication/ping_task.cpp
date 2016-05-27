@@ -40,7 +40,7 @@ namespace Skree {
                     .id_net = htonll(ctx->rid)
                 };
 
-                sprintf(event->id, "%llu", ctx->rid);
+                sprintf(event->id, "%lu", ctx->rid);
 
                 packet_r_ctx_peer* peers [server.max_replication_factor];
                 in_packet_r_ctx_event* events [1];

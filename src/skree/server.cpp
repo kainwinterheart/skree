@@ -128,7 +128,6 @@ namespace Skree {
         Client& client,
         QueueDb& queue
     ) {
-        // printf("INCOMING REPLICATION: %lu\n", ctx->events_count);
         uint32_t _peers_cnt = htonl(ctx->peers_count);
         uint64_t serialized_peers_len = sizeof(_peers_cnt);
         char* serialized_peers = (char*)malloc(serialized_peers_len);
@@ -362,39 +361,6 @@ namespace Skree {
         const char* failover_key,
         uint64_t rid
     ) {
-        // TODO
-        // size_t failover_key_slen = strlen(failover_key);
-        // std::vector<std::string> keys;
-        //
-        // std::string rre_key("rre:", 4);
-        // rre_key.append(failover_key, failover_key_slen);
-        //
-        // keys.push_back(rre_key);
-        //
-        // char* suffix = (char*)malloc(failover_key_len);
-        // memcpy(suffix, failover_key, failover_key_len);
-        // sprintf(suffix + failover_key_len - 20 - 1, "%lu", wrinseq);
-        // failover_key_slen = strlen(suffix);
-        //
-        // std::string rin_key("rin:", 4);
-        // rin_key.append(suffix, failover_key_len);
-        //
-        // std::string rts_key("rts:", 4);
-        // rts_key.append(suffix, failover_key_len);
-        //
-        // std::string rid_key("rid:", 4);
-        // rid_key.append(suffix, failover_key_len);
-        //
-        // std::string rpr_key("rpr:", 4);
-        // rpr_key.append(suffix, failover_key_len);
-        //
-        // keys.push_back(rin_key);
-        // keys.push_back(rts_key);
-        // keys.push_back(rid_key);
-        // keys.push_back(rpr_key);
-        //
-        // if(db.remove_bulk(keys) == -1)
-        //     fprintf(stderr, "db.remove_bulk failed: %s\n", db.error().name());
     }
 
     void Server::begin_replication(out_packet_r_ctx*& r_ctx) {
