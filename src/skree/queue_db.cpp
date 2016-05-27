@@ -1,6 +1,85 @@
 #include "queue_db.hpp"
 
 namespace Skree {
+    QueueDb::QueueDb(const char* _path, size_t _file_size) : path(_path), file_size(_file_size) {
+        close_fhs = true;
+        path_len = strlen(path);
+        next_page = nullptr;
+        pthread_mutex_init(&read_page_mutex, nullptr);
+        pthread_mutex_init(&write_page_mutex, nullptr);
+
+        read_page = nullptr;
+        read_page_fh = -1;
+        read_page_num_fh = -1;
+        get_page_num("rpos", read_page_num_fh, read_page_num, read_page_offset);
+        open_read_page();
+
+        write_page = nullptr;
+        write_page_fh = -1;
+        write_page_num_fh = -1;
+        get_page_num("wpos", write_page_num_fh, write_page_num, write_page_offset);
+        open_write_page();
+
+        kv = new DbWrapper;
+
+        std::string db_file_name (path, path_len);
+        db_file_name.append("/skree.kch");
+
+        if(!kv->open(
+            db_file_name,
+            kyotocabinet::HashDB::OWRITER
+            | kyotocabinet::HashDB::OCREATE
+            | kyotocabinet::HashDB::ONOLOCK
+            | kyotocabinet::HashDB::OAUTOTRAN
+        )) {
+            fprintf(stderr, "Failed to open database: %s\n", kv->error().name());
+            exit(1);
+        }
+    }
+
+    QueueDb::QueueDb(
+        const char* _path, size_t _file_size, uint64_t _read_page_num,
+        uint64_t _write_page_num, int _read_page_num_fh, int _write_page_num_fh,
+        DbWrapper* _kv
+    )
+    : path(_path),
+      file_size(_file_size),
+      kv(_kv),
+      read_page_num(_read_page_num),
+      write_page_num(_write_page_num),
+      read_page_num_fh(_read_page_num_fh),
+      write_page_num_fh(_write_page_num_fh) {
+        close_fhs = false;
+        path_len = strlen(path);
+        next_page = nullptr;
+        pthread_mutex_init(&read_page_mutex, nullptr);
+        pthread_mutex_init(&write_page_mutex, nullptr);
+
+        read_page = nullptr;
+        read_page_fh = -1;
+        read_page_offset = 0;
+        open_read_page();
+
+        write_page = nullptr;
+        write_page_fh = -1;
+        write_page_offset = 0;
+        open_write_page();
+    }
+
+    QueueDb::~QueueDb() {
+        pthread_mutex_destroy(&write_page_mutex);
+        pthread_mutex_destroy(&read_page_mutex);
+
+        if(close_fhs) {
+            close(read_page_num_fh);
+            close(write_page_num_fh);
+            close(read_page_fh);
+            close(write_page_fh);
+        }
+
+        delete kv;
+    }
+
     void QueueDb::get_page_num(
         const char* name, int& fh,
         uint64_t& page_num, uint64_t& offset
@@ -20,6 +99,9 @@ namespace Skree {
         if(fh == -1) {
             perror("open");
             exit(1);
+
+        } else {
+            fchmod(fh, 0000644);
         }
 
         read_uint64(fh, page_num);
@@ -79,19 +161,18 @@ namespace Skree {
                 exit(1);
             }
 
+            fchmod(fh, 0000644);
+
             size_t total = 0;
             char batch [SKREE_QUEUEDB_ZERO_BATCH_SIZE];
             memset(batch, 0, SKREE_QUEUEDB_ZERO_BATCH_SIZE);
-            size_t written;
 
             while(total < file_size) {
-                written = ::write(fh, batch, (
+                total += ::write(fh, batch, (
                     ((file_size - total) > SKREE_QUEUEDB_ZERO_BATCH_SIZE)
                         ? SKREE_QUEUEDB_ZERO_BATCH_SIZE
                         : (file_size - total)
                 ));
-
-                total += written;
             }
 
             close(fh);
@@ -104,7 +185,7 @@ namespace Skree {
             exit(1);
         }
 
-        addr = (char*)mmap(0, file_size, mmap_prot, MAP_FILE | MAP_SHARED , fh, 0);//TODO: restore MAP_NOCACHE
+        addr = (char*)mmap(0, file_size, mmap_prot, MAP_FILE | MAP_SHARED, fh, 0); //TODO: restore MAP_NOCACHE
 
         if(addr == MAP_FAILED) {
             perror("mmap");
@@ -117,7 +198,8 @@ namespace Skree {
 
         next_page = new QueueDb(
             path, file_size, read_page_num + 1,
-            write_page_num + 1, read_page_num_fh, write_page_num_fh
+            write_page_num + 1, read_page_num_fh,
+            write_page_num_fh, kv
         );
 
         return next_page;
@@ -247,8 +329,8 @@ namespace Skree {
             read_page_offset += len;
             rollback->l1 = len;
 
-            for(int i = 0; i < len; ++i)
-                printf("read byte [%d]: 0x%.2X\n", i,dest[i]);
+            // for(int i = 0; i < len; ++i)
+            //     printf("read byte [%d]: 0x%.2X\n", i,dest[i]);
 
         } else {
             if(rest > 0) {
@@ -306,7 +388,7 @@ namespace Skree {
         }
     }
 
-    char* QueueDb::read() {
+    char* QueueDb::read(uint64_t* _len) {
         if(!read_rollbacks.empty()) {
             throw new std::logic_error ("You haven't committed previous read, why are you trying to read more?");
         }
@@ -346,6 +428,10 @@ namespace Skree {
             read_rollbacks.push(rollback2);
         }
 
+        if(_len != nullptr) {
+            *_len = len;
+        }
+
         // pthread_mutex_unlock(&read_page_mutex);
 
         return out;
@@ -353,6 +439,22 @@ namespace Skree {
 
     QueueDb::WriteStream* QueueDb::write() {
         return new QueueDb::WriteStream (*this);
+    }
+
+    void QueueDb::write(uint64_t len, void* data) {
+        if(len == 0) {
+            throw new std::logic_error("QueueDb: zero-length write, ignoring it");
+        }
+
+        uint64_t _len = htonll(len);
+
+        pthread_mutex_lock(&write_page_mutex);
+
+        _write(sizeof(_len), (const unsigned char*)&_len);
+        _write(len, (const unsigned char*)data);
+        sync_write_offset();
+
+        pthread_mutex_unlock(&write_page_mutex);
     }
 
     void QueueDb::WriteStream::write(uint64_t len, void* data) {
@@ -402,11 +504,11 @@ namespace Skree {
             }
 
             db.sync_write_offset();
+            pthread_mutex_unlock(&(db.write_page_mutex));
 
         } else {
-            fprintf(stderr, "QueueDb: zero-length write, ignoring it\n");
+            pthread_mutex_unlock(&(db.write_page_mutex));
+            throw new std::logic_error("QueueDb: zero-length write, ignoring it");
         }
-
-        pthread_mutex_unlock(&(db.write_page_mutex));
     }
 }

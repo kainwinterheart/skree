@@ -9,8 +9,8 @@ make clean ; make
 if [ "$?" -eq "0" ]; then
 
     echo k
-    # ./a.out --port=7654 --db=$HOME/kch/7654.kch --events=./events.yaml
-    # ./a.out --port=8765 --db=$HOME/kch/8765.kch --events=./events.yaml
-    # lldb ./a.out -- --port=7654 --db=$HOME/kch/7654.kch --events=./events.yaml
-    # lldb ./a.out -- --port=8765 --db=$HOME/kch/8765.kch --events=./events.yaml
+    # ./build/skree --port=7654 --db=$HOME/kch/7654/ --events=./events.yaml
+    # ./build/skree --port=8765 --db=$HOME/kch/8765/ --events=./events.yaml
+    # lldb ./build/skree -- --port=7654 --db=$HOME/kch/7654/ --events=./events.yaml
+    # lldb ./build/skree -- --port=8765 --db=$HOME/kch/8765/ --events=./events.yaml
 fi

@@ -6,11 +6,10 @@
 
 namespace Skree {
     struct out_data_c_ctx {
-        Utils::known_event_t* event;
+        const Utils::known_event_t* event;
         Utils::muh_str_t* rin;
         Utils::muh_str_t* rpr;
         uint64_t rid;
-        uint64_t wrinseq;
         uint64_t failover_key_len;
         char* failover_key;
     };

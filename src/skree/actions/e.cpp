@@ -45,10 +45,9 @@ namespace Skree {
                 in_pos += sizeof(_tmp);
 
                 event->len = ntohl(_tmp);
-                event->data = (char*)malloc(event->len);
+                event->data = (char*)(in_data + in_pos);
                 event->id = nullptr;
 
-                memcpy(event->data, in_data + in_pos, event->len);
                 in_pos += event->len;
 
                 events[cnt] = event;

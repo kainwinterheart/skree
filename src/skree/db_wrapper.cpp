@@ -85,12 +85,12 @@ namespace Skree {
     bool DbWrapper::begin_transaction(bool hard) {
         lock();
         auto rv = kyotocabinet::HashDB::begin_transaction(hard);
-        unlock();
+        // unlock();
         return rv;
     }
 
     bool DbWrapper::end_transaction(bool commit) {
-        lock();
+        // lock();
         auto rv = kyotocabinet::HashDB::end_transaction(commit);
         unlock();
         return rv;

@@ -16,6 +16,32 @@ namespace Skree {
                 : Skree::Base::Worker(_server, _args) {}
 
             virtual void run() override;
+        private:
+            struct QueueItem {
+                uint32_t rin_len;
+                uint32_t hostname_len;
+                char* rin;
+                uint64_t rts;
+                uint64_t rid_net;
+                uint64_t rid;
+                char* hostname;
+                uint32_t port;
+                uint32_t peers_cnt;
+                char* rpr;
+                uint32_t peer_id_len;
+                uint32_t failover_key_len;
+                char* peer_id;
+                char* failover_key;
+            };
+
+            static Replication::QueueItem* parse_queue_item(
+                const Utils::known_event_t& event,
+                char*& item
+            );
+
+            bool failover(const uint64_t& now, const Utils::known_event_t& event);
+            bool replication(const uint64_t& now, const Utils::known_event_t& event);
+            bool check_no_failover(const uint64_t& now, const Replication::QueueItem& item);
         };
     }
 }

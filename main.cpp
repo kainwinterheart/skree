@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
                 mkdir(_queue_path.c_str(), 0000755);
             }
 
-            return new Skree::QueueDb (_queue_path.c_str(), 512 * 1024 * 1024);
+            return new Skree::QueueDb (_queue_path.c_str(), 256 * 1024 * 1024);
         };
 
         if(config.Type() != YAML::NodeType::Sequence) {
@@ -197,7 +197,9 @@ int main(int argc, char** argv) {
                     known_event->ttl = ttl;
 
                     known_event->queue = create_queue_db(id);
+                    known_event->queue2 = create_queue_db(id + "/failover");
                     known_event->r_queue = create_queue_db(id + "/replication");
+                    known_event->r2_queue = create_queue_db(id + "/replication_failover");
 
                     auto it = known_events.find(id_);
 
@@ -220,21 +222,7 @@ int main(int argc, char** argv) {
     printf("Running on port: %u\n", my_port);
     signal(SIGPIPE, SIG_IGN);
 
-    std::string db_file_name (db_dir_name + "/skree.kch");
-    Skree::DbWrapper db;
-
-    if(!db.open(
-        db_file_name,
-        kyotocabinet::HashDB::OWRITER
-        | kyotocabinet::HashDB::OCREATE
-        | kyotocabinet::HashDB::ONOLOCK
-        | kyotocabinet::HashDB::OAUTOTRAN
-    )) {
-        printf("Failed to open database: %s\n", db.error().name());
-        return 1;
-    }
-
-    Skree::Server server (db, my_port, max_client_threads, known_events);
+    Skree::Server server (my_port, max_client_threads, known_events);
 
     return 0;
 }

@@ -1,7 +1,8 @@
 #pragma once
-#define SKREE_QUEUEDB_ZERO_BATCH_SIZE 4096
+#define SKREE_QUEUEDB_ZERO_BATCH_SIZE (4 * 1024 * 1024)
 
 #include "utils/misc.hpp"
+#include "db_wrapper.hpp"
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -67,58 +68,16 @@ namespace Skree {
 
         QueueDb(
             const char* _path, size_t _file_size, uint64_t _read_page_num,
-            uint64_t _write_page_num, int _read_page_num_fh, int _write_page_num_fh
-        ) : path(_path), file_size(_file_size), read_page_num(_read_page_num), write_page_num(_write_page_num), read_page_num_fh(_read_page_num_fh), write_page_num_fh(_write_page_num_fh) {
-            close_fhs = false;
-            path_len = strlen(path);
-            next_page = nullptr;
-            pthread_mutex_init(&read_page_mutex, nullptr);
-            pthread_mutex_init(&write_page_mutex, nullptr);
-
-            read_page = nullptr;
-            read_page_fh = -1;
-            read_page_offset = 0;
-            open_read_page();
-
-            write_page = nullptr;
-            write_page_fh = -1;
-            write_page_offset = 0;
-            open_write_page();
-        }
+            uint64_t _write_page_num, int _read_page_num_fh, int _write_page_num_fh,
+            DbWrapper* _kv
+        );
     public:
-        QueueDb(const char* _path, size_t _file_size) : path(_path), file_size(_file_size) {
-            close_fhs = true;
-            path_len = strlen(path);
-            next_page = nullptr;
-            pthread_mutex_init(&read_page_mutex, nullptr);
-            pthread_mutex_init(&write_page_mutex, nullptr);
+        DbWrapper* kv;
 
-            read_page = nullptr;
-            read_page_fh = -1;
-            read_page_num_fh = -1;
-            get_page_num("rpos", read_page_num_fh, read_page_num, read_page_offset);
-            open_read_page();
+        QueueDb(const char* _path, size_t _file_size);
+        ~QueueDb();
 
-            write_page = nullptr;
-            write_page_fh = -1;
-            write_page_num_fh = -1;
-            get_page_num("wpos", write_page_num_fh, write_page_num, write_page_offset);
-            open_write_page();
-        }
-
-        ~QueueDb() {
-            pthread_mutex_destroy(&write_page_mutex);
-            pthread_mutex_destroy(&read_page_mutex);
-
-            if(close_fhs) {
-                close(read_page_num_fh);
-                close(write_page_num_fh);
-                close(read_page_fh);
-                close(write_page_fh);
-            }
-        }
-
-        char* read();
+        char* read(uint64_t* len = nullptr);
         void sync_read_offset(bool commit = true);
 
         class WriteStream {
@@ -136,6 +95,7 @@ namespace Skree {
         friend class QueueDb::WriteStream;
 
         QueueDb::WriteStream* write();
+        void write(uint64_t len, void* data);
     };
 }
 

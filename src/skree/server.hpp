@@ -22,19 +22,19 @@ namespace Skree {
 
 #include "client.hpp"
 #include "workers/client.hpp"
-#include "db_wrapper.hpp"
 #include "actions/e.hpp"
 #include "actions/r.hpp"
 #include "workers/synchronization.hpp"
-#include "workers/client.hpp"
 #include "workers/replication.hpp"
 #include "workers/discovery.hpp"
 #include "pending_reads/replication.hpp"
 #include "queue_db.hpp"
+#include "workers/processor.hpp"
 
 #include <stdexcept>
 #include <functional>
 #include <algorithm>
+#include <atomic>
 
 namespace Skree {
     struct new_client_t {
@@ -71,12 +71,13 @@ namespace Skree {
         uint32_t max_replication_factor = 3;
         uint64_t job_time = 10 * 60;
 
-        uint64_t stat_num_inserts;
-        uint64_t stat_num_replications;
-        pthread_mutex_t stat_mutex;
-        pthread_mutex_t new_clients_mutex;
+        std::atomic<uint_fast64_t> stat_num_inserts;
+        std::atomic<uint_fast64_t> stat_num_replications;
+        std::atomic<uint_fast64_t> stat_num_repl_it;
+        std::atomic<uint_fast64_t> stat_num_proc_it;
+        std::atomic<uint_fast64_t> stat_num_requests;
 
-        DbWrapper& db;
+        pthread_mutex_t new_clients_mutex;
 
         char* my_hostname;
         uint32_t my_hostname_len;
@@ -99,7 +100,7 @@ namespace Skree {
         const Utils::known_events_t& known_events;
 
         Server(
-            DbWrapper& _db, uint32_t _my_port,
+            uint32_t _my_port,
             uint32_t _max_client_threads,
             const Utils::known_events_t& _known_events
         );
@@ -122,7 +123,7 @@ namespace Skree {
         void repl_clean(
             size_t failover_key_len,
             const char* failover_key,
-            uint64_t wrinseq
+            uint64_t rid
         );
 
         void unfailover(char* failover_key);
