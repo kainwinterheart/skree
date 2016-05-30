@@ -3,4 +3,5 @@
 .DS_Store
 ._.DS_Store
 contrib-build/
+build/
 *.bak
