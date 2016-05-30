@@ -832,8 +832,7 @@ namespace Skree {
 
         pthread_mutex_unlock(&wip_mutex);
 
-        auto& queue = *(event.queue2);
-        auto& kv = *(queue.kv);
+        auto& kv = *(event.queue->kv);
         uint64_t id_net = htonll(id);
 
         size_t flag_size;

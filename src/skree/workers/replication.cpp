@@ -381,7 +381,7 @@ namespace Skree {
                                 .peer_id = __peer_id,
                                 .failover_key = item->failover_key,
                                 .failover_key_len = item->failover_key_len,
-                                .rpr = item->rpr, // TODO: why is it not nullptr here?
+                                .rpr = item->rpr,
                                 .peers_cnt = _peers_cnt, // TODO
                                 .rid = item->rid
                             };

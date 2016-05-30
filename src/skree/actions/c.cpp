@@ -32,10 +32,10 @@ namespace Skree {
                 return;
             }
 
-            uint64_t rid;
-            memcpy(&rid, in_data + in_pos, sizeof(rid));
-            in_pos += sizeof(rid);
-            rid = ntohll(rid);
+            uint64_t rid_net;
+            memcpy(&rid_net, in_data + in_pos, sizeof(rid_net));
+            in_pos += sizeof(rid_net);
+            uint64_t rid = ntohll(rid_net);
 
             uint32_t rin_len;
             memcpy(&rin_len, in_data + in_pos, sizeof(rin_len));
@@ -55,8 +55,6 @@ namespace Skree {
                 out_data[0] = SKREE_META_OPCODE_K; // event is processed, everything is fine
 
             } else if(state == SKREE_META_EVENTSTATE_LOST) {
-                out_data[0] = SKREE_META_OPCODE_K; // event has been lost, but just enqueued
-                                                   // again and will be re-replicated
                 in_packet_e_ctx_event event {
                    .len = rin_len,
                    .data = rin
@@ -80,15 +78,18 @@ namespace Skree {
                    *(eit->second->queue)
                 );
 
-                if(result != SAVE_EVENT_RESULT_K) {
-                   // TODO
-                   // fprintf(stderr, "save_event() failed: %s\n", server.db.error().name());
-                   exit(1);
-                }
+                if(result == SAVE_EVENT_RESULT_K) {
+                    out_data[0] = SKREE_META_OPCODE_K; // event has been lost, but just enqueued
+                                                       // again and will be re-replicated
 
-                // TODO
-                // if(!server.db.remove(in_key, strlen(in_key)))
-                //     fprintf(stderr, "db.remove failed: %s\n", server.db.error().name());
+                    auto& db = *(eit->second->queue->kv);
+
+                    if(!db.remove((char*)&rid_net, sizeof(rid_net)))
+                        fprintf(stderr, "db.remove failed: %s\n", db.error().name());
+
+                } else {
+                    out_data[0] = SKREE_META_OPCODE_F; // can't re-save event, try again
+                }
 
             } else {
                 out_data[0] = SKREE_META_OPCODE_F; // event state is not terminal

@@ -11,15 +11,13 @@ namespace Skree {
 
             memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
             in_pos += sizeof(_tmp);
+            uint32_t peer_id_len = ntohl(_tmp);
 
-            Utils::muh_str_t* peer_id = (Utils::muh_str_t*)malloc(sizeof(*peer_id));
+            char peer_id [peer_id_len + 1];
 
-            peer_id->len = ntohl(_tmp);
-            peer_id->data = (char*)malloc(peer_id->len + 1);
-
-            memcpy(peer_id->data, in_data + in_pos, peer_id->len);
-            in_pos += peer_id->len;
-            peer_id->data[peer_id->len] = '\0';
+            memcpy(peer_id, in_data + in_pos, peer_id_len);
+            in_pos += peer_id_len;
+            peer_id[peer_id_len] = '\0';
 
             memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
             in_pos += sizeof(_tmp);
@@ -28,68 +26,68 @@ namespace Skree {
             char* event_id = (char*)malloc(event_id_len + 1);
             memcpy(event_id, in_data + in_pos, event_id_len);
             in_pos += event_id_len;
-            (peer_id->data)[event_id_len] = '\0';
+            event_id[event_id_len] = '\0';
 
             uint64_t _tmp64;
             memcpy(&_tmp64, in_data + in_pos, sizeof(_tmp64));
             in_pos += sizeof(_tmp64);
             uint64_t rid = ntohll(_tmp64);
 
-            char* _out_data = (char*)malloc(1);
+            out_data = (char*)malloc(1);
             out_len += 1;
-            out_data = _out_data;
 
             char* suffix = (char*)malloc(
                 event_id_len
                 + 1 // :
-                + peer_id->len
+                + peer_id_len
                 + 1 // :
                 + 20 // rid
                 + 1 // \0
             );
-            sprintf(suffix, "%s:%s:%lu", event_id, peer_id->data, rid);
+            sprintf(suffix, "%s:%s:%lu", event_id, peer_id, rid);
 
-            failover_t::const_iterator it = server.failover.find(suffix);
+            auto eit = server.known_events.find(event_id);
 
-            if(it == server.failover.cend()) {
-                std::string rre_key("rre:", 4);
-                rre_key.append(suffix, strlen(suffix));
+            if(eit == server.known_events.end()) {
+                fprintf(stderr, "[I::in] Got unknown event: %s\n", event_id);
+                out_data[0] = SKREE_META_OPCODE_K; // current instance does not known
+                                                   // such event, so it won't do it itself
+                return;
+            }
 
-                std::vector<std::string> keys;
-                keys.push_back(rre_key);
+            auto it = server.failover.find(suffix);
 
-                // TODO
-                // get_keys_result_t* dbdata = server.db.db_get_keys(keys);
+            // TODO: following checks could possibly flap
+            if(it == server.failover.end()) {
+                auto suffix_len = strlen(suffix);
+                auto& db = *(eit->second->r2_queue->kv);
+                auto size = db.check(suffix, suffix_len);
 
-                uint64_t* _rinseq = nullptr;//server.db.parse_db_value<uint64_t>(dbdata, &rre_key);
-
-                if(_rinseq == nullptr) {
-                    _out_data[0] = SKREE_META_OPCODE_F;
+                if(size == -1) {
+                    out_data[0] = SKREE_META_OPCODE_F; // this instance has already
+                                                        // processed the event
 
                 } else {
-                    free(_rinseq);
-                    _out_data[0] = SKREE_META_OPCODE_K;
+                    out_data[0] = SKREE_META_OPCODE_K; // this instance has not tried
+                                                        // to failover the event yet
+                    server.no_failover[suffix] = std::time(nullptr);
                 }
 
             } else {
                 // TODO: It could be 0 here as a special case
-                wip_t::const_iterator wip_it = server.wip.find(it->second);
+                auto wip_it = server.wip.find(it->second);
 
-                if(wip_it == server.wip.cend()) {
-                    // TODO: perl
-                    // if(int(rand(100) + 0.5) > 50) { // }
-                    if(false) {
-                        _out_data[0] = SKREE_META_OPCODE_F;
+                if(wip_it == server.wip.end()) {
+                    out_data[0] = SKREE_META_OPCODE_K; // this instance has not tried
+                                                        // to failover the event yet
 
-                    } else {
-                        _out_data[0] = SKREE_META_OPCODE_K;
-
-                        server.failover.erase(it);
-                        server.no_failover[suffix] = std::time(nullptr);
-                    }
+                    server.failover.erase(it);
+                    server.no_failover[suffix] = std::time(nullptr);
 
                 } else {
-                    _out_data[0] = SKREE_META_OPCODE_F;
+                    out_data[0] = SKREE_META_OPCODE_F; // this instance is currently
+                                                        // in the process of failovering
+                                                        // the event
                 }
             }
         }

@@ -73,8 +73,7 @@ namespace Skree {
             );
 
             if(result == SAVE_EVENT_RESULT_K) {
-                auto& queue_r2 = *(event.queue2);
-                auto& kv = *(queue_r2.kv);
+                auto& kv = *(event.queue->kv);
                 kv.remove((char*)&(item.id_net), sizeof(item.id_net));
 
                 return true; // success, key removed
@@ -126,8 +125,7 @@ namespace Skree {
             }
 
             if(!key_removed) {
-                auto& kv = *(queue_r2.kv);
-
+                auto& kv = *(event.queue->kv);
                 key_removed = kv.remove((char*)&(item->id_net), sizeof(item->id_net));
 
                 if(!key_removed) {
@@ -171,11 +169,10 @@ namespace Skree {
 
             server.wip[item->id] = now;
 
-            auto& queue_r2 = *(event.queue2);
             bool commit = true;
 
-            if(queue_r2.kv->cas((char*)&(item->id_net), sizeof(item->id_net), "0", 1, "1", 1)) {
-                queue_r2.write(item_len, _item);
+            if(queue.kv->cas((char*)&(item->id_net), sizeof(item->id_net), "0", 1, "1", 1)) {
+                queue.write(item_len, _item);
 
                 // TODO: process event here
 
