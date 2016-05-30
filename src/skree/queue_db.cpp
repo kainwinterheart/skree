@@ -226,6 +226,7 @@ namespace Skree {
             _read_page_num = htonll(_read_page_num);
             _read_page_offset = htonll(_read_page_offset);
 
+            // TODO: atomic write
             ::write(read_page_num_fh, &_read_page_num, sizeof(_read_page_num));
             ::write(read_page_num_fh, &_read_page_offset, sizeof(_read_page_offset));
             fsync(read_page_num_fh);
@@ -265,6 +266,7 @@ namespace Skree {
         _write_page_num = htonll(_write_page_num);
         _write_page_offset = htonll(_write_page_offset);
 
+        // TODO: atomic write
         ::write(write_page_num_fh, &_write_page_num, sizeof(_write_page_num));
         ::write(write_page_num_fh, &_write_page_offset, sizeof(_write_page_offset));
         fsync(write_page_num_fh);

@@ -32,6 +32,12 @@ namespace Skree {
             bool failover(const uint64_t& now, const Utils::known_event_t& event);
             bool process(const uint64_t& now, const Utils::known_event_t& event);
             bool check_wip(const uint64_t& now, const Processor::QueueItem& item);
+
+            bool do_failover(
+                const uint64_t& now,
+                const Utils::known_event_t& event,
+                const Processor::QueueItem& item
+            );
         };
     }
 }

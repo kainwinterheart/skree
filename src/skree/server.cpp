@@ -264,6 +264,7 @@ namespace Skree {
 
                 _max_id = htonll(max_id);
 
+                // TODO: insert all events in a transaction
                 if(db.add((char*)&_max_id, sizeof(_max_id), "0", 1)) {
                     auto stream = queue.write();
                     stream->write(sizeof(_max_id), &_max_id);
@@ -835,22 +836,18 @@ namespace Skree {
         auto& kv = *(queue.kv);
         uint64_t id_net = htonll(id);
 
-        if(kv.cas((char*)&id_net, sizeof(id_net), "1", 1, "1", 1)) { // TODO: this could possibly flap too
+        size_t flag_size;
+        // TODO: this could possibly flap too
+        char* flag = kv.get((char*)&id_net, sizeof(id_net), &flag_size);
+
+        if(flag_size < 1) {
+            return SKREE_META_EVENTSTATE_PROCESSED;
+
+        } else if((flag_size == 1) && (flag[0] == '0')) {
+            return SKREE_META_EVENTSTATE_PENDING;
+
+        } else {
             return SKREE_META_EVENTSTATE_LOST;
         }
-
-        // TODO: personal keys for events
-        // size_t _last_id_size;
-        // char* _last_id = kv.get("last", 4, &_last_id_size);
-        //
-        // if(_last_id_size == sizeof(uint64_t)) {
-        //     uint64_t last_id = ntohll(*(uint64_t*)_last_id);
-        //
-        //     if(last_id >= id) { // TODO: this also could possibly flap
-        //         return SKREE_META_EVENTSTATE_PROCESSED;
-        //     }
-        // }
-
-        return SKREE_META_EVENTSTATE_PENDING; // It is not ok to wait
     }
 }
