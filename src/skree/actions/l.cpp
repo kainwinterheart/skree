@@ -12,19 +12,16 @@ namespace Skree {
             out_data[0] = SKREE_META_OPCODE_K;
             out_len += 1;
 
-            pthread_mutex_lock(&(server.known_peers_mutex));
+            auto& known_peers = server.known_peers;
+            known_peers.lock();
 
-            _known_peers_len = htonl(server.known_peers.size());
+            _known_peers_len = htonl(known_peers.size());
             memcpy(out_data + out_len, (char*)&_known_peers_len,
                 sizeof(_known_peers_len));
             out_len += sizeof(_known_peers_len);
 
-            for(
-                known_peers_t::const_iterator it = server.known_peers.cbegin();
-                it != server.known_peers.cend();
-                ++it
-            ) {
-                Client* peer = it->second;
+            for(auto& it : known_peers) {
+                Client* peer = it.second;
 
                 uint32_t peer_name_len = peer->get_peer_name_len();
                 uint32_t _peer_name_len = htonl(peer_name_len);
@@ -45,7 +42,7 @@ namespace Skree {
                 out_len += sizeof(_peer_port);
             }
 
-            pthread_mutex_unlock(&(server.known_peers_mutex));
+            known_peers.unlock();
         }
 
         Utils::muh_str_t* L::out_init() {

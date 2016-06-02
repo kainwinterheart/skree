@@ -4,12 +4,13 @@ namespace Skree {
     namespace Workers {
         void Discovery::run() {
             while(true) {
-                for(
-                    auto it = server.peers_to_discover.cbegin();
-                    it != server.peers_to_discover.cend();
-                    ++it
-                ) {
-                    auto peer_to_discover = it->second;
+                auto& peers_to_discover = server.peers_to_discover;
+                peers_to_discover.lock();
+                auto peers_to_discover_copy = peers_to_discover;
+                peers_to_discover.unlock();
+
+                for(auto& it : peers_to_discover_copy) {
+                    auto peer_to_discover = it.second;
 
                     addrinfo hints;
                     addrinfo* service_info;
@@ -104,38 +105,30 @@ namespace Skree {
                             bool found = false;
 
                             {
-                                pthread_mutex_lock(&(server.known_peers_mutex));
+                                auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
+                                auto known_peers_by_conn_id_end = known_peers_by_conn_id.lock();
+                                auto it = known_peers_by_conn_id.find(conn_id);
+                                known_peers_by_conn_id.unlock();
 
-                                known_peers_t::const_iterator it =
-                                    server.known_peers_by_conn_id.find(conn_id);
-
-                                if(it != server.known_peers_by_conn_id.cend())
-                                    found = true;
-
-                                pthread_mutex_unlock(&(server.known_peers_mutex));
+                                found = (it != known_peers_by_conn_id_end);
                             }
 
                             if(!found) {
-                                pthread_mutex_lock(&(server.known_peers_mutex));
+                                auto& known_peers = server.known_peers;
+                                auto known_peers_end = known_peers.lock();
+                                auto it = known_peers.find(conn_id);
+                                known_peers.unlock();
 
-                                known_peers_t::const_iterator it =
-                                    server.known_peers.find(conn_id);
-
-                                if(it != server.known_peers.cend())
-                                    found = true;
-
-                                pthread_mutex_unlock(&(server.known_peers_mutex));
+                                found = (it != known_peers_end);
                             }
 
                             if(!found) {
-                                pthread_mutex_lock(&(server.me_mutex));
+                                auto& me = server.me;
+                                auto me_end = me.lock();
+                                auto it = me.find(conn_id);
+                                me.unlock();
 
-                                me_t::const_iterator it = server.me.find(conn_id);
-
-                                if(it != server.me.cend())
-                                    found = true;
-
-                                pthread_mutex_unlock(&(server.me_mutex));
+                                found = (it != me_end);
                             }
 
                             free(conn_id);
@@ -163,7 +156,7 @@ namespace Skree {
                         }
 
                     } else {
-                        fprintf(stderr, "Peer %s is unreachable\n", it->first);
+                        fprintf(stderr, "Peer %s is unreachable\n", it.first);
                         free(addr);
                     }
                 }
@@ -220,9 +213,9 @@ namespace Skree {
                 char* _peer_id;
                 peer_to_discover_t* peer_to_discover;
                 bool got_new_peers = false;
-                peers_to_discover_t::const_iterator prev_item;
-
-                pthread_mutex_lock(&(server.peers_to_discover_mutex));
+                peers_to_discover_t::iterator prev_item;
+                peers_to_discover_t::iterator peers_to_discover_end;
+                auto& peers_to_discover = server.peers_to_discover;
 
                 while(cnt > 0) {
                     --cnt;
@@ -240,9 +233,10 @@ namespace Skree {
 
                     _peer_id = Utils::make_peer_id(host_len, host, port);
 
-                    prev_item = server.peers_to_discover.find(_peer_id);
+                    peers_to_discover_end = peers_to_discover.lock();
+                    prev_item = peers_to_discover.find(_peer_id);
 
-                    if(prev_item == server.peers_to_discover.cend()) {
+                    if(prev_item == peers_to_discover_end) {
                         peer_to_discover = (peer_to_discover_t*)malloc(
                             sizeof(*peer_to_discover));
 
@@ -256,9 +250,9 @@ namespace Skree {
                         free(_peer_id);
                         free(host);
                     }
-                }
 
-                pthread_mutex_unlock(&(server.peers_to_discover_mutex));
+                    peers_to_discover.unlock();
+                }
 
                 if(got_new_peers)
                     server.save_peers_to_discover();
@@ -274,21 +268,25 @@ namespace Skree {
         ) {
             printf("DISCOVERY CB5 OPCODE: %c\n", args.data[0]);
             if(args.data[0] == SKREE_META_OPCODE_K) {
-                pthread_mutex_lock(&(server.known_peers_mutex));
+                auto& known_peers = server.known_peers;
+                auto known_peers_end = known_peers.lock();
 
                 // peer_id is guaranteed to be set here
-                known_peers_t::const_iterator known_peer =
-                    server.known_peers.find(client.get_peer_id());
+                auto known_peer = known_peers.find(client.get_peer_id());
 
-                if(known_peer == server.known_peers.cend()) {
+                if(known_peer == known_peers_end) {
                     server.known_peers[client.get_peer_id()] = &client;
-                    server.known_peers_by_conn_id[client.get_conn_id()] = &client;
+
+                    auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
+                    known_peers_by_conn_id.lock();
+                    known_peers_by_conn_id[client.get_conn_id()] = &client;
+                    known_peers_by_conn_id.unlock();
 
                 } else {
                     args.stop = true;
                 }
 
-                pthread_mutex_unlock(&(server.known_peers_mutex));
+                known_peers.unlock();
 
                 if(!args.stop) {
                     auto _cb = [this](
@@ -349,18 +347,18 @@ namespace Skree {
                 char* _peer_id = Utils::make_peer_id(len, peer_name, _tmp);
                 bool accepted = false;
 
-                pthread_mutex_lock(&(server.known_peers_mutex));
+                auto& known_peers = server.known_peers;
+                auto known_peers_end = known_peers.lock();
+                auto known_peer = known_peers.find(_peer_id);
+                known_peers.unlock();
 
-                known_peers_t::const_iterator known_peer =
-                    server.known_peers.find(_peer_id);
-
-                if(known_peer == server.known_peers.cend()) {
+                if(known_peer == known_peers_end) {
                     if(strcmp(_peer_id, server.my_peer_id) == 0) {
-                        pthread_mutex_lock(&(server.me_mutex));
+                        auto& me = server.me;
+                        auto me_end = me.lock();
+                        auto it = me.find(_peer_id);
 
-                        me_t::const_iterator it = server.me.find(_peer_id);
-
-                        if(it == server.me.cend()) {
+                        if(it == me_end) {
                             char* _conn_peer_id = client.get_conn_id();
 
                             server.me[_peer_id] = true;
@@ -370,7 +368,7 @@ namespace Skree {
                             free(_peer_id);
                         }
 
-                        pthread_mutex_unlock(&(server.me_mutex));
+                        me.unlock();
 
                     } else {
                         client.set_peer_name(len, peer_name);
@@ -383,8 +381,6 @@ namespace Skree {
                 } else {
                     free(_peer_id);
                 }
-
-                pthread_mutex_unlock(&(server.known_peers_mutex));
 
                 if(accepted) {
                     auto _cb = [this](

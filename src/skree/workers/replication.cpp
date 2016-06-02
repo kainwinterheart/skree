@@ -20,9 +20,10 @@ namespace Skree {
                     }
                 }
 
-                ++(server.stat_num_repl_it);
+                if(active) {
+                    ++(server.stat_num_repl_it);
 
-                if(!active) {
+                } else {
                     sleep(1);
                 }
             }
@@ -230,8 +231,6 @@ namespace Skree {
         }
 
         bool Replication::replication(const uint64_t& now, const Utils::known_event_t& event) {
-            known_peers_t::const_iterator _peer;
-            Skree::Client* peer;
             // fprintf(stderr, "replication: before read\n");
             auto& queue = *(event.r_queue);
             uint64_t item_len;
@@ -308,14 +307,12 @@ namespace Skree {
             queue.sync_read_offset();
             // fprintf(stderr, "replication: after sync_read_offset(), rid: %llu\n", item->rid);
 
-            pthread_mutex_lock(&(server.known_peers_mutex));
+            auto& known_peers = server.known_peers;
+            auto known_peers_end = known_peers.lock();
+            auto _peer = known_peers.find(item->peer_id);
+            known_peers.unlock();
 
-            _peer = server.known_peers.find(item->peer_id);
-
-            if(_peer == server.known_peers.cend()) peer = nullptr;
-            else peer = _peer->second;
-
-            pthread_mutex_unlock(&(server.known_peers_mutex));
+            Skree::Client* peer = ((_peer == known_peers_end) ? nullptr : _peer->second);
 
             // fprintf(stderr, "Seems like I need to failover task %llu\n", item->rid);
 
@@ -358,9 +355,11 @@ namespace Skree {
                         peer_id = item->rpr + offset;
                         offset += peer_id_len + 1;
 
-                        auto it = server.known_peers.find(peer_id);
+                        known_peers_end = known_peers.lock();
+                        auto it = known_peers.find(peer_id);
+                        known_peers.unlock();
 
-                        if(it == server.known_peers.end()) {
+                        if(it == known_peers_end) {
                             pthread_mutex_lock(mutex);
                             ++(*acceptances);
                             pthread_mutex_unlock(mutex);

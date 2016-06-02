@@ -75,14 +75,24 @@ namespace Skree {
 
             } else {
                 // TODO: It could be 0 here as a special case
-                auto wip_it = server.wip.find(it->second);
+                auto& wip = server.wip;
+                auto wip_end = wip.lock();
+                auto wip_it = wip.find(it->second);
+                wip.unlock();
 
-                if(wip_it == server.wip.end()) {
+                if(wip_it == wip_end) {
                     out_data[0] = SKREE_META_OPCODE_K; // this instance has not tried
                                                         // to failover the event yet
 
-                    server.failover.erase(it);
+                    auto& failover = server.failover;
+                    failover.lock();
+                    failover.erase(it);
+                    failover.unlock();
+
+                    auto& no_failover = server.no_failover;
+                    no_failover.lock();
                     server.no_failover[suffix] = std::time(nullptr);
+                    no_failover.unlock();
 
                 } else {
                     out_data[0] = SKREE_META_OPCODE_F; // this instance is currently

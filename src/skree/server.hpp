@@ -20,6 +20,7 @@ namespace Skree {
     class Server;
 }
 
+#include "utils/atomic_hash_map.hpp"
 #include "client.hpp"
 #include "workers/client.hpp"
 #include "actions/e.hpp"
@@ -45,18 +46,18 @@ namespace Skree {
         socklen_t s_in_len;
     };
 
-    typedef std::unordered_map<char*, uint64_t, Utils::char_pointer_hasher, Utils::char_pointer_comparator> failover_t;
-    typedef std::unordered_map<uint64_t, uint64_t> wip_t;
-    typedef std::unordered_map<char*, uint64_t, Utils::char_pointer_hasher, Utils::char_pointer_comparator> no_failover_t;
-    typedef std::unordered_map<char*, Client*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> known_peers_t;
-    typedef std::unordered_map<char*, bool, Utils::char_pointer_hasher, Utils::char_pointer_comparator> me_t;
+    typedef Utils::AtomicHashMap<char*, uint64_t, Utils::char_pointer_hasher, Utils::char_pointer_comparator> failover_t;
+    typedef Utils::AtomicHashMap<uint64_t, uint64_t> wip_t;
+    typedef Utils::AtomicHashMap<char*, uint64_t, Utils::char_pointer_hasher, Utils::char_pointer_comparator> no_failover_t;
+    typedef Utils::AtomicHashMap<char*, Client*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> known_peers_t;
+    typedef Utils::AtomicHashMap<char*, bool, Utils::char_pointer_hasher, Utils::char_pointer_comparator> me_t;
 
     struct peer_to_discover_t {
         const char* host;
         uint32_t port;
     };
 
-    typedef std::unordered_map<char*, peer_to_discover_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> peers_to_discover_t;
+    typedef Utils::AtomicHashMap<char*, peer_to_discover_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> peers_to_discover_t;
 
     class Server {
     private:
@@ -76,7 +77,7 @@ namespace Skree {
         std::atomic<uint_fast64_t> stat_num_replications;
         std::atomic<uint_fast64_t> stat_num_repl_it;
         std::atomic<uint_fast64_t> stat_num_proc_it;
-        std::atomic<uint_fast64_t> stat_num_requests;
+        std::atomic<uint_fast64_t> stat_num_requests_detailed [256];// {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
         pthread_mutex_t new_clients_mutex;
 
@@ -90,15 +91,11 @@ namespace Skree {
 
         known_peers_t known_peers;
         known_peers_t known_peers_by_conn_id;
-        pthread_mutex_t known_peers_mutex;
         no_failover_t no_failover;
         wip_t wip;
-        pthread_mutex_t wip_mutex;
         failover_t failover;
         me_t me;
-        pthread_mutex_t me_mutex;
         peers_to_discover_t peers_to_discover;
-        pthread_mutex_t peers_to_discover_mutex;
         const Utils::known_events_t& known_events;
 
         Server(

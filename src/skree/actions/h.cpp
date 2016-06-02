@@ -29,26 +29,30 @@ namespace Skree {
             // TODO: (char*)(char[len])
             char* _peer_id = Utils::make_peer_id(host_len, _host, port);
 
-            pthread_mutex_lock(&(server.known_peers_mutex));
+            auto& known_peers = server.known_peers;
+            auto end = known_peers.lock();
+            auto known_peer = known_peers.find(_peer_id);
 
-            known_peers_t::const_iterator known_peer = server.known_peers.find(_peer_id);
-
-            if(known_peer == server.known_peers.cend()) {
+            if(known_peer == end) {
                 out_data[0] = SKREE_META_OPCODE_K;
 
                 client.set_peer_name(host_len, host);
                 client.set_peer_port(port);
                 client.set_peer_id(_peer_id);
 
-                server.known_peers[_peer_id] = &client;
-                server.known_peers_by_conn_id[client.get_conn_id()] = &client;
+                known_peers[_peer_id] = &client;
+
+                auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
+                known_peers_by_conn_id.lock();
+                known_peers_by_conn_id[client.get_conn_id()] = &client;
+                known_peers_by_conn_id.unlock();
 
             } else {
                 free(_peer_id);
                 out_data[0] = SKREE_META_OPCODE_F;
             }
 
-            pthread_mutex_unlock(&(server.known_peers_mutex));
+            known_peers.unlock();
         }
 
         Utils::muh_str_t* H::out_init(const Server& server) {

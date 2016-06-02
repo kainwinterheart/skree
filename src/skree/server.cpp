@@ -10,16 +10,11 @@ namespace Skree {
       max_client_threads(_max_client_threads),
       known_events(_known_events) {
         pthread_mutex_init(&new_clients_mutex, nullptr);
-        pthread_mutex_init(&known_peers_mutex, nullptr);
-        pthread_mutex_init(&me_mutex, nullptr);
-        pthread_mutex_init(&peers_to_discover_mutex, nullptr);
-        pthread_mutex_init(&wip_mutex, nullptr);
 
         stat_num_inserts = 0;
         stat_num_replications = 0;
         stat_num_repl_it = 0;
         stat_num_proc_it = 0;
-        stat_num_requests = 0;
 
         load_peers_to_discover();
 
@@ -116,10 +111,6 @@ namespace Skree {
             delete thread; // TODO
         }
 
-        pthread_mutex_destroy(&wip_mutex);
-        pthread_mutex_destroy(&peers_to_discover_mutex);
-        pthread_mutex_destroy(&me_mutex);
-        pthread_mutex_destroy(&known_peers_mutex);
         pthread_mutex_destroy(&new_clients_mutex);
     }
 
@@ -137,7 +128,8 @@ namespace Skree {
         char* _peer_id;
         bool keep_peer_id;
         uint64_t _peer_id_len;
-        peers_to_discover_t::const_iterator prev_item;
+        peers_to_discover_t::iterator prev_item;
+        peers_to_discover_t::iterator peers_to_discover_end;
         bool _save_peers_to_discover = false;
 
         for(uint32_t i = 0; i < ctx->peers_count; ++i) {
@@ -147,11 +139,10 @@ namespace Skree {
             keep_peer_id = false;
             _peer_id_len = strlen(_peer_id);
 
-            pthread_mutex_lock(&peers_to_discover_mutex);
-
+            peers_to_discover_end = peers_to_discover.lock();
             prev_item = peers_to_discover.find(_peer_id);
 
-            if(prev_item == peers_to_discover.cend()) {
+            if(prev_item == peers_to_discover_end) {
                 peers_to_discover[_peer_id] = new peer_to_discover_t {
                     .host = peer->hostname,
                     .port = peer->port
@@ -161,7 +152,7 @@ namespace Skree {
                 _save_peers_to_discover = true;
             }
 
-            pthread_mutex_unlock(&peers_to_discover_mutex);
+            peers_to_discover.unlock();
 
             serialized_peers = (char*)realloc(serialized_peers, serialized_peers_len + _peer_id_len);
 
@@ -293,18 +284,15 @@ namespace Skree {
                 std::list<packet_r_ctx_peer*>* accepted_peers =
                     new std::list<packet_r_ctx_peer*>();
 
-                pthread_mutex_lock(&known_peers_mutex);
+                known_peers.lock();
 // printf("REPLICATION ATTEMPT: %lu\n", known_peers.size());
-                for(
-                    auto it = known_peers.cbegin();
-                    it != known_peers.cend();
-                    ++it
-                ) {
-                    candidate_peer_ids->push_back(it->first);
+                for(auto& it : known_peers) {
+                    candidate_peer_ids->push_back(it.first);
                 }
 
-                pthread_mutex_unlock(&known_peers_mutex);
+                known_peers.unlock();
 
+                // TODO
                 std::random_shuffle(
                     candidate_peer_ids->begin(),
                     candidate_peer_ids->end()
@@ -371,14 +359,12 @@ namespace Skree {
             char* peer_id = r_ctx->candidate_peer_ids->back();
             r_ctx->candidate_peer_ids->pop_back();
 
-            pthread_mutex_lock(&known_peers_mutex);
+            auto known_peers_end = known_peers.lock();
+            auto it = known_peers.find(peer_id);
+            known_peers.unlock();
 
-            known_peers_t::const_iterator it = known_peers.find(peer_id);
-
-            if(it != known_peers.cend())
+            if(it != known_peers_end)
                 peer = it->second;
-
-            pthread_mutex_unlock(&known_peers_mutex);
         }
 
         bool done = false;
@@ -527,7 +513,7 @@ namespace Skree {
     }
 
     void Server::save_peers_to_discover() {
-        pthread_mutex_lock(&peers_to_discover_mutex);
+        peers_to_discover.lock();
 
         size_t cnt = htonll(peers_to_discover.size());
         size_t dump_len = 0;
@@ -541,12 +527,8 @@ namespace Skree {
         uint32_t port;
         size_t _len;
 
-        for(
-            peers_to_discover_t::const_iterator it = peers_to_discover.cbegin();
-            it != peers_to_discover.cend();
-            ++it
-        ) {
-            peer = it->second;
+        for(auto it : peers_to_discover) {
+            peer = it.second;
 
             len = strlen(peer->host);
             port = htonl(peer->port);
@@ -569,7 +551,7 @@ namespace Skree {
             dump_len += sizeof(port);
         }
 
-        pthread_mutex_unlock(&peers_to_discover_mutex);
+        peers_to_discover.unlock();
 
         const char* key = "peers_to_discover";
         const size_t key_len = strlen(key);
@@ -599,7 +581,8 @@ namespace Skree {
             char* hostname;
             uint32_t port;
             char* peer_id;
-            peers_to_discover_t::const_iterator it;
+            peers_to_discover_t::iterator it;
+            peers_to_discover_t::iterator peers_to_discover_end;
             peer_to_discover_t* peer;
 
             while(cnt > 0) {
@@ -619,9 +602,10 @@ namespace Skree {
 
                 peer_id = Utils::make_peer_id(hostname_len, hostname, port);
 
+                peers_to_discover_end = peers_to_discover.lock();
                 it = peers_to_discover.find(peer_id);
 
-                if(it == peers_to_discover.cend()) {
+                if(it == peers_to_discover_end) {
                     peer = (peer_to_discover_t*)malloc(sizeof(*peer));
 
                     peer->host = hostname;
@@ -633,6 +617,8 @@ namespace Skree {
                     free(peer_id);
                     free(hostname);
                 }
+
+                peers_to_discover.unlock();
             }
         }
     }
@@ -769,9 +755,11 @@ namespace Skree {
                     char* peer_id = ctx->rpr + offset;
                     offset += peer_id_len + 1;
 
+                    auto known_peers_end = known_peers.lock();
                     auto it = known_peers.find(peer_id);
+                    known_peers.unlock();
 
-                    if(it != known_peers.end()) {
+                    if(it != known_peers_end) {
                         auto item = new Skree::Base::PendingWrite::QueueItem {
                             .len = x_req->len,
                             .data = x_req->data,
@@ -814,23 +802,23 @@ namespace Skree {
         const Utils::known_event_t& event,
         const uint64_t& now
     ) {
-        pthread_mutex_lock(&wip_mutex);
+        auto wip_end = wip.lock();
         auto it = wip.find(id);
 
-        if(it != wip.end()) {
+        if(it != wip_end) {
             // TODO: check for overflow
             if((it->second + job_time) > now) {
-                pthread_mutex_unlock(&wip_mutex);
+                wip.unlock();
                 return SKREE_META_EVENTSTATE_PROCESSING; // It is ok to wait
 
             } else {
                 wip.erase(it); // TODO: this should not be here
-                pthread_mutex_unlock(&wip_mutex);
+                wip.unlock();
                 return SKREE_META_EVENTSTATE_LOST; // TODO: this could possibly flap
             }
         }
 
-        pthread_mutex_unlock(&wip_mutex);
+        wip.unlock();
 
         auto& kv = *(event.queue->kv);
         uint64_t id_net = htonll(id);

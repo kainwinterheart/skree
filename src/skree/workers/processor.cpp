@@ -20,9 +20,10 @@ namespace Skree {
                     }
                 }
 
-                ++(server.stat_num_proc_it);
+                if(active) {
+                    ++(server.stat_num_proc_it);
 
-                if(!active) {
+                } else {
                     sleep(1);
                 }
             }
@@ -139,7 +140,6 @@ namespace Skree {
         }
 
         bool Processor::process(const uint64_t& now, const Utils::known_event_t& event) {
-            known_peers_t::const_iterator _peer;
             Skree::Client* peer;
             // fprintf(stderr, "processor: before read\n");
             auto& queue = *(event.queue);
@@ -170,11 +170,17 @@ namespace Skree {
             server.wip[item->id] = now;
 
             bool commit = true;
+            auto& kv = *(queue.kv);
 
-            if(queue.kv->cas((char*)&(item->id_net), sizeof(item->id_net), "0", 1, "1", 1)) {
+            if(kv.cas((char*)&(item->id_net), sizeof(item->id_net), "0", 1, "1", 1)) {
                 queue.write(item_len, _item);
 
                 // TODO: process event here
+
+                if(!kv.remove((char*)&(item->id_net), sizeof(item->id_net))) {
+                    // TODO: what should really happen here?
+                    commit = (kv.check((char*)&(item->id_net), sizeof(item->id_net)) <= 0);
+                }
 
             } else if(!do_failover(now, event, *item)) {
                 commit = false;
@@ -182,6 +188,13 @@ namespace Skree {
 
             queue.sync_read_offset(commit);
             // fprintf(stderr, "processor: after sync_read_offset(), rid: %llu\n", item->id);
+
+            auto it = server.wip.find(item->id);
+
+            if(it != server.wip.end()) {
+                // TODO: this should not be done here unconditionally
+                server.wip.erase(it);
+            }
 
             return true;
         }

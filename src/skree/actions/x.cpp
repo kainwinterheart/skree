@@ -12,14 +12,12 @@ namespace Skree {
             memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
             in_pos += sizeof(_tmp);
 
-            Utils::muh_str_t* peer_id = (Utils::muh_str_t*)malloc(sizeof(*peer_id));
+            uint32_t peer_id_len = ntohl(_tmp);
+            char peer_id [peer_id_len + 1];
 
-            peer_id->len = ntohl(_tmp);
-            peer_id->data = (char*)malloc(peer_id->len + 1);
-
-            memcpy(peer_id->data, in_data + in_pos, peer_id->len);
-            in_pos += peer_id->len;
-            peer_id->data[peer_id->len] = '\0';
+            memcpy(peer_id, in_data + in_pos, peer_id_len);
+            in_pos += peer_id_len;
+            peer_id[peer_id_len] = '\0';
 
             memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
             in_pos += sizeof(_tmp);
@@ -38,7 +36,7 @@ namespace Skree {
             size_t suffix_len =
                 event_id_len
                 + 1 // :
-                + peer_id->len
+                + peer_id_len
                 + 1 // :
                 + 20 // rid
             ;
@@ -46,7 +44,7 @@ namespace Skree {
                 suffix_len
                 + 1 // \0
             );
-            sprintf(suffix, "%s:%s:%lu", event_id, peer_id->data, rid);
+            sprintf(suffix, "%s:%s:%lu", event_id, peer_id, rid);
 
             std::string rre_key("rre:", 4);
             rre_key.append(suffix, strlen(suffix));

@@ -26,7 +26,8 @@ namespace Skree {
                     uint64_t _out_len = 0; // TODO: get rid of this
                     handlers[opcode]->in(item.len, args.data, _out_len, args.out_data);
                     args.out_len = _out_len;
-                    ++(server.stat_num_requests);
+
+                    ++(server.stat_num_requests_detailed[opcode]);
 
                     return (Skree::Base::PendingWrite::QueueItem*)nullptr;
                 };
@@ -306,7 +307,8 @@ namespace Skree {
     }
 
     Client::~Client() {
-        pthread_mutex_lock(&(server.known_peers_mutex));
+        auto& known_peers = server.known_peers;
+        auto known_peers_end = known_peers.lock();
 
         ev_io_stop(loop, &watcher.watcher);
         shutdown(fh, SHUT_RDWR);
@@ -314,24 +316,28 @@ namespace Skree {
         free(s_in);
 
         if(peer_id != nullptr) {
-            known_peers_t::const_iterator known_peer = server.known_peers.find(peer_id);
+            auto known_peer = known_peers.find(peer_id);
 
-            if(known_peer != server.known_peers.cend())
-                server.known_peers.erase(known_peer);
+            if(known_peer != known_peers_end)
+                known_peers.erase(known_peer);
 
             free(peer_id);
         }
 
         if(conn_id != nullptr) {
-            known_peers_t::const_iterator known_peer = server.known_peers_by_conn_id.find(conn_id);
+            auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
+            auto known_peers_by_conn_id_end = known_peers_by_conn_id.lock();
+            auto known_peer = known_peers_by_conn_id.find(conn_id);
 
-            if(known_peer != server.known_peers_by_conn_id.cend())
-                server.known_peers_by_conn_id.erase(known_peer);
+            if(known_peer != known_peers_by_conn_id_end)
+                known_peers_by_conn_id.erase(known_peer);
+
+            known_peers_by_conn_id.unlock();
 
             free(conn_id);
         }
 
-        pthread_mutex_unlock(&(server.known_peers_mutex));
+        known_peers.unlock();
 
         while(!pending_reads.empty()) {
             auto item = pending_reads.front();
