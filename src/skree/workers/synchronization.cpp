@@ -33,7 +33,7 @@ namespace Skree {
 
                 uint_fast64_t stat_num_requests = 0;
 
-                for(unsigned char i = 0; i <= 255; ++i) {
+                for(unsigned char i = 0; i <= 255;) {
                     uint_fast64_t value = server.stat_num_requests_detailed[i];
 
                     if(value > 0) {
@@ -41,11 +41,41 @@ namespace Skree {
                         server.stat_num_requests_detailed[i] -= value;
                         printf("\t\"%c\" requests: %llu\n", i, value);
                     }
+
+                    if(i < 255) {
+                        ++i;
+
+                    } else if(i == 255) {
+                        break;
+                    }
                 }
 
-                // if(stat_num_requests > 0) {
+                if(stat_num_requests > 0) {
                     printf("requests total: %llu\n", stat_num_requests);
-                // }
+                }
+
+                uint_fast64_t stat_num_responses = 0;
+
+                for(unsigned char i = 0; i <= 255;) {
+                    uint_fast64_t value = server.stat_num_responses_detailed[i];
+
+                    if(value > 0) {
+                        stat_num_responses += value;
+                        server.stat_num_responses_detailed[i] -= value;
+                        printf("\t\"%c\" responses: %llu\n", i, value);
+                    }
+
+                    if(i < 255) {
+                        ++i;
+
+                    } else if(i == 255) {
+                        break;
+                    }
+                }
+
+                if(stat_num_responses > 0) {
+                    printf("responses total: %llu\n", stat_num_responses);
+                }
             }
         }
     }

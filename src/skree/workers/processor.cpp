@@ -167,7 +167,10 @@ namespace Skree {
                 return false;
             }
 
-            server.wip[item->id] = now;
+            auto& wip = server.wip;
+            wip.lock();
+            wip[item->id] = now;
+            wip.unlock();
 
             bool commit = true;
             auto& kv = *(queue.kv);
@@ -189,12 +192,15 @@ namespace Skree {
             queue.sync_read_offset(commit);
             // fprintf(stderr, "processor: after sync_read_offset(), rid: %llu\n", item->id);
 
-            auto it = server.wip.find(item->id);
+            auto wip_end = wip.lock();
+            auto it = wip.find(item->id);
 
-            if(it != server.wip.end()) {
+            if(it != wip_end) {
                 // TODO: this should not be done here unconditionally
-                server.wip.erase(it);
+                wip.erase(it);
             }
+
+            wip.unlock();
 
             return true;
         }

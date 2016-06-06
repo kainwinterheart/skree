@@ -9,4 +9,4 @@
     events:
         -
             id: ExampleEvent
-            ttl: 1
+            ttl: 10

@@ -99,16 +99,21 @@ namespace Skree {
         }
 
         bool Replication::check_no_failover(const uint64_t& now, const Replication::QueueItem& item) {
-            auto it = server.no_failover.find(item.failover_key);
+            auto& no_failover = server.no_failover;
+            auto no_failover_end = no_failover.lock();
+            auto it = no_failover.find(item.failover_key);
 
-            if(it != server.no_failover.end()) {
+            if(it != no_failover_end) {
                 if((it->second + server.no_failover_time) > now) {
+                    no_failover.unlock();
                     return true; // It is ok to wait
 
                 } else {
                     server.no_failover.erase(it);
                 }
             }
+
+            no_failover.unlock();
 
             return false; // It is not ok to wait
         }
@@ -201,9 +206,12 @@ namespace Skree {
             };
 
             {
-                auto it = server.failover.find(item->failover_key);
+                auto& failover = server.failover;
+                auto failover_end = failover.lock();
+                auto it = failover.find(item->failover_key);
+                failover.unlock();
 
-                if((it == server.failover.end()) && !do_failover()) {
+                if((it == failover_end) && !do_failover()) {
                     queue_r2.sync_read_offset(false);
                     cleanup();
                     return false;
@@ -259,12 +267,16 @@ namespace Skree {
                 return false;
             }
 
+            auto& failover = server.failover;
+
             {
                 // fprintf(stderr, "asd1\n");
-                auto it = server.failover.find(item->failover_key);
+                auto failover_end = failover.lock();
+                auto it = failover.find(item->failover_key);
+                failover.unlock();
                 // fprintf(stderr, "asd2\n");
 
-                if(it != server.failover.end()) {
+                if(it != failover_end) {
                     // TODO: what should really happen here?
                     // fprintf(stderr, "skip repl: failover flag is set\n");
                     cleanup();
@@ -281,10 +293,17 @@ namespace Skree {
                 return false;
             }
 
-            server.failover[item->failover_key] = 0;
-            server.no_failover[item->failover_key] = now;
+            failover.lock();
+            failover[item->failover_key] = 0;
+            failover.unlock();
+
+            // auto& no_failover = server.no_failover;
+            // no_failover.lock();
+            // no_failover[item->failover_key] = now;
+            // no_failover.unlock();
 
             auto& queue_r2 = *(event.r2_queue);
+            bool commit = true;
 
             if(queue_r2.kv->add(item->failover_key, item->failover_key_len, "1", 1)) {
                 queue_r2.write(item_len, _item);
@@ -296,15 +315,16 @@ namespace Skree {
                 // );
 
             } else {
-                // fprintf(
-                //     stderr,
-                //     "Key %s for event %s already exists in r2_queue\n",
-                //     item->failover_key,
-                //     event.id
-                // );
+                commit = false;
             }
 
-            queue.sync_read_offset();
+            queue.sync_read_offset(commit);
+
+            if(!commit) {
+                server.unfailover(item->failover_key);
+                cleanup();
+                return false;
+            }
             // fprintf(stderr, "replication: after sync_read_offset(), rid: %llu\n", item->rid);
 
             auto& known_peers = server.known_peers;

@@ -260,6 +260,8 @@ namespace Skree {
                 memmove(read_queue, read_queue + in_packet_len, read_queue_length);
 
             if(out_len > 0) {
+                ++(server.stat_num_responses_detailed[out_data[0]]);
+
                 auto item = new Skree::Base::PendingWrite::QueueItem {
                     .len = out_len,
                     .data = out_data,

@@ -29,7 +29,7 @@ namespace Skree {
             }
 
             virtual void unlock() {
-                pthread_mutex_lock(&mutex);
+                pthread_mutex_unlock(&mutex);
             }
         };
     }

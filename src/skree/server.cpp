@@ -16,6 +16,18 @@ namespace Skree {
         stat_num_repl_it = 0;
         stat_num_proc_it = 0;
 
+        for(unsigned char i = 0; i <= 255;) {
+            stat_num_requests_detailed[i] = 0;
+            stat_num_responses_detailed[i] = 0;
+
+            if(i < 255) {
+                ++i;
+
+            } else if(i == 255) {
+                break;
+            }
+        }
+
         load_peers_to_discover();
 
         my_hostname = (char*)"127.0.0.1";
@@ -652,17 +664,23 @@ namespace Skree {
 
     void Server::unfailover(char* failover_key) {
         {
+            auto failover_end = failover.lock();
             auto it = failover.find(failover_key);
 
-            if(it != failover.end())
+            if(it != failover_end)
                 failover.erase(it);
+
+            failover.unlock();
         }
 
         {
+            auto no_failover_end = no_failover.lock();
             auto it = no_failover.find(failover_key);
 
-            if(it != no_failover.end())
+            if(it != no_failover_end)
                 no_failover.erase(it);
+
+            no_failover.unlock();
         }
     }
 
@@ -671,19 +689,23 @@ namespace Skree {
 
         if(ctx->acceptances == ctx->count_replicas) {
             {
+                auto failover_end = failover.lock();
                 auto it = failover.find(ctx->failover_key);
+                failover.unlock();
 
-                if(it == failover.end()) {
+                if(it == failover_end) {
                     // TODO: cleanup
                     return;
                 }
             }
 
             {
+                auto no_failover_end = no_failover.lock();
                 auto it = no_failover.find(ctx->failover_key);
 
-                if(it != no_failover.end()) {
+                if(it != no_failover_end) {
                     if((it->second + no_failover_time) > std::time(nullptr)) {
+                        no_failover.unlock();
                         // TODO: cleanup
                         return;
 
@@ -691,6 +713,8 @@ namespace Skree {
                         no_failover.erase(it);
                     }
                 }
+
+                no_failover.unlock();
             }
 
             in_packet_e_ctx_event event {
@@ -735,9 +759,11 @@ namespace Skree {
             //     free(ctx);
             // }
 
+            failover.lock();
             failover[ctx->failover_key] = task_ids[0];
+            failover.unlock();
 
-            // TODO: this should probably make 'i' packet return 'f'
+            // TODO: this should probably make 'i' packet return 'f' // TODO: why? // oh, okay
             repl_clean(
                 ctx->failover_key_len,
                 ctx->failover_key,

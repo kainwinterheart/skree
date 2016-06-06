@@ -55,10 +55,13 @@ namespace Skree {
                 return;
             }
 
-            auto it = server.failover.find(suffix);
+            auto& failover = server.failover;
+            auto failover_end = failover.lock();
+            auto it = failover.find(suffix);
+            failover.unlock();
 
             // TODO: following checks could possibly flap
-            if(it == server.failover.end()) {
+            if(it == failover_end) {
                 auto suffix_len = strlen(suffix);
                 auto& db = *(eit->second->r2_queue->kv);
                 auto size = db.check(suffix, suffix_len);
@@ -70,7 +73,11 @@ namespace Skree {
                 } else {
                     out_data[0] = SKREE_META_OPCODE_K; // this instance has not tried
                                                         // to failover the event yet
-                    server.no_failover[suffix] = std::time(nullptr);
+
+                    auto& no_failover = server.no_failover;
+                    no_failover.lock();
+                    no_failover[suffix] = std::time(nullptr);
+                    no_failover.unlock();
                 }
 
             } else {
@@ -81,17 +88,17 @@ namespace Skree {
                 wip.unlock();
 
                 if(wip_it == wip_end) {
+                    // TODO: inspect this case, it looks like race condition
                     out_data[0] = SKREE_META_OPCODE_K; // this instance has not tried
                                                         // to failover the event yet
 
-                    auto& failover = server.failover;
                     failover.lock();
                     failover.erase(it);
                     failover.unlock();
 
                     auto& no_failover = server.no_failover;
                     no_failover.lock();
-                    server.no_failover[suffix] = std::time(nullptr);
+                    no_failover[suffix] = std::time(nullptr);
                     no_failover.unlock();
 
                 } else {
