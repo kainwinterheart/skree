@@ -139,15 +139,15 @@ namespace Skree {
             };
 
             bool key_removed = false;
-            auto do_failover = [&kv, &queue, &queue_r2, &item, &_item, &item_len, &key_removed, &event](){
-                auto commit = [&kv, &queue_r2, &event](){
+            auto do_failover = [&kv, &queue, &item, &_item, &item_len, &key_removed, &event](){
+                auto commit = [&kv, &event](){
                     if(kv.end_transaction(true)) {
                         return true;
 
                     } else {
                         fprintf(
                             stderr,
-                            "Can't abort transaction for event %s: %s\n",
+                            "Can't commit transaction for event %s: %s\n",
                             event.id,
                             kv.error().name()
                         );
@@ -160,11 +160,26 @@ namespace Skree {
                     if(kv.cas(
                         item->failover_key,
                         item->failover_key_len,
+                        "2", 1,
+                        "2", 1
+                    )) {
+                        key_removed = kv.remove(item->failover_key, item->failover_key_len);
+
+                        if(!key_removed) {
+                            key_removed = (kv.check(item->failover_key, item->failover_key_len) <= 0);
+                        }
+
+                        return (commit() && key_removed);
+
+                    } else if(kv.cas(
+                        item->failover_key,
+                        item->failover_key_len,
                         "1", 1,
                         "1", 1
                     )) {
                         if(kv.remove(item->failover_key, item->failover_key_len)) {
                             queue.write(item_len, _item);
+                            printf("[Replication] requeue!\n");
 
                             if(!commit()) {
                                 return false;
@@ -187,8 +202,10 @@ namespace Skree {
                             return false;
                         }
 
-                    } else if(!commit()) {
-                        return false;
+                    } else {
+                        key_removed = (kv.check(item->failover_key, item->failover_key_len) <= 0);
+
+                        return (commit() && key_removed);
                     }
 
                 } else {
@@ -205,33 +222,32 @@ namespace Skree {
                 return true;
             };
 
+            auto notify = [](const char* msg) {
+                printf("%s\n", msg);
+                return true;
+            };
+
             {
                 auto& failover = server.failover;
                 auto failover_end = failover.lock();
                 auto it = failover.find(item->failover_key);
                 failover.unlock();
 
-                if((it == failover_end) && !do_failover()) {
+                if((it == failover_end) && notify("[Replication] requeue: 1") && !do_failover()) {
                     queue_r2.sync_read_offset(false);
                     cleanup();
                     return false;
                 }
             }
 
-            if(check_no_failover(now, *item) || !do_failover()) {
+            if(check_no_failover(now, *item) || (notify("[Replication] requeue: 2") && !do_failover())) {
                 queue_r2.sync_read_offset(false);
                 cleanup();
                 return false;
             }
 
-            if(!key_removed) {
-                key_removed = kv.remove(item->failover_key, item->failover_key_len);
-
-                if(!key_removed) {
-                    key_removed = (kv.check(item->failover_key, item->failover_key_len) <= 0);
-                }
-            }
-
+            if(!key_removed)
+                printf("[Replication] requeue: 3\n");
             queue_r2.sync_read_offset(key_removed);
             cleanup();
 
@@ -297,10 +313,10 @@ namespace Skree {
             failover[item->failover_key] = 0;
             failover.unlock();
 
-            // auto& no_failover = server.no_failover;
-            // no_failover.lock();
-            // no_failover[item->failover_key] = now;
-            // no_failover.unlock();
+            auto& no_failover = server.no_failover;
+            no_failover.lock();
+            no_failover[item->failover_key] = now;
+            no_failover.unlock();
 
             auto& queue_r2 = *(event.r2_queue);
             bool commit = true;
@@ -315,6 +331,13 @@ namespace Skree {
                 // );
 
             } else {
+                fprintf(
+                    stderr,
+                    "Key %s for event %s could not be added to r2_queue: %s\n",
+                    item->failover_key,
+                    event.id,
+                    queue_r2.kv->error().name()
+                );
                 commit = false;
             }
 

@@ -12,15 +12,17 @@ namespace Skree {
                 out_data_c_ctx* ctx = (out_data_c_ctx*)(item.ctx);
 
                 if(args.data[0] == SKREE_META_OPCODE_K) {
+                    // printf("[ReplicationPingTask] %s: c -> k\n", ctx->failover_key);
                     server.repl_clean(
                         ctx->failover_key_len,
                         ctx->failover_key,
-                        ctx->rid
+                        *(ctx->event)
                     );
 
                     server.unfailover(ctx->failover_key);
 
                 } else {
+                    // printf("[ReplicationPingTask] %s: c -> f\n", ctx->failover_key);
                     error(client, item); // calls server.unfailover() by itself
                 }
 
@@ -100,7 +102,7 @@ namespace Skree {
                     server.repl_clean(
                         ctx->failover_key_len,
                         ctx->failover_key,
-                        ctx->rid
+                        *(ctx->event)
                     );
 
                 } else if(result == REPL_SAVE_RESULT_F) {

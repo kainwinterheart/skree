@@ -120,7 +120,7 @@ namespace Skree {
                 out->len
                 + sizeof(peer_id->len)
                 + peer_id->len
-                + event.id_len_size
+                + sizeof(uint32_t) /* sizeof(event.id_len) */
                 + event.id_len
                 + sizeof(rid_net)
             );
@@ -134,8 +134,8 @@ namespace Skree {
             memcpy(out->data + out->len, peer_id->data, peer_id->len);
             out->len += peer_id->len;
 
-            memcpy(out->data + out->len, (char*)&(event.id_len_net), event.id_len_size);
-            out->len += event.id_len_size;
+            memcpy(out->data + out->len, (char*)&(event.id_len_net), sizeof(uint32_t) /*sizeof(event.id_len)*/);
+            out->len += sizeof(uint32_t) /*sizeof(event.id_len)*/;
 
             memcpy(out->data + out->len, event.id, event.id_len);
             out->len += event.id_len;

@@ -28,6 +28,13 @@ namespace Skree {
             in_pos += event_id_len;
             event_id[event_id_len] = '\0';
 
+            auto eit = server.known_events.find(event_id);
+
+            if(eit == server.known_events.end()) {
+                fprintf(stderr, "[X::in] Got unknown event: %s\n", event_id);
+                return;
+            }
+
             uint64_t _tmp64;
             memcpy(&_tmp64, in_data + in_pos, sizeof(_tmp64));
             in_pos += sizeof(_tmp64);
@@ -40,29 +47,10 @@ namespace Skree {
                 + 1 // :
                 + 20 // rid
             ;
-            char* suffix = (char*)malloc(
-                suffix_len
-                + 1 // \0
-            );
+            char suffix [suffix_len + 1];
             sprintf(suffix, "%s:%s:%lu", event_id, peer_id, rid);
 
-            std::string rre_key("rre:", 4);
-            rre_key.append(suffix, strlen(suffix));
-
-            std::vector<std::string> keys;
-            keys.push_back(rre_key);
-
-            // TODO
-            // get_keys_result_t* dbdata = server.db.db_get_keys(keys);
-
-            uint64_t* _rinseq = nullptr;//server.db.parse_db_value<uint64_t>(dbdata, &rre_key);
-
-            if(_rinseq != nullptr) {
-                server.repl_clean(suffix_len, suffix, ntohll(*_rinseq));
-                free(_rinseq);
-            }
-
-            // delete dbdata;
+            server.repl_clean(suffix_len, suffix, *(eit->second));
         }
 
         Utils::muh_str_t* X::out_init(
@@ -76,7 +64,7 @@ namespace Skree {
                 out->len
                 + sizeof(peer_id->len)
                 + peer_id->len
-                + event.id_len_size
+                + sizeof(uint32_t) /*sizeof(event.id_len)*/
                 + event.id_len
                 + sizeof(rid)
             );
@@ -90,8 +78,8 @@ namespace Skree {
             memcpy(out->data + out->len, peer_id->data, peer_id->len);
             out->len += peer_id->len;
 
-            memcpy(out->data + out->len, (char*)&(event.id_len_net), event.id_len_size);
-            out->len += event.id_len_size;
+            memcpy(out->data + out->len, (char*)&(event.id_len_net), sizeof(uint32_t) /*sizeof(event.id_len)*/);
+            out->len += sizeof(uint32_t) /*sizeof(event.id_len)*/;
 
             memcpy(out->data + out->len, event.id, event.id_len);
             out->len += event.id_len;

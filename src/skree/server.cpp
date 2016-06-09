@@ -14,7 +14,6 @@ namespace Skree {
         stat_num_inserts = 0;
         stat_num_replications = 0;
         stat_num_repl_it = 0;
-        stat_num_proc_it = 0;
 
         for(unsigned char i = 0; i <= 255;) {
             stat_num_requests_detailed[i] = 0;
@@ -35,7 +34,6 @@ namespace Skree {
         my_peer_id = Utils::make_peer_id(my_hostname_len, my_hostname, my_port);
         my_peer_id_len = strlen(my_peer_id);
         my_peer_id_len_net = htonl(my_peer_id_len);
-        my_peer_id_len_size = sizeof(my_peer_id_len_net);
 
         sockaddr_in addr;
 
@@ -244,11 +242,6 @@ namespace Skree {
         if(max_id == kyotocabinet::INT64MIN) {
             fprintf(stderr, "Increment failed: %s\n", db.error().name());
 
-            if(!db.end_transaction(false)) {
-                fprintf(stderr, "Failed to abort transaction: %s\n", db.error().name());
-                exit(1);
-            }
-
         } else {
             uint32_t _cnt = 0;
             uint32_t num_inserted = 0;
@@ -281,6 +274,15 @@ namespace Skree {
 
                     _event_data = event->data; // TODO
                     Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
+
+                    // {
+                    //     size_t sz;
+                    //     char* val = db.get((char*)&_max_id, sizeof(_max_id), &sz);
+                    //     printf("value size: %zu\n", sz);
+                    //     if(sz > 0) {
+                    //         printf("value: %s\n", val);
+                    //     }
+                    // }
 
                 } else {
                     fprintf(stderr, "[save_event] db.add(%llu) failed: %s\n", max_id, db.error().name());
@@ -360,8 +362,15 @@ namespace Skree {
     void Server::repl_clean(
         size_t failover_key_len,
         const char* failover_key,
-        uint64_t rid
+        const Utils::known_event_t& event
     ) {
+        auto& queue_r2 = *(event.r2_queue);
+        auto& kv = *(queue_r2.kv);
+
+        // kv.remove(failover_key, failover_key_len);
+        if(!kv.cas(failover_key, failover_key_len, "1", 1, "2", 1)) {
+            fprintf(stderr, "Key %s could not be removed: %s\n", failover_key, kv.error().name());
+        }
     }
 
     void Server::begin_replication(out_packet_r_ctx*& r_ctx) {
@@ -767,7 +776,7 @@ namespace Skree {
             repl_clean(
                 ctx->failover_key_len,
                 ctx->failover_key,
-                ctx->rid
+                *(ctx->event)
             );
 
             if(ctx->rpr != nullptr) {
@@ -805,7 +814,7 @@ namespace Skree {
             repl_clean(
                 ctx->failover_key_len,
                 ctx->failover_key,
-                ctx->rid
+                *(ctx->event)
             );
 
             unfailover(ctx->failover_key);

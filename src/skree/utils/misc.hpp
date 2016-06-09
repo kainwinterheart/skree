@@ -80,11 +80,12 @@ namespace Skree {
             char* id;
             event_group_t* group;
             uint32_t ttl;
-            uint32_t id_len_size;
             QueueDb* queue;
             QueueDb* queue2;
             QueueDb* r_queue;
             QueueDb* r2_queue;
+            std::atomic<uint_fast64_t> stat_num_processed;
+            std::atomic<uint_fast64_t> stat_num_failovered;
         };
 
         typedef std::unordered_map<char*, skree_module_t*, char_pointer_hasher, char_pointer_comparator> skree_modules_t;

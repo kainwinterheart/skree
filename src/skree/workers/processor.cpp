@@ -11,19 +11,20 @@ namespace Skree {
                 active = false;
 
                 for(auto& it : server.known_events) {
-                    if(failover(now, *(it.second))) {
+                    auto& event = *(it.second);
+
+                    if(failover(now, event)) {
                         active = true;
+                        ++(event.stat_num_processed);
                     }
 
-                    if(process(now, *(it.second))) {
+                    if(process(now, event)) {
                         active = true;
+                        ++(event.stat_num_failovered);
                     }
                 }
 
-                if(active) {
-                    ++(server.stat_num_proc_it);
-
-                } else {
+                if(!active) {
                     sleep(1);
                 }
             }
@@ -103,6 +104,7 @@ namespace Skree {
             auto state = server.get_event_state(item->id, event, now);
             bool repeat = false;
             bool key_removed = false;
+            // short reason = 0;
 
             if(
                 (state == SKREE_META_EVENTSTATE_PENDING)
@@ -113,6 +115,7 @@ namespace Skree {
             } else if(state == SKREE_META_EVENTSTATE_LOST) {
                 if(do_failover(now, event, *item)) {
                     key_removed = true;
+                    // reason = 1;
 
                 } else {
                     repeat = true;
@@ -120,6 +123,7 @@ namespace Skree {
             }
 
             if(repeat) {
+                printf("[processor::failover] releat: %llu, state: %u\n", item->id, state);
                 queue_r2.sync_read_offset(false);
                 cleanup();
                 return false;
@@ -128,11 +132,17 @@ namespace Skree {
             if(!key_removed) {
                 auto& kv = *(event.queue->kv);
                 key_removed = kv.remove((char*)&(item->id_net), sizeof(item->id_net));
+                // reason = 2;
 
                 if(!key_removed) {
                     key_removed = (kv.check((char*)&(item->id_net), sizeof(item->id_net)) <= 0);
+                    // reason = 3;
                 }
             }
+
+            // if(key_removed) {
+            //     printf("[processor::failover] key %llu removed, reason: %d\n", item->id, reason);
+            // }
 
             queue_r2.sync_read_offset(key_removed);
             cleanup();
@@ -176,7 +186,7 @@ namespace Skree {
             auto& kv = *(queue.kv);
 
             if(kv.cas((char*)&(item->id_net), sizeof(item->id_net), "0", 1, "1", 1)) {
-                queue.write(item_len, _item);
+                event.queue2->write(item_len, _item);
 
                 // TODO: process event here
 
@@ -185,9 +195,21 @@ namespace Skree {
                     commit = (kv.check((char*)&(item->id_net), sizeof(item->id_net)) <= 0);
                 }
 
-            } else if(!do_failover(now, event, *item)) {
+            } else {
+                // printf("db.cas() failed: %s\n", kv.error().name());
+                // size_t sz;
+                // char* val = kv.get((char*)&(item->id_net), sizeof(item->id_net), &sz);
+                // printf("value size: %lld\n", sz);
+                // if(sz > 0) {
+                //     char _val [sz + 1];
+                //     memcpy(_val, &val, sz);
+                //     _val[sz] = '\0';
+                //     printf("value: %s\n", _val);
+                // }
+                // abort();
+                if(!do_failover(now, event, *item)) {
                 commit = false;
-            }
+            }}
 
             queue.sync_read_offset(commit);
             // fprintf(stderr, "processor: after sync_read_offset(), rid: %llu\n", item->id);

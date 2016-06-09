@@ -182,38 +182,35 @@ int main(int argc, char** argv) {
                     }
 
                     std::string id = _id.as<std::string>();
+                    char* id_ = strdup(id.c_str());
 
-                    printf("id: %s, group: %s, ttl: %d\n", id.c_str(), group_name.c_str(), ttl);
+                    printf("id: %s, group: %s, ttl: %d\n", id_, group_name.c_str(), ttl);
 
-                    Skree::Utils::known_event_t* known_event =
-                        (Skree::Utils::known_event_t*)malloc(sizeof(*known_event));
+                    {
+                        auto it = known_events.find(id_);
 
-                    known_event->id_len = id.length();
-                    known_event->id_len_net = htonl(known_event->id_len);
-                    known_event->id_len_size = sizeof(known_event->id_len);
-
-                    char* id_ = (char*)malloc(known_event->id_len + 1);
-                    memcpy(id_, id.c_str(), known_event->id_len);
-                    id_[known_event->id_len] = '\0';
-
-                    known_event->id = id_;
-                    known_event->group = event_group;
-                    known_event->ttl = ttl;
-
-                    known_event->queue = create_queue_db(id);
-                    known_event->queue2 = create_queue_db(id + "/failover");
-                    known_event->r_queue = create_queue_db(id + "/replication");
-                    known_event->r2_queue = create_queue_db(id + "/replication_failover");
-
-                    auto it = known_events.find(id_);
-
-                    if(it == known_events.cend()) {
-                        known_events[id_] = known_event;
-
-                    } else {
-                        fprintf(stderr, "Duplicate event id: %s\n", id_);
-                        exit(1);
+                        if(it != known_events.end()) {
+                            fprintf(stderr, "Duplicate event id: %s\n", id_);
+                            exit(1);
+                        }
                     }
+
+                    uint32_t id_len = strlen(id_);
+
+                    known_events[id_] = new Skree::Utils::known_event_t {
+                        .id_len = id_len,
+                        .id_len_net = htonl(id_len),
+                        .id = id_,
+                        .group = event_group,
+                        .ttl = ttl,
+                        .queue = create_queue_db(id),
+                        .queue2 = create_queue_db(id + "/failover"),
+                        .r_queue = create_queue_db(id + "/replication"),
+                        .r2_queue = create_queue_db(id + "/replication_failover")
+                    };
+
+                    known_events[id_]->stat_num_processed = 0;
+                    known_events[id_]->stat_num_failovered = 0;
 
                 } else {
                     fprintf(stderr, "Every event should have an id\n");

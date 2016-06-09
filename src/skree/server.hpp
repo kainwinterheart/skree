@@ -76,7 +76,6 @@ namespace Skree {
         std::atomic<uint_fast64_t> stat_num_inserts;
         std::atomic<uint_fast64_t> stat_num_replications;
         std::atomic<uint_fast64_t> stat_num_repl_it;
-        std::atomic<uint_fast64_t> stat_num_proc_it;
         std::atomic<uint_fast64_t> stat_num_requests_detailed [256];
         std::atomic<uint_fast64_t> stat_num_responses_detailed [256];
 
@@ -88,7 +87,6 @@ namespace Skree {
         char* my_peer_id;
         uint32_t my_peer_id_len;
         uint32_t my_peer_id_len_net;
-        size_t my_peer_id_len_size;
 
         known_peers_t known_peers;
         known_peers_t known_peers_by_conn_id;
@@ -123,7 +121,7 @@ namespace Skree {
         void repl_clean(
             size_t failover_key_len,
             const char* failover_key,
-            uint64_t rid
+            const Utils::known_event_t& event
         );
 
         void unfailover(char* failover_key);

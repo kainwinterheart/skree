@@ -29,6 +29,12 @@ namespace Skree {
         const char * kbuf,
         size_t ksiz
     ) {
+        // printf("db_wrapper::remove(");
+        // for(size_t i = 0; i < ksiz; ++i) {
+        //     printf("%.2X", kbuf[i]);
+        // }
+        // printf(")\n");
+        // abort();
         lock();
         auto rv = kyotocabinet::HashDB::remove(kbuf, ksiz);
         unlock();

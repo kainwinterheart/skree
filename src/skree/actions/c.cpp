@@ -104,7 +104,7 @@ namespace Skree {
             out->len = 1;
             out->data = (char*)malloc(
                 out->len
-                + event.id_len_size
+                + sizeof(uint32_t) /*sizeof(event.id_len)*/
                 + event.id_len
                 + sizeof(rid_net)
                 + sizeof(rin_len)
@@ -113,8 +113,8 @@ namespace Skree {
 
             out->data[0] = opcode();
 
-            memcpy(out->data + out->len, (char*)&(event.id_len_net), event.id_len_size);
-            out->len += event.id_len_size;
+            memcpy(out->data + out->len, (char*)&(event.id_len_net), sizeof(uint32_t) /*sizeof(event.id_len)*/);
+            out->len += sizeof(uint32_t) /*sizeof(event.id_len)*/;
 
             memcpy(out->data + out->len, event.id, event.id_len);
             out->len += event.id_len;
