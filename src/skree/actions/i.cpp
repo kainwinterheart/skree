@@ -36,16 +36,6 @@ namespace Skree {
             out_data = (char*)malloc(1);
             out_len += 1;
 
-            char* suffix = (char*)malloc(
-                event_id_len
-                + 1 // :
-                + peer_id_len
-                + 1 // :
-                + 20 // rid
-                + 1 // \0
-            );
-            sprintf(suffix, "%s:%s:%lu", event_id, peer_id, rid);
-
             auto eit = server.known_events.find(event_id);
 
             if(eit == server.known_events.end()) {
@@ -55,6 +45,14 @@ namespace Skree {
                 return;
             }
 
+            char* suffix = (char*)malloc(
+                peer_id_len
+                + 1 // :
+                + 20 // rid
+                + 1 // \0
+            );
+            sprintf(suffix, "%s:%lu", peer_id, rid);
+
             auto& failover = server.failover;
             auto failover_end = failover.lock();
             auto it = failover.find(suffix);
@@ -63,7 +61,7 @@ namespace Skree {
             // TODO: following checks could possibly flap
             if(it == failover_end) {
                 auto suffix_len = strlen(suffix);
-                auto& db = *(eit->second->r2_queue->kv);
+                auto& db = *(eit->second->r_queue->kv);
                 auto size = db.check(suffix, suffix_len);
 
                 if(size == -1) {

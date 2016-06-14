@@ -41,14 +41,12 @@ namespace Skree {
             uint64_t rid = ntohll(_tmp64);
 
             size_t suffix_len =
-                event_id_len
-                + 1 // :
-                + peer_id_len
+                peer_id_len
                 + 1 // :
                 + 20 // rid
             ;
             char suffix [suffix_len + 1];
-            sprintf(suffix, "%s:%s:%lu", event_id, peer_id, rid);
+            sprintf(suffix, "%s:%lu", peer_id, rid);
 
             server.repl_clean(suffix_len, suffix, *(eit->second));
         }

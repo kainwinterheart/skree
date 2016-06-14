@@ -72,26 +72,14 @@ namespace Skree {
             out->peer_id = Utils::make_peer_id(out->hostname_len, out->hostname, out->port);
             out->peer_id_len = strlen(out->peer_id);
 
-            out->failover_key_len =
-                event.id_len
-                + 1 // :
-                + out->peer_id_len
-            ;
-
             out->failover_key = (char*)malloc(
-                out->failover_key_len
+                out->peer_id_len
                 + 1 // :
                 + 20 // wrinseq
                 + 1 // \0
             );
-            sprintf(out->failover_key, "%s:%s", event.id, out->peer_id);
+            sprintf(out->failover_key, "%s:%llu", out->peer_id, out->rid);
             // printf("repl thread: %s\n", suffix);
-
-            (out->failover_key)[out->failover_key_len] = ':';
-            ++(out->failover_key_len);
-
-            sprintf(out->failover_key + out->failover_key_len, "%llu", out->rid);
-            // suffix_len += 20;
 
             out->failover_key_len = strlen(out->failover_key);
 
@@ -118,8 +106,61 @@ namespace Skree {
             return false; // It is not ok to wait
         }
 
-        bool Replication::failover(const uint64_t& now, const Utils::known_event_t& event) {
+        bool Replication::do_failover(
+            const uint64_t& raw_item_len,
+            char*& raw_item,
+            const Replication::QueueItem& item,
+            const Utils::known_event_t& event
+        ) {
             auto& queue = *(event.r_queue);
+            auto& kv = *(queue.kv);
+
+            auto commit = [&kv, &event](){
+                if(kv.end_transaction(true)) {
+                    return true;
+
+                } else {
+                    fprintf(
+                        stderr,
+                        "Can't commit transaction for event %s: %s\n",
+                        event.id,
+                        kv.error().name()
+                    );
+
+                    return false;
+                }
+            };
+
+            if(kv.begin_transaction()) {
+                if(kv.cas(item.failover_key, item.failover_key_len, "1", 1, "1", 1)) {
+                    queue.write(raw_item_len, raw_item);
+
+                    if(!kv.cas(item.failover_key, item.failover_key_len, "1", 1, "0", 1)) {
+                        fprintf(
+                            stderr,
+                            "Can't remove key %s: %s\n",
+                            item.failover_key,
+                            kv.error().name()
+                        );
+                        // TODO: what should happen here?
+                    }
+                }
+
+                return commit();
+
+            } else {
+                fprintf(
+                    stderr,
+                    "Can't create transaction for event %s: %s\n",
+                    event.id,
+                    kv.error().name()
+                );
+
+                return false;
+            }
+        }
+
+        bool Replication::failover(const uint64_t& now, const Utils::known_event_t& event) {
             auto& queue_r2 = *(event.r2_queue);
             uint64_t item_len;
             auto _item = queue_r2.read(&item_len);
@@ -129,103 +170,8 @@ namespace Skree {
                 return false;
             }
 
-            auto& kv = *(queue_r2.kv);
             auto item = parse_queue_item(event, _item);
-            auto cleanup = [&item, &_item](){
-                free(item->peer_id);
-                free(item->failover_key);
-                delete item;
-                free(_item);
-            };
-
-            bool key_removed = false;
-            auto do_failover = [&kv, &queue, &item, &_item, &item_len, &key_removed, &event](){
-                auto commit = [&kv, &event](){
-                    if(kv.end_transaction(true)) {
-                        return true;
-
-                    } else {
-                        fprintf(
-                            stderr,
-                            "Can't commit transaction for event %s: %s\n",
-                            event.id,
-                            kv.error().name()
-                        );
-
-                        return false;
-                    }
-                };
-
-                if(kv.begin_transaction()) {
-                    if(kv.cas(
-                        item->failover_key,
-                        item->failover_key_len,
-                        "2", 1,
-                        "2", 1
-                    )) {
-                        key_removed = kv.remove(item->failover_key, item->failover_key_len);
-
-                        if(!key_removed) {
-                            key_removed = (kv.check(item->failover_key, item->failover_key_len) <= 0);
-                        }
-
-                        return (commit() && key_removed);
-
-                    } else if(kv.cas(
-                        item->failover_key,
-                        item->failover_key_len,
-                        "1", 1,
-                        "1", 1
-                    )) {
-                        if(kv.remove(item->failover_key, item->failover_key_len)) {
-                            queue.write(item_len, _item);
-                            printf("[Replication] requeue!\n");
-
-                            if(!commit()) {
-                                return false;
-
-                            } else {
-                                key_removed = true;
-                                return true;
-                            }
-
-                        } else {
-                            fprintf(
-                                stderr,
-                                "Can't remove key %s of event %s: %s\n",
-                                item->failover_key,
-                                event.id,
-                                kv.error().name()
-                            );
-
-                            commit();
-                            return false;
-                        }
-
-                    } else {
-                        key_removed = (kv.check(item->failover_key, item->failover_key_len) <= 0);
-
-                        return (commit() && key_removed);
-                    }
-
-                } else {
-                    fprintf(
-                        stderr,
-                        "Can't create transaction for event %s: %s\n",
-                        event.id,
-                        kv.error().name()
-                    );
-
-                    return false;
-                }
-
-                return true;
-            };
-
-            auto notify = [](const char* msg) {
-                printf("%s\n", msg);
-                return true;
-            };
+            bool commit = true;
 
             {
                 auto& failover = server.failover;
@@ -233,25 +179,23 @@ namespace Skree {
                 auto it = failover.find(item->failover_key);
                 failover.unlock();
 
-                if((it == failover_end) && notify("[Replication] requeue: 1") && !do_failover()) {
-                    queue_r2.sync_read_offset(false);
-                    cleanup();
-                    return false;
+                if((it == failover_end) && !do_failover(item_len, _item, *item, event)) {
+                    commit = false;
                 }
             }
 
-            if(check_no_failover(now, *item) || (notify("[Replication] requeue: 2") && !do_failover())) {
-                queue_r2.sync_read_offset(false);
-                cleanup();
-                return false;
+            if(check_no_failover(now, *item) || !do_failover(item_len, _item, *item, event)) {
+                commit = false;
             }
 
-            if(!key_removed)
-                printf("[Replication] requeue: 3\n");
-            queue_r2.sync_read_offset(key_removed);
-            cleanup();
+            queue_r2.sync_read_offset(commit);
 
-            return true;
+            free(item->peer_id);
+            free(item->failover_key);
+            delete item;
+            free(_item);
+
+            return commit;
         }
 
         bool Replication::replication(const uint64_t& now, const Utils::known_event_t& event) {
@@ -318,11 +262,10 @@ namespace Skree {
             no_failover[item->failover_key] = now;
             no_failover.unlock();
 
-            auto& queue_r2 = *(event.r2_queue);
             bool commit = true;
 
-            if(queue_r2.kv->add(item->failover_key, item->failover_key_len, "1", 1)) {
-                queue_r2.write(item_len, _item);
+            if(queue.kv->cas(item->failover_key, item->failover_key_len, "0", 1, "1", 1)) {
+                event.r2_queue->write(item_len, _item);
                 // fprintf(
                 //     stderr,
                 //     "Key %s for event %s has been added to r2_queue\n",
@@ -333,12 +276,12 @@ namespace Skree {
             } else {
                 fprintf(
                     stderr,
-                    "Key %s for event %s could not be added to r2_queue: %s\n",
+                    "Key %s could not be added to r2_queue: %s\n",
                     item->failover_key,
-                    event.id,
-                    queue_r2.kv->error().name()
+                    queue.kv->error().name()
                 );
                 commit = false;
+                do_failover(item_len, _item, *item, event);
             }
 
             queue.sync_read_offset(commit);

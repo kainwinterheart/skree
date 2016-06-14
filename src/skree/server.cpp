@@ -185,34 +185,56 @@ namespace Skree {
         uint32_t event_len;
         uint32_t _hostname_len = htonl(ctx->hostname_len);
         uint32_t _port = htonl(ctx->port);
+        auto peer_id = Utils::make_peer_id(ctx->hostname_len, ctx->hostname, ctx->port);
+
+        char failover_key [
+            strlen(peer_id)
+            + 1 // :
+            + 20 // wrinseq
+            + 1 // \0
+        ];
+
+        auto& db = *(queue.kv);
+        uint32_t processed = 0;
 
         for(uint32_t i = 0; i < ctx->events_count; ++i) {
             event = ctx->events[i];
             event_len = htonl(event->len);
 
-            auto stream = queue.write();
+            // TODO: ntohll(event->id_net) -> event->id
+            sprintf(failover_key, "%s:%llu", peer_id, ntohll(event->id_net));
 
-            stream->write(sizeof(event_len), &event_len);
-            stream->write(event->len, event->data);
-            stream->write(now_len, &now);
-            stream->write(sizeof(event->id_net), &(event->id_net)); // == rid
-            stream->write(sizeof(_hostname_len), &_hostname_len);
-            stream->write(ctx->hostname_len, ctx->hostname);
-            stream->write(sizeof(_port), &_port);
-            stream->write(serialized_peers_len, serialized_peers);
+            if(db.add(failover_key, strlen(failover_key), "0", 1)) {
+                auto stream = queue.write();
 
-            delete stream;
+                stream->write(sizeof(event_len), &event_len);
+                stream->write(event->len, event->data);
+                stream->write(now_len, &now);
+                stream->write(sizeof(event->id_net), &(event->id_net)); // == rid
+                stream->write(sizeof(_hostname_len), &_hostname_len);
+                stream->write(ctx->hostname_len, ctx->hostname);
+                stream->write(sizeof(_port), &_port);
+                stream->write(serialized_peers_len, serialized_peers);
+
+                delete stream;
+
+                ++processed;
+
+            } else {
+                fprintf(stderr, "[repl_save] db.add(%s) failed: %s\n", failover_key, db.error().name());
+                break;
+            }
 
             // free(event->data); // TODO
             delete event;
         }
 
-        stat_num_replications += ctx->events_count;
+        stat_num_replications += processed;
 
         free(serialized_peers);
         free(ctx->hostname);
 
-        return REPL_SAVE_RESULT_K;
+        return ((processed == ctx->events_count) ? REPL_SAVE_RESULT_K : REPL_SAVE_RESULT_F);
     }
 
     // TODO: get rid of ctx
@@ -364,11 +386,9 @@ namespace Skree {
         const char* failover_key,
         const Utils::known_event_t& event
     ) {
-        auto& queue_r2 = *(event.r2_queue);
-        auto& kv = *(queue_r2.kv);
+        auto& kv = *(event.r_queue->kv);
 
-        // kv.remove(failover_key, failover_key_len);
-        if(!kv.cas(failover_key, failover_key_len, "1", 1, "2", 1)) {
+        if(!kv.remove(failover_key, failover_key_len)) {
             fprintf(stderr, "Key %s could not be removed: %s\n", failover_key, kv.error().name());
         }
     }

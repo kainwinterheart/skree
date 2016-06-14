@@ -13,9 +13,10 @@ namespace Skree {
             in_pos += sizeof(_tmp);
             uint32_t hostname_len = ntohl(_tmp);
 
-            char* hostname = (char*)malloc(hostname_len);
+            char* hostname = (char*)malloc(hostname_len + 1);
             memcpy(hostname, in_data + in_pos, hostname_len);
             in_pos += hostname_len;
+            hostname[hostname_len] = '\0';
 
             memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
             in_pos += sizeof(_tmp);
@@ -66,7 +67,7 @@ namespace Skree {
                     .data = (char*)malloc(_tmp)
                 };
 
-                sprintf(event->id, "%llu", ntohll(_tmp64));
+                sprintf(event->id, "%llu", ntohll(_tmp64)); // TODO: is this really necessary?
                 // printf("repl got id: %lu\n", ntohll(event->id_net));
 
                 memcpy(event->data, in_data + in_pos, _tmp);
@@ -107,7 +108,7 @@ namespace Skree {
             in_packet_r_ctx ctx {
                 .hostname_len = hostname_len,
                 .port = port,
-                .hostname = hostname, // TODO: unused
+                .hostname = hostname,
                 .event_name_len = event_name_len,
                 .event_name = event_name,
                 .events_count = events_count,
