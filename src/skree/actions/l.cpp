@@ -12,6 +12,11 @@ namespace Skree {
             out_data[0] = SKREE_META_OPCODE_K;
             out_len += 1;
 
+            Client* peer;
+            uint32_t peer_name_len;
+            uint32_t _peer_name_len;
+            uint32_t _peer_port;
+
             auto& known_peers = server.known_peers;
             known_peers.lock();
 
@@ -21,11 +26,11 @@ namespace Skree {
             out_len += sizeof(_known_peers_len);
 
             for(auto& it : known_peers) {
-                Client* peer = it.second;
+                peer = it.second;
 
-                uint32_t peer_name_len = peer->get_peer_name_len();
-                uint32_t _peer_name_len = htonl(peer_name_len);
-                uint32_t _peer_port = htonl(peer->get_peer_port());
+                peer_name_len = peer->get_peer_name_len();
+                _peer_name_len = htonl(peer_name_len);
+                _peer_port = htonl(peer->get_peer_port());
 
                 out_data = (char*)realloc(out_data, out_len
                     + sizeof(_peer_name_len) + peer_name_len

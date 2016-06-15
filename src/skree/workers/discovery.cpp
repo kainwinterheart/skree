@@ -200,6 +200,9 @@ namespace Skree {
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
         ) {
+            // for(int i = 0; i < item.len; ++i)
+            //     printf("[discovery::cb6] read from %s [%d]: 0x%.2X\n", client.get_peer_id(),i,args.data[i]);
+
             if(args.data[0] == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 1;
                 uint32_t _tmp;
@@ -207,11 +210,11 @@ namespace Skree {
                 memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
                 in_pos += sizeof(_tmp);
                 uint32_t cnt = ntohl(_tmp);
+
                 uint32_t host_len;
                 char* host;
                 uint32_t port;
                 char* _peer_id;
-                peer_to_discover_t* peer_to_discover;
                 bool got_new_peers = false;
                 peers_to_discover_t::iterator prev_item;
                 peers_to_discover_t::iterator peers_to_discover_end;
@@ -220,6 +223,7 @@ namespace Skree {
                 while(cnt > 0) {
                     --cnt;
                     memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
+                    in_pos += sizeof(_tmp);
                     host_len = ntohl(_tmp);
 
                     host = (char*)malloc(host_len + 1);
@@ -237,13 +241,12 @@ namespace Skree {
                     prev_item = peers_to_discover.find(_peer_id);
 
                     if(prev_item == peers_to_discover_end) {
-                        peer_to_discover = (peer_to_discover_t*)malloc(
-                            sizeof(*peer_to_discover));
+                        // printf("[discovery] fill peers_to_discover: %s:%u\n", host, port);
+                        peers_to_discover[_peer_id] = new peer_to_discover_t {
+                            .host = host,
+                            .port = port
+                        };
 
-                        peer_to_discover->host = host;
-                        peer_to_discover->port = port;
-
-                        server.peers_to_discover[_peer_id] = peer_to_discover;
                         got_new_peers = true;
 
                     } else {
@@ -266,7 +269,7 @@ namespace Skree {
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
         ) {
-            printf("DISCOVERY CB5 OPCODE: %c\n", args.data[0]);
+            // printf("DISCOVERY CB5 OPCODE: %c\n", args.data[0]);
             if(args.data[0] == SKREE_META_OPCODE_K) {
                 auto& known_peers = server.known_peers;
                 auto known_peers_end = known_peers.lock();
@@ -330,7 +333,7 @@ namespace Skree {
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
         ) {
-            printf("DISCOVERY CB2 OPCODE: %c\n", args.data[0]);
+            // printf("DISCOVERY CB2 OPCODE: %c\n", args.data[0]);
             if(args.data[0] == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 1;
                 uint32_t _tmp;
@@ -339,9 +342,10 @@ namespace Skree {
                 in_pos += sizeof(_tmp);
                 uint32_t len = ntohl(_tmp);
 
-                char* peer_name = (char*)malloc(len);
+                char* peer_name = (char*)malloc(len + 1);
                 memcpy(peer_name, args.data + in_pos, len);
                 in_pos += len;
+                peer_name[len] = '\0';
 
                 _tmp = client.get_conn_port();
                 char* _peer_id = Utils::make_peer_id(len, peer_name, _tmp);
@@ -370,6 +374,8 @@ namespace Skree {
 
                         me.unlock();
 
+                        free(peer_name);
+
                     } else {
                         client.set_peer_name(len, peer_name);
                         client.set_peer_port(_tmp);
@@ -380,6 +386,7 @@ namespace Skree {
 
                 } else {
                     free(_peer_id);
+                    free(peer_name);
                 }
 
                 if(accepted) {

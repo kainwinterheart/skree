@@ -13,9 +13,10 @@ namespace Skree {
             in_pos += sizeof(_tmp);
             uint32_t host_len = ntohl(_tmp);
 
-            char host[host_len];
+            char* host = (char*)malloc(host_len + 1);
             memcpy(host, in_data + in_pos, host_len);
             in_pos += host_len;
+            host[host_len] = '\0';
 
             memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
             in_pos += sizeof(_tmp);
@@ -25,9 +26,8 @@ namespace Skree {
             out_data = _out_data;
             out_len = 1;
 
-            char* _host = host;
             // TODO: (char*)(char[len])
-            char* _peer_id = Utils::make_peer_id(host_len, _host, port);
+            char* _peer_id = Utils::make_peer_id(host_len, host, port);
 
             auto& known_peers = server.known_peers;
             auto end = known_peers.lock();
@@ -49,6 +49,7 @@ namespace Skree {
 
             } else {
                 free(_peer_id);
+                free(host);
                 out_data[0] = SKREE_META_OPCODE_F;
             }
 

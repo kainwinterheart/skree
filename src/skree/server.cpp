@@ -169,9 +169,11 @@ namespace Skree {
             memcpy(serialized_peers + serialized_peers_len, _peer_id, _peer_id_len);
             serialized_peers_len += _peer_id_len;
 
-            if(!keep_peer_id) free(_peer_id);
+            if(!keep_peer_id) {
+                free(_peer_id);
+                free(peer->hostname);
+            }
 
-            free(peer->hostname);
             delete peer;
         }
 
