@@ -716,38 +716,9 @@ namespace Skree {
     }
 
     void Server::replication_exec(out_packet_i_ctx* ctx) {
-        // printf("Replication exec thread for task %lu\n", ctx->rid);
+        // printf("Replication exec for task %lu\n", ctx->rid);
 
-        if(ctx->acceptances == ctx->count_replicas) {
-            {
-                auto failover_end = failover.lock();
-                auto it = failover.find(ctx->failover_key);
-                failover.unlock();
-
-                if(it == failover_end) {
-                    // TODO: cleanup
-                    return;
-                }
-            }
-
-            {
-                auto no_failover_end = no_failover.lock();
-                auto it = no_failover.find(ctx->failover_key);
-
-                if(it != no_failover_end) {
-                    if((it->second + no_failover_time) > std::time(nullptr)) {
-                        no_failover.unlock();
-                        // TODO: cleanup
-                        return;
-
-                    } else {
-                        no_failover.erase(it);
-                    }
-                }
-
-                no_failover.unlock();
-            }
-
+        if(*(ctx->acceptances) == *(ctx->count_replicas)) {
             in_packet_e_ctx_event event {
                 .len = ctx->data->len,
                 .data = ctx->data->data,
@@ -764,10 +735,8 @@ namespace Skree {
                 .events = events
             };
 
-            auto queue = ctx->event->queue;
-
             uint64_t task_ids[1];
-            save_event(&e_ctx, 0, nullptr, task_ids, *queue);
+            save_event(&e_ctx, 0, nullptr, task_ids, *(ctx->event->queue));
 
             // TODO: remove?
             // {
