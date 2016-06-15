@@ -56,7 +56,6 @@ namespace Skree {
             auto& failover = server.failover;
             auto failover_end = failover.lock();
             auto it = failover.find(suffix);
-            failover.unlock();
 
             // TODO: following checks could possibly flap
             if(it == failover_end) {
@@ -64,47 +63,44 @@ namespace Skree {
                 auto& db = *(eit->second->r_queue->kv);
                 auto size = db.check(suffix, suffix_len);
 
-                if(size == -1) {
-                    out_data[0] = SKREE_META_OPCODE_F; // this instance has already
-                                                        // processed the event
-
-                } else {
+                if(size == 1) {
                     out_data[0] = SKREE_META_OPCODE_K; // this instance has not tried
-                                                        // to failover the event yet
+                                                       // to failover the event yet
 
                     auto& no_failover = server.no_failover;
                     no_failover.lock();
                     no_failover[suffix] = std::time(nullptr);
                     no_failover.unlock();
+
+                } else {
+                    out_data[0] = SKREE_META_OPCODE_F; // this instance has already
+                                                       // processed the event
                 }
 
             } else {
-                // TODO: It could be 0 here as a special case
-                auto& wip = server.wip;
-                auto wip_end = wip.lock();
-                auto wip_it = wip.find(it->second);
-                wip.unlock();
+                auto& id = it->second;
 
-                if(wip_it == wip_end) {
-                    // TODO: inspect this case, it looks like race condition
-                    out_data[0] = SKREE_META_OPCODE_K; // this instance has not tried
-                                                        // to failover the event yet
-
-                    failover.lock();
-                    failover.erase(it);
-                    failover.unlock();
-
-                    auto& no_failover = server.no_failover;
-                    no_failover.lock();
-                    no_failover[suffix] = std::time(nullptr);
-                    no_failover.unlock();
+                if(id == 0) {
+                    out_data[0] = SKREE_META_OPCODE_F; // this instance is currently
+                                                       // in the process of failovering
+                                                       // the event
 
                 } else {
-                    out_data[0] = SKREE_META_OPCODE_F; // this instance is currently
-                                                        // in the process of failovering
-                                                        // the event
+                    auto now = std::time(nullptr);
+                    auto state = server.get_event_state(id, *(eit->second), now);
+
+                    if(state == SKREE_META_EVENTSTATE_LOST) {
+                        // TODO: event is processed twice here: by local node and by remote node
+                        out_data[0] = SKREE_META_OPCODE_K; // this instance had lost the event
+
+                    } else {
+                        out_data[0] = SKREE_META_OPCODE_F; // event is or will be processed,
+                                                           // everything is fine
+                    }
                 }
             }
+
+            failover.unlock(); // TODO: transaction is too long
         }
 
         Utils::muh_str_t* I::out_init(

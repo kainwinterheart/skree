@@ -87,6 +87,12 @@ namespace Skree {
             localhost8765->host = "127.0.0.1";
             localhost8765->port = 8765;
 
+            peer_to_discover_t* localhost9876 = (peer_to_discover_t*)malloc(
+                sizeof(*localhost9876));
+
+            localhost9876->host = "127.0.0.1";
+            localhost9876->port = 9876;
+
             peers_to_discover[Utils::make_peer_id(
                 strlen(localhost7654->host),
                 localhost7654->host,
@@ -100,6 +106,13 @@ namespace Skree {
                 localhost8765->port
 
             )] = localhost8765;
+
+            peers_to_discover[Utils::make_peer_id(
+                strlen(localhost9876->host),
+                localhost9876->host,
+                localhost9876->port
+
+            )] = localhost9876;
         }
 
         Skree::Workers::Replication replication (*this);
@@ -164,10 +177,12 @@ namespace Skree {
 
             peers_to_discover.unlock();
 
-            serialized_peers = (char*)realloc(serialized_peers, serialized_peers_len + _peer_id_len);
+            serialized_peers = (char*)realloc(serialized_peers, serialized_peers_len + _peer_id_len + 1);
 
             memcpy(serialized_peers + serialized_peers_len, _peer_id, _peer_id_len);
             serialized_peers_len += _peer_id_len;
+
+            serialized_peers[ serialized_peers_len++ ] = '\0';
 
             if(!keep_peer_id) {
                 free(_peer_id);
@@ -319,8 +334,7 @@ namespace Skree {
 
                 /*****************************/
                 std::vector<char*>* candidate_peer_ids = new std::vector<char*>();
-                std::list<packet_r_ctx_peer*>* accepted_peers =
-                    new std::list<packet_r_ctx_peer*>();
+                auto accepted_peers = new std::list<packet_r_ctx_peer*>();
 
                 known_peers.lock();
 // printf("REPLICATION ATTEMPT: %lu\n", known_peers.size());
@@ -514,8 +528,7 @@ namespace Skree {
                     memcpy(r_req + r_len, peer->hostname, peer->hostname_len);
                     r_len += peer->hostname_len;
 
-                    memcpy(r_req + r_len, &(peer->port),
-                        sizeof(peer->port));
+                    memcpy(r_req + r_len, &(peer->port), sizeof(peer->port));
                     r_len += sizeof(peer->port);
                 }
 
