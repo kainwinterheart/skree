@@ -30,7 +30,7 @@ namespace Skree {
         }
 
         Replication::QueueItem* Replication::parse_queue_item(
-            const Utils::known_event_t& event,
+            Utils::known_event_t& event,
             char*& item
         ) {
             auto out = new Replication::QueueItem;
@@ -86,8 +86,12 @@ namespace Skree {
             return out;
         }
 
-        bool Replication::check_no_failover(const uint64_t& now, const Replication::QueueItem& item) {
-            auto& no_failover = server.no_failover;
+        bool Replication::check_no_failover(
+            const uint64_t& now,
+            const Replication::QueueItem& item,
+            Utils::known_event_t& event
+        ) {
+            auto& no_failover = event.no_failover;
             auto no_failover_end = no_failover.lock();
             auto it = no_failover.find(item.failover_key);
 
@@ -97,7 +101,7 @@ namespace Skree {
                     return true; // It is ok to wait
 
                 } else {
-                    server.no_failover.erase(it);
+                    event.no_failover.erase(it);
                 }
             }
 
@@ -110,7 +114,7 @@ namespace Skree {
             const uint64_t& raw_item_len,
             char*& raw_item,
             const Replication::QueueItem& item,
-            const Utils::known_event_t& event
+            Utils::known_event_t& event
         ) {
             auto& queue = *(event.r_queue);
             auto& kv = *(queue.kv);
@@ -160,7 +164,7 @@ namespace Skree {
             }
         }
 
-        bool Replication::failover(const uint64_t& now, const Utils::known_event_t& event) {
+        bool Replication::failover(const uint64_t& now, Utils::known_event_t& event) {
             auto& queue_r2 = *(event.r2_queue);
             uint64_t item_len;
             auto _item = queue_r2.read(&item_len);
@@ -174,7 +178,7 @@ namespace Skree {
             bool commit = true;
 
             {
-                auto& failover = server.failover;
+                auto& failover = event.failover;
                 auto failover_end = failover.lock();
                 auto it = failover.find(item->failover_key);
                 failover.unlock();
@@ -184,7 +188,7 @@ namespace Skree {
                 }
             }
 
-            if(check_no_failover(now, *item) || !do_failover(item_len, _item, *item, event)) {
+            if(check_no_failover(now, *item, event) || !do_failover(item_len, _item, *item, event)) {
                 commit = false;
             }
 
@@ -198,7 +202,7 @@ namespace Skree {
             return commit;
         }
 
-        bool Replication::replication(const uint64_t& now, const Utils::known_event_t& event) {
+        bool Replication::replication(const uint64_t& now, Utils::known_event_t& event) {
             // fprintf(stderr, "replication: before read\n");
             auto& queue = *(event.r_queue);
             uint64_t item_len;
@@ -227,7 +231,7 @@ namespace Skree {
                 return false;
             }
 
-            auto& failover = server.failover;
+            auto& failover = event.failover;
 
             {
                 // fprintf(stderr, "asd1\n");
@@ -245,7 +249,7 @@ namespace Skree {
                 }
             }
 
-            if(check_no_failover(now, *item)) {
+            if(check_no_failover(now, *item, event)) {
                 // TODO: what should really happen here?
                 // fprintf(stderr, "skip repl: no_failover flag is set\n");
                 cleanup();
@@ -257,7 +261,7 @@ namespace Skree {
             failover[item->failover_key] = 0;
             failover.unlock();
 
-            auto& no_failover = server.no_failover;
+            auto& no_failover = event.no_failover;
             no_failover.lock();
             no_failover[item->failover_key] = now;
             no_failover.unlock();
@@ -287,7 +291,7 @@ namespace Skree {
             queue.sync_read_offset(commit);
 
             if(!commit) {
-                server.unfailover(item->failover_key);
+                event.unfailover(item->failover_key);
                 cleanup();
                 return false;
             }

@@ -400,7 +400,7 @@ namespace Skree {
     void Server::repl_clean(
         size_t failover_key_len,
         const char* failover_key,
-        const Utils::known_event_t& event
+        Utils::known_event_t& event
     ) {
         auto& kv = *(event.r_queue->kv);
 
@@ -706,28 +706,6 @@ namespace Skree {
         pthread_mutex_unlock(&(server->new_clients_mutex));
     }
 
-    void Server::unfailover(char* failover_key) {
-        {
-            auto failover_end = failover.lock();
-            auto it = failover.find(failover_key);
-
-            if(it != failover_end)
-                failover.erase(it);
-
-            failover.unlock();
-        }
-
-        {
-            auto no_failover_end = no_failover.lock();
-            auto it = no_failover.find(failover_key);
-
-            if(it != no_failover_end)
-                no_failover.erase(it);
-
-            no_failover.unlock();
-        }
-    }
-
     void Server::replication_exec(out_packet_i_ctx* ctx) {
         // printf("Replication exec for task %lu\n", ctx->rid);
 
@@ -772,6 +750,7 @@ namespace Skree {
             //     free(ctx);
             // }
 
+            auto& failover = ctx->event->failover;
             failover.lock();
             failover[ctx->failover_key] = task_ids[0];
             failover.unlock();
@@ -821,7 +800,7 @@ namespace Skree {
                 *(ctx->event)
             );
 
-            unfailover(ctx->failover_key);
+            ctx->event->unfailover(ctx->failover_key);
 
             // free(ctx->data->data);
             delete ctx->data;
@@ -838,7 +817,7 @@ namespace Skree {
 
     short Server::get_event_state(
         uint64_t& id,
-        const Utils::known_event_t& event,
+        Utils::known_event_t& event,
         const uint64_t& now
     ) {
         auto wip_end = wip.lock();

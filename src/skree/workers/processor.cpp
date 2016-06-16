@@ -31,7 +31,7 @@ namespace Skree {
         }
 
         Processor::QueueItem* Processor::parse_queue_item(
-            const Utils::known_event_t& event,
+            Utils::known_event_t& event,
             const uint64_t& item_len,
             char*& item
         ) {
@@ -48,7 +48,7 @@ namespace Skree {
 
         bool Processor::do_failover(
             const uint64_t& now,
-            const Utils::known_event_t& event,
+            Utils::known_event_t& event,
             const Processor::QueueItem& item
         ) {
             in_packet_e_ctx_event _event {
@@ -85,7 +85,7 @@ namespace Skree {
             }
         }
 
-        bool Processor::failover(const uint64_t& now, const Utils::known_event_t& event) {
+        bool Processor::failover(const uint64_t& now, Utils::known_event_t& event) {
             auto& queue_r2 = *(event.queue2);
             uint64_t item_len;
             auto _item = queue_r2.read(&item_len);
@@ -149,7 +149,7 @@ namespace Skree {
             return true;
         }
 
-        bool Processor::process(const uint64_t& now, const Utils::known_event_t& event) {
+        bool Processor::process(const uint64_t& now, Utils::known_event_t& event) {
             Skree::Client* peer;
             // fprintf(stderr, "processor: before read\n");
             auto& queue = *(event.queue);

@@ -46,9 +46,7 @@ namespace Skree {
         socklen_t s_in_len;
     };
 
-    typedef Utils::AtomicHashMap<char*, uint64_t, Utils::char_pointer_hasher, Utils::char_pointer_comparator> failover_t;
     typedef Utils::AtomicHashMap<uint64_t, uint64_t> wip_t;
-    typedef Utils::AtomicHashMap<char*, uint64_t, Utils::char_pointer_hasher, Utils::char_pointer_comparator> no_failover_t;
     typedef Utils::AtomicHashMap<char*, Client*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> known_peers_t;
     typedef Utils::AtomicHashMap<char*, bool, Utils::char_pointer_hasher, Utils::char_pointer_comparator> me_t;
 
@@ -90,9 +88,7 @@ namespace Skree {
 
         known_peers_t known_peers;
         known_peers_t known_peers_by_conn_id;
-        no_failover_t no_failover;
         wip_t wip;
-        failover_t failover;
         me_t me;
         peers_to_discover_t peers_to_discover;
         const Utils::known_events_t& known_events;
@@ -121,17 +117,16 @@ namespace Skree {
         void repl_clean(
             size_t failover_key_len,
             const char* failover_key,
-            const Utils::known_event_t& event
+            Utils::known_event_t& event
         );
 
-        void unfailover(char* failover_key);
         void begin_replication(out_packet_r_ctx*& r_ctx);
         void save_peers_to_discover();
         void replication_exec(out_packet_i_ctx* ctx);
 
         short get_event_state(
             uint64_t& id,
-            const Utils::known_event_t& event,
+            Utils::known_event_t& event,
             const uint64_t& now
         );
     };

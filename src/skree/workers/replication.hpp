@@ -35,19 +35,23 @@ namespace Skree {
             };
 
             static Replication::QueueItem* parse_queue_item(
-                const Utils::known_event_t& event,
+                Utils::known_event_t& event,
                 char*& item
             );
 
-            bool failover(const uint64_t& now, const Utils::known_event_t& event);
-            bool replication(const uint64_t& now, const Utils::known_event_t& event);
-            bool check_no_failover(const uint64_t& now, const Replication::QueueItem& item);
+            bool failover(const uint64_t& now, Utils::known_event_t& event);
+            bool replication(const uint64_t& now, Utils::known_event_t& event);
+            bool check_no_failover(
+                const uint64_t& now,
+                const Replication::QueueItem& item,
+                Utils::known_event_t& event
+            );
 
             bool do_failover(
                 const uint64_t& raw_item_len,
                 char*& raw_item,
                 const Replication::QueueItem& item,
-                const Utils::known_event_t& event
+                Utils::known_event_t& event
             );
         };
     }

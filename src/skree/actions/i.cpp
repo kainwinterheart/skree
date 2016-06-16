@@ -53,21 +53,22 @@ namespace Skree {
             );
             sprintf(suffix, "%s:%lu", peer_id, rid);
 
-            auto& failover = server.failover;
+            auto& event = *(eit->second);
+            auto& failover = event.failover;
             auto failover_end = failover.lock();
             auto it = failover.find(suffix);
 
             // TODO: following checks could possibly flap
             if(it == failover_end) {
                 auto suffix_len = strlen(suffix);
-                auto& db = *(eit->second->r_queue->kv);
+                auto& db = *(event.r_queue->kv);
                 auto size = db.check(suffix, suffix_len);
 
                 if(size == 1) {
                     out_data[0] = SKREE_META_OPCODE_K; // this instance has not tried
                                                        // to failover the event yet
 
-                    auto& no_failover = server.no_failover;
+                    auto& no_failover = event.no_failover;
                     no_failover.lock();
                     no_failover[suffix] = std::time(nullptr);
                     no_failover.unlock();
@@ -87,7 +88,7 @@ namespace Skree {
 
                 } else {
                     auto now = std::time(nullptr);
-                    auto state = server.get_event_state(id, *(eit->second), now);
+                    auto state = server.get_event_state(id, event, now);
 
                     if(state == SKREE_META_EVENTSTATE_LOST) {
                         // TODO: event is processed twice here: by local node and by remote node
@@ -105,7 +106,7 @@ namespace Skree {
 
         Utils::muh_str_t* I::out_init(
             Utils::muh_str_t*& peer_id,
-            const Utils::known_event_t& event,
+            Utils::known_event_t& event,
             const uint64_t& rid_net
         ) {
             Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));

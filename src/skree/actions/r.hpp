@@ -48,7 +48,7 @@ namespace Skree {
 
     struct out_packet_i_ctx {
         pthread_mutex_t* mutex;
-        const Utils::known_event_t* event;
+        Utils::known_event_t* event;
         Utils::muh_str_t* data;
         Utils::muh_str_t* peer_id;
         char* failover_key;

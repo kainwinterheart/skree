@@ -9,6 +9,8 @@
 #include <sys/socket.h>
 #include <netinet/tcp.h>
 
+#include "atomic_hash_map.hpp"
+
 // thank you, stackoverflow!
 #ifndef htonll
 #define htonll(x) ((1 == htonl(1)) ? (x) : ((uint64_t)htonl(\
@@ -62,6 +64,9 @@ namespace Skree {
             }
         };
 
+        typedef AtomicHashMap<char*, uint64_t, char_pointer_hasher, char_pointer_comparator> failover_t;
+        typedef AtomicHashMap<char*, uint64_t, char_pointer_hasher, char_pointer_comparator> no_failover_t;
+
         struct skree_module_t {
             size_t path_len;
             char* path;
@@ -86,6 +91,30 @@ namespace Skree {
             QueueDb* r2_queue;
             std::atomic<uint_fast64_t> stat_num_processed;
             std::atomic<uint_fast64_t> stat_num_failovered;
+            failover_t failover;
+            no_failover_t no_failover;
+
+            void unfailover(char* failover_key) {
+                {
+                    auto failover_end = failover.lock();
+                    auto it = failover.find(failover_key);
+
+                    if(it != failover_end)
+                        failover.erase(it);
+
+                    failover.unlock();
+                }
+
+                {
+                    auto no_failover_end = no_failover.lock();
+                    auto it = no_failover.find(failover_key);
+
+                    if(it != no_failover_end)
+                        no_failover.erase(it);
+
+                    no_failover.unlock();
+                }
+            }
         };
 
         typedef std::unordered_map<char*, skree_module_t*, char_pointer_hasher, char_pointer_comparator> skree_modules_t;

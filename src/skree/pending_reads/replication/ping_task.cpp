@@ -13,17 +13,14 @@ namespace Skree {
 
                 if(args.data[0] == SKREE_META_OPCODE_K) {
                     // printf("[ReplicationPingTask] %s: c -> k\n", ctx->failover_key);
-                    server.repl_clean(
-                        ctx->failover_key_len,
-                        ctx->failover_key,
-                        *(ctx->event)
-                    );
+                    auto& event = *(ctx->event);
 
-                    server.unfailover(ctx->failover_key);
+                    server.repl_clean(ctx->failover_key_len, ctx->failover_key, event);
+                    event.unfailover(ctx->failover_key);
 
                 } else {
                     // printf("[ReplicationPingTask] %s: c -> f\n", ctx->failover_key);
-                    error(client, item); // calls server.unfailover() by itself
+                    error(client, item); // calls event.unfailover() by itself
                 }
 
                 return nullptr;
@@ -99,11 +96,10 @@ namespace Skree {
                 short result = server.repl_save(&r_ctx, client, *(ctx->event->r_queue));
 
                 if(result == REPL_SAVE_RESULT_K) {
-                    server.repl_clean(
-                        ctx->failover_key_len,
-                        ctx->failover_key,
-                        *(ctx->event)
-                    );
+                    auto& event = *(ctx->event);
+
+                    server.repl_clean(ctx->failover_key_len, ctx->failover_key, event);
+                    event.unfailover(ctx->failover_key);
 
                 } else if(result == REPL_SAVE_RESULT_F) {
                     fprintf(stderr, "repl_save() failed\n");
@@ -113,8 +109,6 @@ namespace Skree {
                     fprintf(stderr, "Unexpected repl_save() result: %d\n", result);
                     exit(1);
                 }
-
-                server.unfailover(ctx->failover_key);
             }
         }
     }

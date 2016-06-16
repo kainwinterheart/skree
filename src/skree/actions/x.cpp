@@ -48,12 +48,15 @@ namespace Skree {
             char suffix [suffix_len + 1];
             sprintf(suffix, "%s:%lu", peer_id, rid);
 
-            server.repl_clean(suffix_len, suffix, *(eit->second));
+            auto& event = *(eit->second);
+
+            server.repl_clean(suffix_len, suffix, event);
+            event.unfailover(suffix);
         }
 
         Utils::muh_str_t* X::out_init(
             Utils::muh_str_t*& peer_id,
-            const Utils::known_event_t& event,
+            Utils::known_event_t& event,
             const uint64_t& rid
         ) {
             Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
