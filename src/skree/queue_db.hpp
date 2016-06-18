@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <stack>
+#include <sys/stat.h>
 
 namespace Skree {
     struct read_rollback_t {
@@ -26,34 +27,33 @@ namespace Skree {
 
         uint64_t read_page_num;
         uint64_t read_page_offset;
-        int read_page_num_fh;
         char* read_page;
         int read_page_fh;
         pthread_mutex_t read_page_mutex;
+        size_t read_page_file_size;
 
         uint64_t write_page_num;
         uint64_t write_page_offset;
-        int write_page_num_fh;
         char* write_page;
         int write_page_fh;
         pthread_mutex_t write_page_mutex;
+        size_t write_page_file_size;
 
         std::stack<read_rollback_t*> read_rollbacks;
 
-        void get_page_num(
-            const char* name, int& fh,
-            uint64_t& page_num, uint64_t& offset
-        ) const;
-
+        void get_page_num(const char* name, uint64_t& page_num, uint64_t& offset) const;
+        void atomic_sync_offset(const char* file, uint64_t& page_num, uint64_t& page_offset) const;
         void read_uint64(int& fh, uint64_t& dest) const;
-        void open_page(int& fh, int flag, const uint64_t& num, char*& addr) const;
+        void open_page(int& fh, int flag, const uint64_t& num, char*& addr, size_t& page_file_size) const;
+        size_t alloc_page(const char* file) const;
+        bool write_chunk(int fh, size_t size, void* data) const;
 
         void open_read_page() {
-            open_page(read_page_fh, O_RDONLY, read_page_num, read_page);
+            open_page(read_page_fh, O_RDONLY, read_page_num, read_page, read_page_file_size);
         }
 
         void open_write_page() {
-            open_page(write_page_fh, O_RDWR, write_page_num, write_page);
+            open_page(write_page_fh, O_RDWR, write_page_num, write_page, write_page_file_size);
         }
 
         inline void _write(uint64_t len, const unsigned char* src);
@@ -68,8 +68,7 @@ namespace Skree {
 
         QueueDb(
             const char* _path, size_t _file_size, uint64_t _read_page_num,
-            uint64_t _write_page_num, int _read_page_num_fh, int _write_page_num_fh,
-            DbWrapper* _kv
+            uint64_t _write_page_num, DbWrapper* _kv
         );
     public:
         DbWrapper* kv;
@@ -98,4 +97,3 @@ namespace Skree {
         void write(uint64_t len, void* data);
     };
 }
-

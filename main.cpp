@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
                 mkdir(_queue_path.c_str(), 0000755);
             }
 
-            return new Skree::QueueDb (_queue_path.c_str(), 256 * 1024 * 1024);
+            return new Skree::QueueDb (strdup(_queue_path.c_str()), 256 * 1024 * 1024);
         };
 
         if(config.Type() != YAML::NodeType::Sequence) {

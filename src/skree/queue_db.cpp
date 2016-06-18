@@ -10,14 +10,12 @@ namespace Skree {
 
         read_page = nullptr;
         read_page_fh = -1;
-        read_page_num_fh = -1;
-        get_page_num("rpos", read_page_num_fh, read_page_num, read_page_offset);
+        get_page_num("rpos", read_page_num, read_page_offset);
         open_read_page();
 
         write_page = nullptr;
         write_page_fh = -1;
-        write_page_num_fh = -1;
-        get_page_num("wpos", write_page_num_fh, write_page_num, write_page_offset);
+        get_page_num("wpos", write_page_num, write_page_offset);
         open_write_page();
 
         kv = new DbWrapper;
@@ -39,16 +37,13 @@ namespace Skree {
 
     QueueDb::QueueDb(
         const char* _path, size_t _file_size, uint64_t _read_page_num,
-        uint64_t _write_page_num, int _read_page_num_fh, int _write_page_num_fh,
-        DbWrapper* _kv
+        uint64_t _write_page_num, DbWrapper* _kv
     )
     : path(_path),
       file_size(_file_size),
       kv(_kv),
       read_page_num(_read_page_num),
-      write_page_num(_write_page_num),
-      read_page_num_fh(_read_page_num_fh),
-      write_page_num_fh(_write_page_num_fh) {
+      write_page_num(_write_page_num) {
         close_fhs = false;
         path_len = strlen(path);
         next_page = nullptr;
@@ -71,8 +66,6 @@ namespace Skree {
         pthread_mutex_destroy(&read_page_mutex);
 
         if(close_fhs) {
-            close(read_page_num_fh);
-            close(write_page_num_fh);
             close(read_page_fh);
             close(write_page_fh);
         }
@@ -80,21 +73,16 @@ namespace Skree {
         delete kv;
     }
 
-    void QueueDb::get_page_num(
-        const char* name, int& fh,
-        uint64_t& page_num, uint64_t& offset
-    ) const {
-        if(fh == -1) {
-            auto name_len = strlen(name);
-            char file [path_len + 1 + name_len + 1];
+    void QueueDb::get_page_num(const char* name, uint64_t& page_num, uint64_t& offset) const {
+        auto name_len = strlen(name);
+        char file [path_len + 1 + name_len + 1];
 
-            memcpy(file, path, path_len);
-            file[path_len] = '/';
-            memcpy(file + path_len + 1, name, name_len);
-            file[path_len + 1 + name_len] = '\0';
+        memcpy(file, path, path_len);
+        file[path_len] = '/';
+        memcpy(file + path_len + 1, name, name_len);
+        file[path_len + 1 + name_len] = '\0';
 
-            fh = open(file, O_RDWR | O_CREAT);
-        }
+        int fh = open(file, O_RDWR | O_CREAT);
 
         if(fh == -1) {
             perror("open");
@@ -106,6 +94,10 @@ namespace Skree {
 
         read_uint64(fh, page_num);
         read_uint64(fh, offset);
+
+        if(close(fh) == -1) {
+            perror("close");
+        }
     }
 
     void QueueDb::read_uint64(int& fh, uint64_t& dest) const {
@@ -122,8 +114,64 @@ namespace Skree {
         dest = ((read_total == 8) ? ntohll(dest) : 0);
     }
 
+    bool QueueDb::write_chunk(int fh, size_t size, void* data) const {
+        size_t written;
+        size_t total = 0;
+
+        while(total < size) {
+            written = ::write(fh, ((unsigned char*)data) + total, size - total);
+
+            if(written == -1) {
+                perror("write");
+                break;
+
+            } else {
+                total += written;
+            }
+        }
+
+        return (total == size);
+    }
+
+    size_t QueueDb::alloc_page(const char* file) const {
+        int fh = open(file, O_RDWR | O_CREAT);
+
+        if(fh == -1) {
+            perror("open");
+            exit(1);
+        }
+
+        fchmod(fh, 0000644);
+
+        size_t total = 0;
+        char batch [SKREE_QUEUEDB_ZERO_BATCH_SIZE];
+        memset(batch, 0, SKREE_QUEUEDB_ZERO_BATCH_SIZE);
+        size_t chunk_size;
+
+        while(total < file_size) {
+            chunk_size = (
+                ((file_size - total) > SKREE_QUEUEDB_ZERO_BATCH_SIZE)
+                    ? SKREE_QUEUEDB_ZERO_BATCH_SIZE
+                    : (file_size - total)
+            );
+
+            if(write_chunk(fh, chunk_size, batch)) {
+                total += chunk_size;
+
+            } else {
+                break;
+            }
+        }
+
+        if(close(fh) == -1) {
+            perror("close");
+        }
+
+        return total;
+    }
+
     void QueueDb::open_page(
-        int& fh, int flag, const uint64_t& num, char*& addr
+        int& fh, int flag, const uint64_t& num, char*& addr, size_t& page_file_size
     ) const {
         if(fh != -1) return;
 
@@ -154,28 +202,31 @@ namespace Skree {
         }
 
         if(access(file, access_flag) == -1) {
-            int fh = open(file, O_RDWR | O_CREAT);
+            page_file_size = alloc_page(file);
 
-            if(fh == -1) {
-                perror("open");
-                exit(1);
+        } else {
+            struct stat fh_stat;
+
+            if(stat(file, &fh_stat) == -1) {
+                perror("fstat");
+
+            } else {
+                page_file_size = fh_stat.st_size;
+
+                if(page_file_size == 0) {
+                    if(unlink(file) == 0) {
+                        page_file_size = alloc_page(file);
+
+                    } else {
+                        perror("unlink");
+                    }
+                }
             }
+        }
 
-            fchmod(fh, 0000644);
-
-            size_t total = 0;
-            char batch [SKREE_QUEUEDB_ZERO_BATCH_SIZE];
-            memset(batch, 0, SKREE_QUEUEDB_ZERO_BATCH_SIZE);
-
-            while(total < file_size) {
-                total += ::write(fh, batch, (
-                    ((file_size - total) > SKREE_QUEUEDB_ZERO_BATCH_SIZE)
-                        ? SKREE_QUEUEDB_ZERO_BATCH_SIZE
-                        : (file_size - total)
-                ));
-            }
-
-            close(fh);
+        if(page_file_size == 0) {
+            fprintf(stderr, "Zero-length file: %s\n", file);
+            abort();
         }
 
         fh = open(file, flag);
@@ -185,7 +236,7 @@ namespace Skree {
             exit(1);
         }
 
-        addr = (char*)mmap(0, file_size, mmap_prot, MAP_FILE | MAP_SHARED, fh, 0); //TODO: restore MAP_NOCACHE
+        addr = (char*)mmap(0, page_file_size, mmap_prot, MAP_FILE | MAP_SHARED, fh, 0); // TODO: restore MAP_NOCACHE
 
         if(addr == MAP_FAILED) {
             perror("mmap");
@@ -198,11 +249,61 @@ namespace Skree {
 
         next_page = new QueueDb(
             path, file_size, read_page_num + 1,
-            write_page_num + 1, read_page_num_fh,
-            write_page_num_fh, kv
+            write_page_num + 1, kv
         );
 
         return next_page;
+    }
+
+    void QueueDb::atomic_sync_offset(const char* name, uint64_t& page_num, uint64_t& page_offset) const {
+        auto name_len = strlen(name);
+        auto file_len = path_len + 1 + name_len;
+        auto tmp_file_len = file_len + 4;
+
+        char file [file_len + 1];
+        char tmp_file [tmp_file_len + 1];
+
+        memcpy(file, path, path_len);
+        file[path_len] = '/';
+        memcpy(file + path_len + 1, name, name_len);
+        file[path_len + 1 + name_len] = '\0';
+
+        memcpy(tmp_file, file, file_len);
+        tmp_file[file_len] = '.';
+        tmp_file[file_len + 1] = 'n';
+        tmp_file[file_len + 2] = 'e';
+        tmp_file[file_len + 3] = 'w';
+        tmp_file[tmp_file_len] = '\0';
+
+        int fh = open(tmp_file, O_RDWR | O_CREAT);
+
+        if(fh == -1) {
+            perror("open");
+            exit(1);
+
+        } else {
+            fchmod(fh, 0000644);
+        }
+
+        // TODO: check result
+        bool written = (
+            write_chunk(fh, sizeof(page_num), &page_num)
+            && write_chunk(fh, sizeof(page_offset), &page_offset)
+        );
+
+        if(close(fh) == -1) {
+            perror("close");
+        }
+
+        if(written) {
+            if(rename(tmp_file, file) == -1) {
+                perror("rename");
+                abort();
+            }
+
+        } else {
+            abort();
+        }
     }
 
     void QueueDb::sync_read_offset(bool commit) {
@@ -211,13 +312,11 @@ namespace Skree {
         }
 
         if(commit) {
-            lseek(read_page_num_fh, 0, SEEK_SET);
-
             uint64_t _read_page_num = read_page_num;
             uint64_t _read_page_offset = read_page_offset;
             auto db = this;
 
-            while(_read_page_offset == file_size) {
+            while(_read_page_offset == read_page_file_size) {
                 db = db->next_page;
                 _read_page_num = db->read_page_num;
                 _read_page_offset = db->read_page_offset;
@@ -226,11 +325,7 @@ namespace Skree {
             _read_page_num = htonll(_read_page_num);
             _read_page_offset = htonll(_read_page_offset);
 
-            // TODO: atomic write
-            ::write(read_page_num_fh, &_read_page_num, sizeof(_read_page_num));
-            ::write(read_page_num_fh, &_read_page_offset, sizeof(_read_page_offset));
-            fsync(read_page_num_fh);
-
+            atomic_sync_offset("rpos", _read_page_num, _read_page_offset);
             close_if_can();
 
             while(!read_rollbacks.empty()) {
@@ -251,13 +346,11 @@ namespace Skree {
     }
 
     void QueueDb::sync_write_offset() {
-        lseek(write_page_num_fh, 0, SEEK_SET);
-
         uint64_t _write_page_num = write_page_num;
         uint64_t _write_page_offset = write_page_offset;
         auto db = this;
 
-        while(_write_page_offset == file_size) {
+        while(_write_page_offset == write_page_file_size) {
             db = db->next_page;
             _write_page_num = db->write_page_num;
             _write_page_offset = db->write_page_offset;
@@ -266,11 +359,7 @@ namespace Skree {
         _write_page_num = htonll(_write_page_num);
         _write_page_offset = htonll(_write_page_offset);
 
-        // TODO: atomic write
-        ::write(write_page_num_fh, &_write_page_num, sizeof(_write_page_num));
-        ::write(write_page_num_fh, &_write_page_offset, sizeof(_write_page_offset));
-        fsync(write_page_num_fh);
-
+        atomic_sync_offset("wpos", _write_page_num, _write_page_offset);
         close_if_can();
     }
 
@@ -280,10 +369,10 @@ namespace Skree {
         next_page->close_if_can();
 
         if(
-            (read_page_offset == file_size)
+            (read_page_offset == read_page_file_size)
             && (read_page != next_page->read_page)
         ) {
-            munmap(read_page, file_size);
+            munmap(read_page, read_page_file_size);
             close(read_page_fh);
 
             read_page = next_page->read_page;
@@ -291,10 +380,10 @@ namespace Skree {
         }
 
         if(
-            (write_page_offset == file_size)
+            (write_page_offset == write_page_file_size)
             && (write_page != next_page->write_page)
         ) {
-            munmap(write_page, file_size);
+            munmap(write_page, write_page_file_size);
             close(write_page_fh);
 
             write_page = next_page->write_page;
@@ -320,7 +409,7 @@ namespace Skree {
     }
 
     read_rollback_t* QueueDb::_read(uint64_t len, unsigned char* dest) {
-        uint64_t rest = (file_size - read_page_offset);
+        uint64_t rest = (read_page_file_size - read_page_offset);
         auto rollback = new read_rollback_t {
             .l1 = 0,
             .l2 = nullptr
@@ -371,7 +460,7 @@ namespace Skree {
     }
 
     void QueueDb::_write(uint64_t len, const unsigned char* src) {
-        uint64_t rest = (file_size - write_page_offset);
+        uint64_t rest = (write_page_file_size - write_page_offset);
 
         if(rest >= len) {
             // printf("write_page: 0x%lx, write_page_offset: %lu, src: 0x%lx\n", (intptr_t)write_page, write_page_offset, (intptr_t)src);
@@ -469,7 +558,7 @@ namespace Skree {
 
         last_page = &db;
 
-        while(last_page->file_size == last_page->write_page_offset) {
+        while(last_page->write_page_file_size == last_page->write_page_offset) {
             last_page = last_page->get_next_page();
         }
 
@@ -485,7 +574,10 @@ namespace Skree {
 
         last_page->write_page_offset = begin_offset;
 
-        bool wrap = ((last_page->file_size - last_page->write_page_offset) < sizeof(total_len));
+        bool wrap = (
+            (last_page->write_page_file_size - last_page->write_page_offset)
+            < sizeof(total_len)
+        );
         uint64_t next_end_offset;
 
         if(wrap) {
