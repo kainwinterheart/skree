@@ -28,10 +28,6 @@
 #include "src/skree/server.hpp"
 #include "src/skree/queue_db.hpp"
 
-#ifdef __linux__
-    std::string YAML::detail::node_data::empty_scalar="";
-#endif
-
 static Skree::Utils::skree_modules_t skree_modules;
 static Skree::Utils::event_groups_t event_groups;
 static Skree::Utils::known_events_t known_events;
@@ -41,6 +37,7 @@ int main(int argc, char** argv) {
     std::string known_events_file_name;
     uint32_t my_port;
     uint32_t max_client_threads;
+    uint32_t max_queue_db_file_size;
 
     try {
         TCLAP::CmdLine cmd("skree", '=', "0.01");
@@ -81,10 +78,20 @@ int main(int argc, char** argv) {
             "events_file"
         );
 
+        TCLAP::ValueArg<uint32_t> _max_queue_db_file_size(
+            "",
+            "page-size",
+            "Max queue page file size (megabytes)",
+            false,
+            256,
+            "page_size"
+        );
+
         cmd.add(_port);
         cmd.add(_max_client_threads);
         cmd.add(_db_dir_name);
         cmd.add(_known_events_file_name);
+        cmd.add(_max_queue_db_file_size);
 
         cmd.parse(argc, argv);
 
@@ -92,6 +99,7 @@ int main(int argc, char** argv) {
         max_client_threads = _max_client_threads.getValue();
         db_dir_name = _db_dir_name.getValue();
         known_events_file_name = _known_events_file_name.getValue();
+        max_queue_db_file_size = _max_queue_db_file_size.getValue();
 
     } catch(TCLAP::ArgException& e) {
         printf("%s %s\n", e.error().c_str(), e.argId().c_str());
@@ -100,7 +108,7 @@ int main(int argc, char** argv) {
     YAML::Node config = YAML::LoadFile(known_events_file_name);
 
     {
-        auto create_queue_db = [&db_dir_name](const std::string& name) {
+        auto create_queue_db = [&db_dir_name, &max_queue_db_file_size](const std::string& name) {
             std::string _queue_path (db_dir_name);
             _queue_path.append("/");
             _queue_path.append(name);
@@ -109,7 +117,10 @@ int main(int argc, char** argv) {
                 mkdir(_queue_path.c_str(), 0000755);
             }
 
-            return new Skree::QueueDb (strdup(_queue_path.c_str()), 256 * 1024 * 1024);
+            return new Skree::QueueDb (
+                strdup(_queue_path.c_str()),
+                max_queue_db_file_size * 1024 * 1024
+            );
         };
 
         if(config.Type() != YAML::NodeType::Sequence) {

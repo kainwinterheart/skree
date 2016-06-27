@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <netinet/tcp.h>
+#include <atomic>
 
 #include "atomic_hash_map.hpp"
 
