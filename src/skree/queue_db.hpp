@@ -78,7 +78,7 @@ namespace Skree {
         bool close_fhs;
         void close_if_can();
         void sync_write_offset();
-        // QueueDb* get_next_page();
+        QueueDb* get_next_page();
 
         explicit QueueDb(
             const char* _path, size_t _file_size, uint64_t _read_page_num,
@@ -92,7 +92,6 @@ namespace Skree {
 
         char* read(uint64_t* len = nullptr);
         void sync_read_offset(bool commit = true);
-        QueueDb* get_next_page();
 
         class WriteStream {
         private:
