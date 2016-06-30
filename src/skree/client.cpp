@@ -384,7 +384,7 @@ namespace Skree {
 
             if(read_queue_length > read_queue_mapped_length) {
                 read_queue_mapped_length = server.read_size + read_queue_length;
-                read_queue = (char*)realloc(read_queue, read_queue_length);
+                read_queue = (char*)realloc(read_queue, read_queue_mapped_length);
             }
         }
 

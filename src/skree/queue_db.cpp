@@ -1,25 +1,25 @@
 #include "queue_db.hpp"
+// #include <execinfo.h>
 
 namespace Skree {
     QueueDb::QueueDb(const char* _path, size_t _file_size) : path(_path), file_size(_file_size) {
-        async = false;
-        close_fhs = true;
         path_len = strlen(path);
-        next_page = nullptr;
-        pthread_mutex_init(&read_page_mutex, nullptr);
-        pthread_mutex_init(&write_page_mutex, nullptr);
 
-        read_page = nullptr;
-        read_page_fh = -1;
-        read_page_file_size = 0;
-        get_page_num("rpos", read_page_num, read_page_offset);
-        open_read_page();
+        uint64_t page_num, page_offset;
 
-        write_page = nullptr;
-        write_page_fh = -1;
-        write_page_file_size = 0;
-        get_page_num("wpos", write_page_num, write_page_offset);
-        open_write_page();
+        get_page_num("rpos", page_num, page_offset);
+        read_page = new QueueDb::Page(
+            path_len, path, file_size,
+            page_num, page_offset, /*async=*/false,
+            /*close_fhs=*/true, async_allocators, O_RDONLY
+        );
+
+        get_page_num("wpos", page_num, page_offset);
+        write_page = new QueueDb::Page(
+            path_len, path, file_size,
+            page_num, page_offset, /*async=*/false,
+            /*close_fhs=*/true, async_allocators, O_RDWR
+        );
 
         kv = new DbWrapper;
 
@@ -34,51 +34,57 @@ namespace Skree {
             | kyotocabinet::HashDB::OAUTOTRAN
         )) {
             fprintf(stderr, "Failed to open database: %s\n", kv->error().name());
-            exit(1);
+            abort();
         }
 
-        get_next_page();
-    }
-
-    QueueDb::QueueDb(
-        const char* _path, size_t _file_size, uint64_t _read_page_num,
-        uint64_t _write_page_num, DbWrapper* _kv
-    )
-    : path(_path),
-      file_size(_file_size),
-      kv(_kv),
-      read_page_num(_read_page_num),
-      write_page_num(_write_page_num) {
-        async = true;
-        close_fhs = false;
-        path_len = strlen(path);
-        next_page = nullptr;
-        pthread_mutex_init(&read_page_mutex, nullptr);
-        pthread_mutex_init(&write_page_mutex, nullptr);
-
-        read_page = nullptr;
-        read_page_fh = -1;
-        read_page_offset = 0;
-        read_page_file_size = 0;
-        open_read_page();
-
-        write_page = nullptr;
-        write_page_fh = -1;
-        write_page_offset = 0;
-        write_page_file_size = 0;
-        open_write_page();
+        read_page->get_next();
+        write_page->get_next();
     }
 
     QueueDb::~QueueDb() {
-        pthread_mutex_destroy(&write_page_mutex);
-        pthread_mutex_destroy(&read_page_mutex);
+        delete read_page;
+        delete write_page;
+        delete kv;
+    }
+
+    QueueDb::Page::Page(
+        size_t& _path_len, const char*& _path, size_t& _file_size,
+        uint64_t _num, uint64_t _offset, bool _async, bool _close_fhs,
+        QueueDb::async_allocators_t& _async_allocators, int _flag
+    )
+        : path_len(_path_len)
+        , path(_path)
+        , recommended_file_size(_file_size)
+        , num(_num)
+        , offset(_offset)
+        , async(_async)
+        , close_fhs(_close_fhs)
+        , async_allocators(_async_allocators)
+        , flag(_flag)
+    {
+        pthread_mutex_init(&mutex, nullptr);
+
+        fh = -1;
+        addr = nullptr;
+        next = nullptr;
+        effective_file_size = 0;
+        open_page();
+
+        if(!async) get_next();
+    }
+
+    QueueDb::Page::~Page() {
+        pthread_mutex_destroy(&mutex);
 
         if(close_fhs) {
-            close(read_page_fh);
-            close(write_page_fh);
-        }
+            if(addr != nullptr) {
+                munmap(addr, effective_file_size);
+            }
 
-        delete kv;
+            if(fh != -1) {
+                close(fh);
+            }
+        }
     }
 
     void QueueDb::get_page_num(const char* name, uint64_t& page_num, uint64_t& offset) const {
@@ -94,7 +100,7 @@ namespace Skree {
 
         if(fh == -1) {
             perror("open");
-            exit(1);
+            abort();
 
         } else {
             fchmod(fh, 0000644);
@@ -106,6 +112,12 @@ namespace Skree {
         if(close(fh) == -1) {
             perror("close");
         }
+    }
+
+    void QueueDb::read_uint64(int& fh, std::atomic<uint64_t>& dest) const {
+        uint64_t value;
+        read_uint64(fh, value);
+        dest = value;
     }
 
     void QueueDb::read_uint64(int& fh, uint64_t& dest) const {
@@ -122,31 +134,12 @@ namespace Skree {
         dest = ((read_total == 8) ? ntohll(dest) : 0);
     }
 
-    bool QueueDb::write_chunk(int fh, size_t size, void* data) const {
-        size_t written;
-        size_t total = 0;
-
-        while(total < size) {
-            written = ::write(fh, ((unsigned char*)data) + total, size - total);
-
-            if(written == -1) {
-                perror("write");
-                break;
-
-            } else {
-                total += written;
-            }
-        }
-
-        return (total == size);
-    }
-
-    size_t QueueDb::alloc_page(const char* file) const {
+    size_t QueueDb::Page::alloc_page(const char* file) const {
         int fh = open(file, O_RDWR | O_CREAT);
 
         if(fh == -1) {
             perror("open");
-            exit(1);
+            abort();
         }
 
         fchmod(fh, 0000644);
@@ -155,18 +148,18 @@ namespace Skree {
         char* batch = (char*)malloc(SKREE_QUEUEDB_ZERO_BATCH_SIZE);
         memset(batch, 0, SKREE_QUEUEDB_ZERO_BATCH_SIZE);
         size_t chunk_size;
+        size_t written;
 
-        while(total < file_size) {
+        while(total < recommended_file_size) {
             chunk_size = (
-                ((file_size - total) > SKREE_QUEUEDB_ZERO_BATCH_SIZE)
+                ((recommended_file_size - total) > SKREE_QUEUEDB_ZERO_BATCH_SIZE)
                     ? SKREE_QUEUEDB_ZERO_BATCH_SIZE
-                    : (file_size - total)
+                    : (recommended_file_size - total)
             );
+            written = Utils::write_chunk(fh, chunk_size, batch);
+            total += written;
 
-            if(write_chunk(fh, chunk_size, batch)) {
-                total += chunk_size;
-
-            } else {
+            if(chunk_size != written) {
                 break;
             }
         }
@@ -180,7 +173,7 @@ namespace Skree {
         return total;
     }
 
-    void QueueDb::async_alloc_page(char* _file, uint64_t num) {
+    void QueueDb::Page::async_alloc_page(char* _file) {
         auto end = async_allocators.lock();
         auto it = async_allocators.find(num);
 
@@ -197,7 +190,7 @@ namespace Skree {
 
         char* file = strdup(_file);
 
-        auto cb = [this, file, num](){
+        auto cb = [this, file](){
             auto size = alloc_page(file);
             auto end = async_allocators.lock();
             auto it = async_allocators.find(num);
@@ -217,10 +210,7 @@ namespace Skree {
         thread->start();
     }
 
-    void QueueDb::open_page(
-        int& fh, int flag, const uint64_t& num, char*& addr,
-        size_t& page_file_size, bool force_sync
-    ) {
+    void QueueDb::Page::open_page(bool force_sync) {
         if(fh != -1) return;
 
         if(async) {
@@ -234,7 +224,7 @@ namespace Skree {
                         usleep(500);
                     }
 
-                    page_file_size = it->second->sz;
+                    effective_file_size = it->second->sz;
                     delete it->second;
 
                     async_allocators.lock();
@@ -254,7 +244,7 @@ namespace Skree {
 
         memcpy(file, path, path_len);
         file[path_len] = '/';
-        sprintf(file + path_len + 1, "%lu", num);
+        sprintf(file + path_len + 1, "%lu", num.load());
 
         if((flag & O_RDONLY) || (flag == O_RDONLY) || (flag & O_RDWR) || (flag == O_RDWR)) {
             access_flag |= R_OK;
@@ -273,13 +263,13 @@ namespace Skree {
             throw new std::logic_error ("QueueDb::open_page: Bad flags");
         }
 
-        if(page_file_size == 0) {
+        if(effective_file_size == 0) {
             if(access(file, access_flag) == -1) {
                 if(async && !force_sync) {
-                    async_alloc_page(file, num);
+                    async_alloc_page(file);
 
                 } else {
-                    page_file_size = alloc_page(file);
+                    effective_file_size = alloc_page(file);
                 }
 
             } else {
@@ -289,15 +279,15 @@ namespace Skree {
                     perror("fstat");
 
                 } else {
-                    page_file_size = fh_stat.st_size;
+                    effective_file_size = fh_stat.st_size;
 
-                    if(page_file_size == 0) {
+                    if(effective_file_size == 0) {
                         if(unlink(file) == 0) {
                             if(async && !force_sync) {
-                                async_alloc_page(file, num);
+                                async_alloc_page(file);
 
                             } else {
-                                page_file_size = alloc_page(file);
+                                effective_file_size = alloc_page(file);
                             }
 
                         } else {
@@ -310,7 +300,7 @@ namespace Skree {
 
         if(async && !force_sync) return;
 
-        if(page_file_size == 0) {
+        if(effective_file_size == 0) {
             fprintf(stderr, "Zero-length file: %s\n", file);
             abort();
         }
@@ -318,27 +308,41 @@ namespace Skree {
         fh = open(file, flag);
 
         if(fh == -1) {
-            perror("open");
-            exit(1);
+            perror(file);
+            abort();
         }
 
-        addr = (char*)mmap(0, page_file_size, mmap_prot, MAP_FILE | MAP_SHARED, fh, 0); // TODO: restore MAP_NOCACHE
+        addr = (char*)mmap(0, effective_file_size, mmap_prot, MAP_FILE | MAP_SHARED, fh, 0); // TODO: restore MAP_NOCACHE
 
         if(addr == MAP_FAILED) {
             perror("mmap");
-            exit(1);
+            abort();
         }
     }
 
-    QueueDb* QueueDb::get_next_page() {
-        if(next_page != nullptr) return next_page;
+    QueueDb::Page* QueueDb::Page::get_next() {
+        if(next != nullptr) return next;
 
-        next_page = new QueueDb(
-            path, file_size, read_page_num + 1,
-            write_page_num + 1, kv
+        next = new QueueDb::Page(
+            path_len, path, recommended_file_size,
+            num + 1, /*offset=*/0, /*async=*/true,
+            /*close_fhs=*/false, async_allocators, flag
         );
 
-        return next_page;
+        // {
+        //     void* callstack[128];
+        //     int frames = backtrace(callstack, 128);
+        //     char** strs = backtrace_symbols(callstack, frames);
+        //
+        //     for(int i = 0; i < frames; ++i) {
+        //         printf("get_next(%d) [%d]: %s\n", num.load(), i, strs[i]);
+        //     }
+        //     printf("\n");
+        //
+        //     free(strs);
+        // }
+
+        return next;
     }
 
     void QueueDb::atomic_sync_offset(const char* name, uint64_t& page_num, uint64_t& page_offset) const {
@@ -365,7 +369,7 @@ namespace Skree {
 
         if(fh == -1) {
             perror("open");
-            exit(1);
+            abort();
 
         } else {
             fchmod(fh, 0000644);
@@ -373,8 +377,8 @@ namespace Skree {
 
         // TODO: check result
         bool written = (
-            write_chunk(fh, sizeof(page_num), &page_num)
-            && write_chunk(fh, sizeof(page_offset), &page_offset)
+            (Utils::write_chunk(fh, sizeof(page_num), &page_num) == sizeof(page_num))
+            && (Utils::write_chunk(fh, sizeof(page_offset), &page_offset) == sizeof(page_offset))
         );
 
         if(close(fh) == -1) {
@@ -398,30 +402,27 @@ namespace Skree {
         }
 
         if(commit) {
-            uint64_t _read_page_num = read_page_num;
-            uint64_t _read_page_offset = read_page_offset;
-            auto db = this;
+            uint64_t _read_page_num = read_page->get_num();
+            uint64_t _read_page_offset = read_page->get_offset();
+            auto page = read_page;
 
-            while(_read_page_offset == read_page_file_size) {
-                db = db->next_page;
-                _read_page_num = db->read_page_num;
-                _read_page_offset = db->read_page_offset;
+            while(_read_page_offset == read_page->get_effective_file_size()) {
+                page = page->get_next();
+                _read_page_num = page->get_num();
+                _read_page_offset = page->get_offset();
             }
 
             _read_page_num = htonll(_read_page_num);
             _read_page_offset = htonll(_read_page_offset);
 
             atomic_sync_offset("rpos", _read_page_num, _read_page_offset);
-
-            pthread_mutex_lock(&write_page_mutex);
-            close_if_can();
-            pthread_mutex_unlock(&write_page_mutex);
+            read_page->close_if_can();
 
             while(!read_rollbacks.empty()) {
                 auto _rollback = read_rollbacks.top();
                 read_rollbacks.pop();
 
-                _free_read_rollback(_rollback);
+                read_page->_free_read_rollback(_rollback);
             }
 
         } else {
@@ -429,88 +430,71 @@ namespace Skree {
                 auto _rollback = read_rollbacks.top();
                 read_rollbacks.pop();
 
-                _rollback_read(_rollback);
+                read_page->_rollback_read(_rollback);
             }
         }
     }
 
     void QueueDb::sync_write_offset() {
-        uint64_t _write_page_num = write_page_num;
-        uint64_t _write_page_offset = write_page_offset;
-        auto db = this;
+        uint64_t _write_page_num = write_page->get_num();
+        uint64_t _write_page_offset = write_page->get_offset();
+        auto page = write_page;
 
-        while(_write_page_offset == write_page_file_size) {
-            db = db->next_page;
-            _write_page_num = db->write_page_num;
-            _write_page_offset = db->write_page_offset;
+        while(_write_page_offset == write_page->get_effective_file_size()) {
+            page = page->get_next();
+            _write_page_num = page->get_num();
+            _write_page_offset = page->get_offset();
         }
 
         _write_page_num = htonll(_write_page_num);
         _write_page_offset = htonll(_write_page_offset);
 
         atomic_sync_offset("wpos", _write_page_num, _write_page_offset);
-        close_if_can();
+        write_page->close_if_can();
     }
 
-    void QueueDb::close_if_can() {
-        if(next_page == nullptr) return;
+    void QueueDb::Page::close_if_can() {
+        if(next == nullptr) return;
 
-        next_page->close_if_can();
-
-        if(
-            (read_page_offset == read_page_file_size)
-            && (read_page != next_page->read_page)
-        ) {
-            munmap(read_page, read_page_file_size);
-            close(read_page_fh);
-
-            read_page = next_page->read_page;
-            read_page_fh = next_page->read_page_fh;
-            read_page_file_size = next_page->read_page_file_size;
-            next_page->get_next_page();
-        }
+        next->close_if_can();
 
         if(
-            (write_page_offset == write_page_file_size)
-            && (write_page != next_page->write_page)
+            (addr != nullptr)
+            && (next->addr != nullptr)
+            && (offset == effective_file_size)
+            && (addr != next->addr)
         ) {
-            munmap(write_page, write_page_file_size);
-            close(write_page_fh);
+            // fprintf(stderr, "read_page_file_size(%d): %d\n", read_page_num, read_page_file_size);
+            munmap(addr, effective_file_size);
+            close(fh);
 
-            write_page = next_page->write_page;
-            write_page_fh = next_page->write_page_fh;
-            write_page_file_size = next_page->write_page_file_size;
-            next_page->get_next_page();
-        }
+            addr = next->addr;
+            fh = next->fh;
+            effective_file_size = next->effective_file_size.load();
+            num = next->num.load();
+            offset = next->offset.load();
 
-        while(
-            (next_page != nullptr)
-            && (read_page == next_page->read_page)
-            && (write_page == next_page->write_page)
-        ) {
-            read_page_num = next_page->read_page_num;
-            write_page_num = next_page->write_page_num;
-
-            read_page_offset = next_page->read_page_offset;
-            write_page_offset = next_page->write_page_offset;
-
-            auto prev_next_page = next_page;
-            next_page = next_page->next_page;
-
-            delete prev_next_page;
+            auto prev_next = next;
+            next = next->get_next();
+            delete prev_next;
         }
     }
 
-    read_rollback_t* QueueDb::_read(uint64_t len, unsigned char* dest) {
-        uint64_t rest = (read_page_file_size - read_page_offset);
-        auto rollback = new read_rollback_t {
+    QueueDb::read_rollback_t* QueueDb::_read(uint64_t len, unsigned char* dest) {
+        return read_page->_read(len, dest);
+    }
+
+    QueueDb::read_rollback_t* QueueDb::Page::_read(uint64_t len, unsigned char* dest) {
+        uint64_t rest = (effective_file_size - offset);
+        // fprintf(stderr, "read_page_num: %llu, need to read: %llu, free: %llu, addr: 0x%llx, read_page_offset: %llu\n", read_page_num, len, rest, this, read_page_offset);
+        auto rollback = new QueueDb::read_rollback_t {
             .l1 = 0,
             .l2 = nullptr
         };
 
         if(rest >= len) {
-            memcpy(dest, read_page + read_page_offset, len);
-            read_page_offset += len;
+            memcpy(dest, addr + offset, len);
+            offset += len;
             rollback->l1 = len;
 
             // for(int i = 0; i < len; ++i)
@@ -519,32 +503,34 @@ namespace Skree {
         } else {
             if(rest > 0) {
                 len -= rest;
-                memcpy(dest, read_page + read_page_offset, rest);
-                read_page_offset += rest;
+                memcpy(dest, addr + offset, rest);
+                offset += rest;
                 rollback->l1 = rest;
             }
 
-            auto next = get_next_page();
+            auto next = get_next();
+
+            if(next->async) next->open_page(true);
+
             rollback->l2 = next->_read(len, dest + rest);
         }
 
         return rollback;
     }
 
-    void QueueDb::_rollback_read(read_rollback_t* rollback) {
+    void QueueDb::Page::_rollback_read(QueueDb::read_rollback_t* rollback) {
         if(rollback->l1 > 0) {
-            read_page_offset -= rollback->l1;
+            offset -= rollback->l1;
         }
 
         if(rollback->l2 != nullptr) {
-            auto next = get_next_page();
             next->_rollback_read(rollback->l2);
         }
 
         delete rollback;
     }
 
-    void QueueDb::_free_read_rollback(read_rollback_t* rollback) const {
+    void QueueDb::Page::_free_read_rollback(QueueDb::read_rollback_t* rollback) const {
         if(rollback->l2 != nullptr) {
             _free_read_rollback(rollback->l2);
         }
@@ -553,22 +539,33 @@ namespace Skree {
     }
 
     void QueueDb::_write(uint64_t len, const unsigned char* src) {
-        uint64_t rest = (write_page_file_size - write_page_offset);
+        write_page->_write(len, src);
+    }
 
+    void QueueDb::Page::_write(uint64_t len, const unsigned char* src) {
+        uint64_t rest = (effective_file_size - offset);
+        // fprintf(stderr, "write_page_num: %llu, need to write: %llu, free: %llu, addr: 0x%llx, write_page_offset: %llu\n", num.load(), len, rest, this, offset.load());
         if(rest >= len) {
             // printf("write_page: 0x%lx, write_page_offset: %lu, src: 0x%lx\n", (intptr_t)write_page, write_page_offset, (intptr_t)src);
-            memcpy(write_page + write_page_offset, src, len);
-            write_page_offset += len;
+            memcpy(addr + offset, src, len);
+            offset += len;
 
         } else {
             if(rest > 0) {
                 len -= rest;
-                memcpy(write_page + write_page_offset, src, rest);
-                write_page_offset += rest;
+                memcpy(addr + offset, src, rest);
+                offset += rest;
             }
 
-            auto next = get_next_page();
+            // fprintf(stderr, "before get_next\n");
+            auto next = get_next();
+            // fprintf(stderr, "after get_next\n");
+
+            if(next->async) next->open_page(true);
+            // fprintf(stderr, "after open_page\n");
+
             next->_write(len, src + rest);
+            // fprintf(stderr, "after write\n");
         }
     }
 
@@ -577,37 +574,36 @@ namespace Skree {
             throw new std::logic_error ("You haven't committed previous read, why are you trying to read more?");
         }
 
-        pthread_mutex_lock(&write_page_mutex);
+        write_page->lock();
 
         if(
-            (read_page_num == write_page_num)
-            && (read_page_offset >= write_page_offset)
+            (read_page->get_num() == write_page->get_num())
+            && (read_page->get_offset() >= write_page->get_offset())
         ) {
-            pthread_mutex_unlock(&write_page_mutex);
+            write_page->unlock();
             // TODO: read rollbacks may not be needed after this
             return nullptr;
         }
 
-        pthread_mutex_unlock(&write_page_mutex);
-
-        if(async) open_read_page(true);
+        write_page->unlock();
+        read_page->open_page(true);
 
         char* out = nullptr;
         uint64_t len;
 
         // pthread_mutex_lock(&read_page_mutex);
 
-        auto rollback1 = _read(sizeof(len), (unsigned char*)&len);
+        auto rollback1 = read_page->_read(sizeof(len), (unsigned char*)&len);
         len = ntohll(len);
 
         if(len == 0) {
             // fprintf(stderr, "QueueDb: got zero-length item, rollback\n");
-            _rollback_read(rollback1);
+            read_page->_rollback_read(rollback1);
             throw new std::logic_error ("QueueDb: got zero-length item, rollback");
 
         } else {
             out = (char*)malloc(len);
-            auto rollback2 = _read(len, (unsigned char*)out);
+            auto rollback2 = read_page->_read(len, (unsigned char*)out);
             // _free_read_rollback(rollback2);
             // _free_read_rollback(rollback1);
             read_rollbacks.push(rollback1);
@@ -624,12 +620,6 @@ namespace Skree {
     }
 
     QueueDb::WriteStream* QueueDb::write() {
-        if(async) {
-            pthread_mutex_lock(&write_page_mutex);
-            open_write_page(true);
-            pthread_mutex_unlock(&write_page_mutex);
-        }
-
         return new QueueDb::WriteStream (*this);
     }
 
@@ -640,15 +630,13 @@ namespace Skree {
 
         uint64_t _len = htonll(len);
 
-        pthread_mutex_lock(&write_page_mutex);
+        write_page->lock();
 
-        if(async) open_write_page(true);
-
-        _write(sizeof(_len), (const unsigned char*)&_len);
-        _write(len, (const unsigned char*)data);
+        write_page->_write(sizeof(_len), (const unsigned char*)&_len);
+        write_page->_write(len, (const unsigned char*)data);
         sync_write_offset();
 
-        pthread_mutex_unlock(&write_page_mutex);
+        write_page->unlock();
     }
 
     void QueueDb::WriteStream::write(uint64_t len, void* data) {
@@ -657,15 +645,18 @@ namespace Skree {
     }
 
     QueueDb::WriteStream::WriteStream(QueueDb& _db) : db(_db) {
-        pthread_mutex_lock(&(db.write_page_mutex));
+        db.write_page->lock();
+        db.write_page->open_page(true);
 
-        last_page = &db;
+        last_page = db.write_page;
 
-        while(last_page->write_page_file_size == last_page->write_page_offset) {
-            last_page = last_page->get_next_page();
+        while(last_page->get_effective_file_size() == last_page->get_offset()) {
+            last_page = last_page->get_next();
+
+            if(last_page->get_async()) last_page->open_page(true);
         }
 
-        begin_offset = last_page->write_page_offset;
+        begin_offset = last_page->get_offset();
         total_len = 0;
 
         const uint64_t _total_len (htonll(total_len));
@@ -673,38 +664,35 @@ namespace Skree {
     }
 
     QueueDb::WriteStream::~WriteStream() {
-        uint64_t end_offset = last_page->write_page_offset;
+        uint64_t end_offset = last_page->get_offset();
 
-        last_page->write_page_offset = begin_offset;
+        last_page->set_offset(begin_offset);
 
-        bool wrap = (
-            (last_page->write_page_file_size - last_page->write_page_offset)
-            < sizeof(total_len)
-        );
+        bool wrap = ((last_page->get_effective_file_size() - begin_offset) < sizeof(total_len));
         uint64_t next_end_offset;
 
         if(wrap) {
-            auto& next = last_page->next_page;
-            next_end_offset = next->write_page_offset;
-            next->write_page_offset = 0;
+            auto next = last_page->get_next();
+            next_end_offset = next->get_offset();
+            next->set_offset(0);
         }
 
         if(total_len > 0) {
             const uint64_t _total_len (htonll(total_len));
             db._write(sizeof(_total_len), (const unsigned char*)&_total_len);
 
-            last_page->write_page_offset = end_offset;
+            last_page->set_offset(end_offset);
 
             if(wrap) {
-                auto& next = last_page->next_page;
-                next->write_page_offset = next_end_offset;
+                auto next = last_page->get_next();
+                next->set_offset(next_end_offset);
             }
 
             db.sync_write_offset();
-            pthread_mutex_unlock(&(db.write_page_mutex));
+            db.write_page->unlock();
 
         } else {
-            pthread_mutex_unlock(&(db.write_page_mutex));
+            db.write_page->unlock();
             throw new std::logic_error("QueueDb: zero-length write, ignoring it");
         }
     }

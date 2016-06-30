@@ -170,5 +170,24 @@ namespace Skree {
                 return ntohs(((sockaddr_in6*)s_in)->sin6_port);
             }
         }
+
+        static inline size_t write_chunk(int fh, size_t size, void* data) {
+            size_t written;
+            size_t total = 0;
+
+            while(total < size) {
+                written = ::write(fh, ((unsigned char*)data) + total, size - total);
+
+                if(written == -1) {
+                    perror("write");
+                    break;
+
+                } else {
+                    total += written;
+                }
+            }
+
+            return total;
+        }
     }
 }
