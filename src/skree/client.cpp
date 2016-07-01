@@ -320,8 +320,23 @@ namespace Skree {
         if(peer_id != nullptr) {
             auto known_peer = known_peers.find(peer_id);
 
-            if(known_peer != known_peers_end)
-                known_peers.erase(known_peer);
+            if(known_peer != known_peers_end) {
+                auto& list = known_peer->second;
+                Utils::RoundRobinVector<Skree::Client*> new_list;
+
+                for(const auto& peer : list) {
+                    if(strcmp(conn_id, peer->get_conn_id()) != 0) {
+                        new_list.push_back(peer);
+                    }
+                }
+
+                if(new_list.empty()) {
+                    known_peers.erase(known_peer);
+
+                } else {
+                    list.swap(new_list);
+                }
+            }
 
             free(peer_id);
         }
@@ -331,8 +346,23 @@ namespace Skree {
             auto known_peers_by_conn_id_end = known_peers_by_conn_id.lock();
             auto known_peer = known_peers_by_conn_id.find(conn_id);
 
-            if(known_peer != known_peers_by_conn_id_end)
-                known_peers_by_conn_id.erase(known_peer);
+            if(known_peer != known_peers_by_conn_id_end) {
+                auto& list = known_peer->second;
+                Utils::RoundRobinVector<Skree::Client*> new_list;
+
+                for(const auto& peer : list) {
+                    if(strcmp(conn_id, peer->get_conn_id()) != 0) {
+                        new_list.push_back(peer);
+                    }
+                }
+
+                if(new_list.empty()) {
+                    known_peers_by_conn_id.erase(known_peer);
+
+                } else {
+                    list.swap(new_list);
+                }
+            }
 
             known_peers_by_conn_id.unlock();
 

@@ -21,6 +21,7 @@ namespace Skree {
 }
 
 #include "utils/atomic_hash_map.hpp"
+#include "utils/round_robin_vector.hpp"
 #include "client.hpp"
 #include "workers/client.hpp"
 #include "actions/e.hpp"
@@ -47,8 +48,17 @@ namespace Skree {
     };
 
     typedef Utils::AtomicHashMap<uint64_t, uint64_t> wip_t;
-    typedef Utils::AtomicHashMap<char*, Client*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> known_peers_t;
-    typedef Utils::AtomicHashMap<char*, bool, Utils::char_pointer_hasher, Utils::char_pointer_comparator> me_t;
+    typedef Utils::AtomicHashMap<
+        char*, Utils::RoundRobinVector<Client*>,
+        Utils::char_pointer_hasher,
+        Utils::char_pointer_comparator
+    > known_peers_t;
+
+    typedef Utils::AtomicHashMap<
+        char*, bool,
+        Utils::char_pointer_hasher,
+        Utils::char_pointer_comparator
+    > me_t;
 
     struct peer_to_discover_t {
         const char* host;

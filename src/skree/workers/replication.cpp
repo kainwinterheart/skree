@@ -302,7 +302,7 @@ namespace Skree {
             auto _peer = known_peers.find(item->peer_id);
             known_peers.unlock();
 
-            Skree::Client* peer = ((_peer == known_peers_end) ? nullptr : _peer->second);
+            Skree::Client* peer = ((_peer == known_peers_end) ? nullptr : _peer->second.next());
 
             // fprintf(stderr, "Seems like I need to failover task %llu\n", item->rid);
 
@@ -391,7 +391,7 @@ namespace Skree {
                                 .cb = item
                             };
 
-                            it->second->push_write_queue(witem);
+                            it->second.next()->push_write_queue(witem);
                         }
 
                         --(item->peers_cnt);

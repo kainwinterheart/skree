@@ -272,23 +272,36 @@ namespace Skree {
             // printf("DISCOVERY CB5 OPCODE: %c\n", args.data[0]);
             if(args.data[0] == SKREE_META_OPCODE_K) {
                 auto& known_peers = server.known_peers;
+                auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
                 auto known_peers_end = known_peers.lock();
+                known_peers_by_conn_id.lock();
 
                 // peer_id is guaranteed to be set here
-                auto known_peer = known_peers.find(client.get_peer_id());
+                const auto& peer_id = client.get_peer_id();
+                const auto& conn_id = client.get_conn_id();
+                auto known_peer = known_peers.find(peer_id);
 
                 if(known_peer == known_peers_end) {
-                    server.known_peers[client.get_peer_id()] = &client;
-
-                    auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
-                    known_peers_by_conn_id.lock();
-                    known_peers_by_conn_id[client.get_conn_id()] = &client;
-                    known_peers_by_conn_id.unlock();
+                    known_peers[peer_id] = Utils::RoundRobinVector<Skree::Client*>();
+                    known_peers_by_conn_id[conn_id] = Utils::RoundRobinVector<Skree::Client*>();
 
                 } else {
-                    args.stop = true;
+                    auto& list = known_peer->second;
+
+                    for(const auto& peer : list) {
+                        if(strcmp(conn_id, peer->get_conn_id()) == 0) {
+                            args.stop = true;
+                            break;
+                        }
+                    }
                 }
 
+                if(!args.stop) {
+                    known_peers[peer_id].push_back(&client);
+                    known_peers_by_conn_id[conn_id].push_back(&client);
+                }
+
+                known_peers_by_conn_id.unlock();
                 known_peers.unlock();
 
                 if(!args.stop) {

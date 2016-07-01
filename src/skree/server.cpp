@@ -421,7 +421,7 @@ namespace Skree {
             known_peers.unlock();
 
             if(it != known_peers_end)
-                peer = it->second;
+                peer = it->second.next();
         }
 
         bool done = false;
@@ -785,7 +785,7 @@ namespace Skree {
                             .cb = Skree::PendingReads::noop(*this)
                         };
 
-                        it->second->push_write_queue(item);
+                        it->second.next()->push_write_queue(item);
                     }
 
                     --(ctx->peers_cnt);

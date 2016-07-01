@@ -28,31 +28,50 @@ namespace Skree {
 
             // TODO: (char*)(char[len])
             char* _peer_id = Utils::make_peer_id(host_len, host, port);
+            const auto& conn_id = client.get_conn_id();
 
             auto& known_peers = server.known_peers;
+            auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
             auto end = known_peers.lock();
             auto known_peer = known_peers.find(_peer_id);
+            known_peers_by_conn_id.lock();
 
             if(known_peer == end) {
                 out_data[0] = SKREE_META_OPCODE_K;
+                known_peers[_peer_id] = Utils::RoundRobinVector<Skree::Client*>();
+                known_peers_by_conn_id[conn_id] = Utils::RoundRobinVector<Skree::Client*>();
 
+            } else {
+                bool found = false;
+                const auto& list = known_peers[_peer_id];
+
+                for(const auto& client : list) {
+                    if(strcmp(conn_id, client->get_conn_id()) == 0) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if(found) {
+                    free(_peer_id);
+                    free(host);
+                    out_data[0] = SKREE_META_OPCODE_F;
+
+                } else {
+                    out_data[0] = SKREE_META_OPCODE_K;
+                }
+            }
+
+            if(out_data[0] == SKREE_META_OPCODE_K) {
                 client.set_peer_name(host_len, host);
                 client.set_peer_port(port);
                 client.set_peer_id(_peer_id);
 
-                known_peers[_peer_id] = &client;
-
-                auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
-                known_peers_by_conn_id.lock();
-                known_peers_by_conn_id[client.get_conn_id()] = &client;
-                known_peers_by_conn_id.unlock();
-
-            } else {
-                free(_peer_id);
-                free(host);
-                out_data[0] = SKREE_META_OPCODE_F;
+                known_peers[_peer_id].push_back(&client);
+                known_peers_by_conn_id[conn_id].push_back(&client);
             }
 
+            known_peers_by_conn_id.unlock();
             known_peers.unlock();
         }
 

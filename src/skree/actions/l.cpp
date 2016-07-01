@@ -26,7 +26,8 @@ namespace Skree {
             out_len += sizeof(_known_peers_len);
 
             for(auto& it : known_peers) {
-                peer = it.second;
+                if(it.second.empty()) continue;
+                peer = it.second[0];
 
                 peer_name_len = peer->get_peer_name_len();
                 _peer_name_len = htonl(peer_name_len);
