@@ -74,11 +74,11 @@ namespace Skree {
                 pthread_mutex_unlock(&mutex);
             }
 
-            inline uint64_t get_num() {
+            inline uint64_t get_num() const {
                 return num;
             }
 
-            inline uint64_t get_offset() {
+            inline uint64_t get_offset() const {
                 return offset;
             }
 
@@ -86,11 +86,11 @@ namespace Skree {
                 offset = _offset;
             }
 
-            inline bool get_async() {
+            inline bool get_async() const {
                 return async;
             }
 
-            inline size_t get_effective_file_size() {
+            inline size_t get_effective_file_size() const {
                 return effective_file_size;
             }
         };
@@ -117,11 +117,23 @@ namespace Skree {
     public:
         DbWrapper* kv;
 
+        inline const char* get_path() const {
+            return path;
+        }
+
+        inline const size_t get_path_len() const {
+            return path_len;
+        }
+
         explicit QueueDb(const char* _path, size_t _file_size);
         ~QueueDb();
 
         char* read(uint64_t* len = nullptr);
         void sync_read_offset(bool commit = true);
+
+        inline uint64_t get_first_used_page_num() const {
+            return std::min(read_page->get_num(), write_page->get_num());
+        }
 
         class WriteStream {
         private:

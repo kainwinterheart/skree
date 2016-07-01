@@ -329,6 +329,8 @@ namespace Skree {
             /*close_fhs=*/false, async_allocators, flag
         );
 
+        next->open_page();
+
         // {
         //     void* callstack[128];
         //     int frames = backtrace(callstack, 128);
