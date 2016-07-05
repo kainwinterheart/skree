@@ -17,6 +17,16 @@ namespace Skree {
                 : Skree::Base::Worker(_server, _args) {}
 
             virtual void run() override;
+
+        private:
+            bool do_connect(
+                const char* host,
+                uint32_t peer_port,
+                sockaddr_in*& addr,
+                socklen_t& addr_len,
+                int& fh
+            );
+
             void cb1(Skree::Client& client);
 
             Skree::Base::PendingWrite::QueueItem* cb2(
@@ -41,4 +51,3 @@ namespace Skree {
 }
 
 #include "../server.hpp" // sorry
-

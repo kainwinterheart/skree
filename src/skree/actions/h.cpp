@@ -22,8 +22,7 @@ namespace Skree {
             in_pos += sizeof(_tmp);
             uint16_t port = ntohl(_tmp);
 
-            char* _out_data = (char*)malloc(1);
-            out_data = _out_data;
+            out_data = (char*)malloc(1);
             out_len = 1;
 
             // TODO: (char*)(char[len])
@@ -38,8 +37,6 @@ namespace Skree {
 
             if(known_peer == end) {
                 out_data[0] = SKREE_META_OPCODE_K;
-                known_peers[_peer_id] = Utils::RoundRobinVector<Skree::Client*>();
-                known_peers_by_conn_id[conn_id] = Utils::RoundRobinVector<Skree::Client*>();
 
             } else {
                 bool found = false;
