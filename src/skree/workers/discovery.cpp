@@ -66,6 +66,7 @@ namespace Skree {
                     new_client_t* new_client = new new_client_t {
                         .fh = fh,
                         .cb = [this](Skree::Client& client) {
+                            on_new_client(client);
                             cb1(client);
                         },
                         .s_in = addr,
@@ -335,6 +336,7 @@ namespace Skree {
                                 peer_id_clone,
                                 peer_name_len
                             ](Skree::Client& client) {
+                                on_new_client(client);
                                 client.set_peer_name(peer_name_len, peer_name_clone);
                                 client.set_peer_port(peer_port);
                                 client.set_peer_id(peer_id_clone);
@@ -527,6 +529,19 @@ namespace Skree {
             }
 
             return (Skree::Base::PendingWrite::QueueItem*)nullptr;
+        }
+
+        void Discovery::on_new_client(Skree::Client& client) {
+            const uint32_t protocol_version = htonl(1); // TODO
+            char* str = (char*)malloc(sizeof(protocol_version)); // TODO
+            memcpy(str, &protocol_version, sizeof(protocol_version));
+
+            client.push_write_queue(new Skree::Base::PendingWrite::QueueItem {
+                .len = sizeof(protocol_version),
+                .data = str,
+                .pos = 0,
+                .cb = Skree::PendingReads::noop(server)
+            }, true);
         }
     }
 }

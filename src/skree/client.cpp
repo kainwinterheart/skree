@@ -231,7 +231,7 @@ namespace Skree {
                         break;
                     }
 
-                } else {
+                } else if(protocol_version > 0) {
                     // If pending read waits for opcode, and it is not
                     // the reply opcode we've got here - process data as
                     // ordinary inbound packet
@@ -241,9 +241,13 @@ namespace Skree {
                     printf("Got opcode: 0x%.2X, pending_reads is empty, but queue item is not suitable\n", opcode);
 #endif
                     ordinary_packet_cb(opcode, out_data, out_len, in_packet_len);
+
+                } else {
+                    delete this; // TODO
+                    break;
                 }
 
-            } else {
+            } else if(protocol_version > 0) {
                 // There is no pending reads, so data should be processed
                 // as ordinary inbound packet
 
@@ -252,6 +256,10 @@ namespace Skree {
                 printf("Got opcode: 0x%.2X, pending_reads is empty\n", opcode);
 #endif
                 ordinary_packet_cb(opcode, out_data, out_len, in_packet_len);
+
+            } else {
+                delete this; // TODO
+                break;
             }
 
             // TODO: get rid of memmove()
@@ -284,6 +292,7 @@ namespace Skree {
         conn_port = 0;
         read_queue_length = 0;
         read_queue_mapped_length = 0;
+        protocol_version = 0;
         pthread_mutex_init(&write_queue_mutex, nullptr);
 
         fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
@@ -338,7 +347,7 @@ namespace Skree {
                 }
             }
 
-            free(peer_id);
+            // free(peer_id); // TODO
         }
 
         if(conn_id != nullptr) {
@@ -366,7 +375,7 @@ namespace Skree {
 
             known_peers_by_conn_id.unlock();
 
-            free(conn_id);
+            // free(conn_id); // TODO
         }
 
         known_peers.unlock();

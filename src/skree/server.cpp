@@ -1,4 +1,5 @@
 #include "server.hpp"
+#include "pending_reads/new_client.hpp"
 
 namespace Skree {
     Server::Server(
@@ -695,7 +696,18 @@ namespace Skree {
 
         new_client_t* new_client = new new_client_t {
             .fh = fh,
-            .cb = [](Client& client){},
+            .cb = [server](Client& client){
+                const auto cb = new Skree::PendingReads::Callbacks::NewClient(*server);
+                const auto item = new Skree::Base::PendingRead::QueueItem {
+                    .len = 8,
+                    .cb = cb,
+                    .ctx = nullptr,
+                    .opcode = false,
+                    .noop = false
+                };
+
+                client.push_pending_reads_queue(item, true);
+            },
             .s_in = addr,
             .s_in_len = len
         };

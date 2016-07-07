@@ -27,12 +27,11 @@ namespace Skree {
 
                 pthread_mutex_lock(&mutex);
 
+                if(pos >= std::vector<Value>::size())
+                    pos = 0;
+
                 const auto& value = std::vector<Value>::at(pos);
                 ++pos;
-
-                if(pos >= std::vector<Value>::size()) {
-                    pos = 0;
-                }
 
                 pthread_mutex_unlock(&mutex);
 

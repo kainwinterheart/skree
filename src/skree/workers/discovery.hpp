@@ -46,6 +46,8 @@ namespace Skree {
                 const Skree::Base::PendingRead::QueueItem& item,
                 Skree::Base::PendingRead::Callback::Args& args
             );
+
+            void on_new_client(Skree::Client& client);
         };
     }
 }
