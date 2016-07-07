@@ -8,7 +8,9 @@ namespace Skree {
         ) {
             out_data = (char*)malloc(1
                 + sizeof(server.my_hostname_len)
-                + server.my_hostname_len);
+                + server.my_hostname_len
+                + sizeof(uint32_t)
+            );
 
             out_data[0] = SKREE_META_OPCODE_K;
             out_len += 1;
@@ -19,6 +21,10 @@ namespace Skree {
 
             memcpy(out_data + out_len, server.my_hostname, server.my_hostname_len);
             out_len += server.my_hostname_len;
+
+            const uint32_t max_parallel_connections (htonl(server.get_max_parallel_connections()));
+            memcpy(out_data + out_len, &max_parallel_connections, sizeof(max_parallel_connections));
+            out_len += sizeof(max_parallel_connections);
             // printf("W::in done\n");
         }
 

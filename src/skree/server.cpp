@@ -5,11 +5,14 @@ namespace Skree {
     Server::Server(
         uint32_t _my_port,
         uint32_t _max_client_threads,
+        uint32_t _max_parallel_connections,
         const Utils::known_events_t& _known_events
     )
-    : my_port(_my_port),
-      max_client_threads(_max_client_threads),
-      known_events(_known_events) {
+      : my_port(_my_port)
+      , max_client_threads(_max_client_threads)
+      , max_parallel_connections(_max_parallel_connections)
+      , known_events(_known_events)
+    {
         pthread_mutex_init(&new_clients_mutex, nullptr);
 
         stat_num_inserts = 0;

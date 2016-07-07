@@ -70,16 +70,17 @@ namespace Skree {
     class Server {
     private:
         std::queue<Workers::Client*> threads;
-        uint32_t max_client_threads;
+        const uint32_t max_client_threads;
+        const uint32_t max_parallel_connections;
         void load_peers_to_discover();
         static void socket_cb(struct ev_loop* loop, ev_io* watcher, int events);
     public:
         std::queue<new_client_t*> new_clients;
-        size_t read_size = 131072;
-        uint64_t no_failover_time = 10 * 60;
-        time_t discovery_timeout_milliseconds = 3000;
-        uint32_t max_replication_factor = 3;
-        uint64_t job_time = 10 * 60;
+        const size_t read_size = 131072;
+        const uint64_t no_failover_time = 10 * 60;
+        const time_t discovery_timeout_milliseconds = 3000;
+        const uint32_t max_replication_factor = 3;
+        const uint64_t job_time = 10 * 60;
 
         std::atomic<uint_fast64_t> stat_num_inserts;
         std::atomic<uint_fast64_t> stat_num_replications;
@@ -106,6 +107,7 @@ namespace Skree {
         Server(
             uint32_t _my_port,
             uint32_t _max_client_threads,
+            uint32_t _max_parallel_connections,
             const Utils::known_events_t& _known_events
         );
         virtual ~Server();
@@ -139,5 +141,9 @@ namespace Skree {
             Utils::known_event_t& event,
             const uint64_t& now
         );
+
+        inline const uint32_t get_max_parallel_connections() const {
+            return max_parallel_connections;
+        }
     };
 }

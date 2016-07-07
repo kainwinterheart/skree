@@ -37,6 +37,7 @@ int main(int argc, char** argv) {
     std::string known_events_file_name;
     uint32_t my_port;
     uint32_t max_client_threads;
+    uint32_t max_parallel_connections;
     uint32_t max_queue_db_file_size;
 
     try {
@@ -58,6 +59,15 @@ int main(int argc, char** argv) {
             false,
             1, // TODO: sane default
             "thread_count"
+        );
+
+        TCLAP::ValueArg<uint32_t> _max_parallel_connections(
+            "",
+            "parallel-connections",
+            "Maximum parallel connections",
+            false,
+            20, // TODO: sane default
+            "parallel_connections"
         );
 
         TCLAP::ValueArg<std::string> _db_dir_name(
@@ -89,6 +99,7 @@ int main(int argc, char** argv) {
 
         cmd.add(_port);
         cmd.add(_max_client_threads);
+        cmd.add(_max_parallel_connections);
         cmd.add(_db_dir_name);
         cmd.add(_known_events_file_name);
         cmd.add(_max_queue_db_file_size);
@@ -97,6 +108,7 @@ int main(int argc, char** argv) {
 
         my_port = _port.getValue();
         max_client_threads = _max_client_threads.getValue();
+        max_parallel_connections = _max_parallel_connections.getValue();
         db_dir_name = _db_dir_name.getValue();
         known_events_file_name = _known_events_file_name.getValue();
         max_queue_db_file_size = _max_queue_db_file_size.getValue();
@@ -234,7 +246,7 @@ int main(int argc, char** argv) {
     printf("Running on port: %u\n", my_port);
     signal(SIGPIPE, SIG_IGN);
 
-    Skree::Server server (my_port, max_client_threads, known_events);
+    Skree::Server server (my_port, max_client_threads, max_parallel_connections, known_events);
 
     return 0;
 }

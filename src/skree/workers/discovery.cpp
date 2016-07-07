@@ -1,4 +1,7 @@
 #include "discovery.hpp"
+#include "../meta.hpp"
+
+#include <algorithm>
 
 namespace Skree {
     namespace Workers {
@@ -311,8 +314,9 @@ namespace Skree {
                 known_peers.unlock();
 
                 if(!args.stop) {
-                    // TODO
-                    for(int i = 0; i < 10; ++i) {
+                    const auto& max_parallel_connections(client.get_max_parallel_connections() - 1);
+
+                    for(int i = 0; i < max_parallel_connections; ++i) {
                         const auto& peer_name = client.get_peer_name();
                         const auto& peer_port = client.get_peer_port();
                         sockaddr_in* addr;
@@ -449,6 +453,14 @@ namespace Skree {
                 in_pos += len;
                 peer_name[len] = '\0';
 
+                memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
+                in_pos += sizeof(_tmp);
+
+                client.set_max_parallel_connections(std::min(
+                    server.get_max_parallel_connections(),
+                    ntohl(_tmp)
+                ));
+
                 _tmp = client.get_conn_port();
                 char* _peer_id = Utils::make_peer_id(len, peer_name, _tmp);
                 bool accepted = false;
@@ -532,7 +544,7 @@ namespace Skree {
         }
 
         void Discovery::on_new_client(Skree::Client& client) {
-            const uint32_t protocol_version = htonl(1); // TODO
+            const uint32_t protocol_version (htonl(PROTOCOL_VERSION));
             char* str = (char*)malloc(sizeof(protocol_version)); // TODO
             memcpy(str, &protocol_version, sizeof(protocol_version));
 
