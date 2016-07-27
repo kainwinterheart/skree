@@ -4,7 +4,7 @@ namespace Skree {
     namespace Actions {
         void R::in(
             const uint64_t& in_len, const char*& in_data,
-            uint64_t& out_len, char*& out_data
+            Skree::Base::PendingWrite::QueueItem*& out
         ) {
             uint64_t in_pos = 0;
             uint32_t _tmp;
@@ -34,10 +34,8 @@ namespace Skree {
             auto it = server.known_events.find(event_name);
 
             if(it == server.known_events.end()) {
-                fprintf(stderr, "[R::in] Got unknown event: %s\n", event_name);
-                out_data = (char*)malloc(1);
-                out_len += 1;
-                out_data[0] = SKREE_META_OPCODE_F;
+                Utils::cluck(2, "[R::in] Got unknown event: %s\n", event_name);
+                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
                 return;
             }
 
@@ -68,7 +66,7 @@ namespace Skree {
                 };
 
                 sprintf(event->id, "%llu", ntohll(_tmp64)); // TODO: is this really necessary?
-                // printf("repl got id: %lu\n", ntohll(event->id_net));
+                // Utils::cluck(2, "repl got id: %lu\n", ntohll(event->id_net));
 
                 memcpy(event->data, in_data + in_pos, _tmp);
                 in_pos += _tmp;
@@ -119,86 +117,62 @@ namespace Skree {
 
             short result = server.repl_save(&ctx, client, *queue);
 
-            out_data = (char*)malloc(1);
-            out_len += 1;
-
             if(result == REPL_SAVE_RESULT_F) {
-                out_data[0] = SKREE_META_OPCODE_F;
+                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
 
             } else if(result == REPL_SAVE_RESULT_K) {
-                out_data[0] = SKREE_META_OPCODE_K;
+                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
 
             } else {
-                fprintf(stderr, "Unexpected repl_save() result: %d\n", result);
-                exit(1);
+                Utils::cluck(2, "Unexpected repl_save() result: %d\n", result);
+                abort();
             }
         }
 
-        Utils::muh_str_t* R::out_init(
+        Skree::Base::PendingWrite::QueueItem* R::out_init(
             const Server& server, const uint32_t& event_name_len,
             const char*& event_name, const uint32_t& cnt
         ) {
             uint32_t _cnt = htonl(cnt);
-            Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
-            out->len = 0;
-            out->data = (char*)malloc(1
-                + sizeof(server.my_hostname_len)
+            auto out = new Skree::Base::PendingWrite::QueueItem((
+                sizeof(server.my_hostname_len)
                 + server.my_hostname_len
                 + sizeof(server.my_port)
                 + sizeof(event_name_len)
                 + event_name_len
                 + sizeof(_cnt)
-            );
-
-            out->data[0] = opcode();
-            out->len += 1;
+            ), opcode());
 
             uint32_t _hostname_len = htonl(server.my_hostname_len);
-            memcpy(out->data + out->len, &_hostname_len, sizeof(_hostname_len));
-            out->len += sizeof(_hostname_len);
+            out->push(sizeof(_hostname_len), &_hostname_len);
 
-            memcpy(out->data + out->len, server.my_hostname, server.my_hostname_len);
-            out->len += server.my_hostname_len;
+            out->push(server.my_hostname_len, server.my_hostname);
 
             uint32_t _my_port = htonl(server.my_port);
-            memcpy(out->data + out->len, (char*)&_my_port, sizeof(_my_port));
-            out->len += sizeof(_my_port);
+            out->push(sizeof(_my_port), (char*)&_my_port);
 
             uint32_t _event_name_len = htonl(event_name_len);
-            memcpy(out->data + out->len, (char*)&_event_name_len, sizeof(_event_name_len));
-            out->len += sizeof(_event_name_len);
+            out->push(sizeof(_event_name_len), (char*)&_event_name_len);
 
-            memcpy(out->data + out->len, event_name, event_name_len);
-            out->len += event_name_len;
-
-            memcpy(out->data + out->len, (char*)&_cnt, sizeof(_cnt));
-            out->len += sizeof(_cnt);
+            out->push(event_name_len, event_name);
+            out->push(sizeof(_cnt), (char*)&_cnt);
 
             return out;
         }
 
         void R::out_add_event(
-            Utils::muh_str_t*& r_req, const uint64_t& id,
-            const uint32_t& len, const char*& data
+            Skree::Base::PendingWrite::QueueItem* r_req,
+            const uint64_t& id, const uint32_t& len, const char*& data
         ) {
             uint64_t _id = htonll(id);
+            r_req->grow(sizeof(_id) + sizeof(len) + len);
 
-            r_req->data = (char*)realloc(r_req->data,
-                r_req->len
-                + sizeof(_id)
-                + sizeof(len)
-                + len
-            );
-
-            memcpy(r_req->data + r_req->len, (char*)&_id, sizeof(_id));
-            r_req->len += sizeof(_id);
+            r_req->push(sizeof(_id), (char*)&_id);
 
             uint32_t _event_len = htonl(len);
-            memcpy(r_req->data + r_req->len, (char*)&_event_len, sizeof(_event_len));
-            r_req->len += sizeof(_event_len);
+            r_req->push(sizeof(_event_len), (char*)&_event_len);
 
-            memcpy(r_req->data + r_req->len, data, len);
-            r_req->len += len;
+            r_req->push(len, data);
         }
     }
 }

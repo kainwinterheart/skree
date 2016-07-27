@@ -11,7 +11,7 @@ namespace Skree {
                 out_packet_r_ctx* ctx = (out_packet_r_ctx*)(item.ctx);
                 --(ctx->pending);
 
-                if(args.data[0] == SKREE_META_OPCODE_K) {
+                if(args.opcode == SKREE_META_OPCODE_K) {
                     packet_r_ctx_peer* peer =
                         (packet_r_ctx_peer*)malloc(sizeof(*peer));
 

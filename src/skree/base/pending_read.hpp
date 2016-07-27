@@ -24,10 +24,10 @@ namespace Skree {
                 Skree::Server& server;
             public:
                 struct Args {
-                    size_t& out_len;
                     const char*& data;
-                    char*& out_data;
+                    Skree::Base::PendingWrite::QueueItem*& out;
                     bool& stop;
+                    const char opcode;
                 };
 
                 Callback(Skree::Server& _server) : server(_server) {}
@@ -56,4 +56,3 @@ namespace Skree {
         }
     }
 }
-

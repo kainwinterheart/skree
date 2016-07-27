@@ -10,20 +10,10 @@ namespace Skree {
         private:
             pthread_mutex_t mutex;
             uint64_t pos;
-        public:
-            RoundRobinVector() : std::vector<Value>() {
-                pthread_mutex_init(&mutex, nullptr);
-                pos = 0;
-            }
 
-            virtual ~RoundRobinVector() {
-                pthread_mutex_destroy(&mutex);
-            }
-
-            Value next() {
-                if(std::vector<Value>::empty()) {
-                    throw new std::logic_error ("next() called on empty round-robin vector");
-                }
+            Value next_impl() {
+                if(std::vector<Value>::empty())
+                    throw std::logic_error ("next() called on empty round-robin vector");
 
                 pthread_mutex_lock(&mutex);
 
@@ -37,6 +27,17 @@ namespace Skree {
 
                 return value;
             }
+        public:
+            RoundRobinVector() : std::vector<Value>() {
+                pthread_mutex_init(&mutex, nullptr);
+                pos = 0;
+            }
+
+            virtual ~RoundRobinVector() {
+                pthread_mutex_destroy(&mutex);
+            }
+
+            inline Value next();
         };
     }
 }

@@ -13,7 +13,7 @@ namespace Skree {
                 pthread_mutex_lock(ctx->mutex);
                 --(*(ctx->pending));
 
-                if(args.data[0] == SKREE_META_OPCODE_K)
+                if(args.opcode == SKREE_META_OPCODE_K)
                     ++(*(ctx->acceptances));
 
                 continue_replication_exec(ctx);

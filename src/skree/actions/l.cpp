@@ -4,13 +4,10 @@ namespace Skree {
     namespace Actions {
         void L::in(
             const uint64_t& in_len, const char*& in_data,
-            uint64_t& out_len, char*& out_data
+            Skree::Base::PendingWrite::QueueItem*& out
         ) {
             uint32_t _known_peers_len;
-            out_data = (char*)malloc(1 + sizeof(_known_peers_len));
-
-            out_data[0] = SKREE_META_OPCODE_K;
-            out_len += 1;
+            out = new Skree::Base::PendingWrite::QueueItem (sizeof(_known_peers_len), SKREE_META_OPCODE_K);
 
             Client* peer;
             uint32_t peer_name_len;
@@ -21,9 +18,7 @@ namespace Skree {
             known_peers.lock();
 
             _known_peers_len = htonl(known_peers.size());
-            memcpy(out_data + out_len, (char*)&_known_peers_len,
-                sizeof(_known_peers_len));
-            out_len += sizeof(_known_peers_len);
+            out->push(sizeof(_known_peers_len), &_known_peers_len);
 
             for(auto& it : known_peers) {
                 if(it.second.empty()) continue;
@@ -33,30 +28,18 @@ namespace Skree {
                 _peer_name_len = htonl(peer_name_len);
                 _peer_port = htonl(peer->get_peer_port());
 
-                out_data = (char*)realloc(out_data, out_len
-                    + sizeof(_peer_name_len) + peer_name_len
-                    + sizeof(_peer_port));
+                out->grow(sizeof(_peer_name_len) + peer_name_len + sizeof(_peer_port));
 
-                memcpy(out_data + out_len, &_peer_name_len,
-                        sizeof(_peer_name_len));
-                out_len += sizeof(_peer_name_len);
-
-                memcpy(out_data + out_len, peer->get_peer_name(), peer_name_len);
-                out_len += peer_name_len;
-
-                memcpy(out_data + out_len, &_peer_port, sizeof(_peer_port));
-                out_len += sizeof(_peer_port);
+                out->push(sizeof(_peer_name_len), &_peer_name_len);
+                out->push(peer_name_len, peer->get_peer_name());
+                out->push(sizeof(_peer_port), &_peer_port);
             }
 
             known_peers.unlock();
         }
 
-        Utils::muh_str_t* L::out_init() {
-            Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
-            out->len = 1;
-            out->data = (char*)malloc(1);
-            out->data[0] = opcode();
-            return out;
+        Skree::Base::PendingWrite::QueueItem* L::out_init() {
+            return new Skree::Base::PendingWrite::QueueItem(0, opcode());
         }
     }
 }

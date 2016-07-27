@@ -4,7 +4,7 @@ namespace Skree {
     namespace Actions {
         void H::in(
             const uint64_t& in_len, const char*& in_data,
-            uint64_t& out_len, char*& out_data
+            Skree::Base::PendingWrite::QueueItem*& out
         ) {
             uint64_t in_pos = 0;
             uint32_t _tmp;
@@ -22,9 +22,6 @@ namespace Skree {
             in_pos += sizeof(_tmp);
             uint16_t port = ntohl(_tmp);
 
-            out_data = (char*)malloc(1);
-            out_len = 1;
-
             // TODO: (char*)(char[len])
             char* _peer_id = Utils::make_peer_id(host_len, host, port);
             const auto& conn_id = client.get_conn_id();
@@ -36,7 +33,7 @@ namespace Skree {
             known_peers_by_conn_id.lock();
 
             if(known_peer == end) {
-                out_data[0] = SKREE_META_OPCODE_K;
+                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
 
             } else {
                 bool found = false;
@@ -52,14 +49,14 @@ namespace Skree {
                 if(found) {
                     free(_peer_id);
                     free(host);
-                    out_data[0] = SKREE_META_OPCODE_F;
+                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
 
                 } else {
-                    out_data[0] = SKREE_META_OPCODE_K;
+                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
                 }
             }
 
-            if(out_data[0] == SKREE_META_OPCODE_K) {
+            if(out->get_opcode() == SKREE_META_OPCODE_K) {
                 client.set_peer_name(host_len, host);
                 client.set_peer_port(port);
                 client.set_peer_id(_peer_id);
@@ -72,28 +69,20 @@ namespace Skree {
             known_peers.unlock();
         }
 
-        Utils::muh_str_t* H::out_init(const Server& server) {
-            Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
-            out->len = 0;
-            out->data = (char*)malloc(1
-                + sizeof(server.my_hostname_len)
+        Skree::Base::PendingWrite::QueueItem* H::out_init(const Server& server) {
+            auto out = new Skree::Base::PendingWrite::QueueItem((
+                sizeof(server.my_hostname_len)
                 + server.my_hostname_len
                 + sizeof(server.my_port)
-            );
-
-            (out->data)[0] = opcode();
-            out->len += 1;
+            ), opcode());
 
             uint32_t _hostname_len = htonl(server.my_hostname_len);
-            memcpy(out->data + out->len, &_hostname_len, sizeof(_hostname_len));
-            out->len += sizeof(_hostname_len);
+            out->push(sizeof(_hostname_len), &_hostname_len);
 
-            memcpy(out->data + out->len, server.my_hostname, server.my_hostname_len);
-            out->len += server.my_hostname_len;
+            out->push(server.my_hostname_len, server.my_hostname);
 
             uint32_t _my_port = htonl(server.my_port);
-            memcpy(out->data + out->len, &_my_port, sizeof(_my_port));
-            out->len += sizeof(_my_port);
+            out->push(sizeof(_my_port), &_my_port);
 
             return out;
         }

@@ -7,6 +7,7 @@ namespace Skree {
         const char * vbuf,
         size_t vsiz
     ) {
+        // Utils::cluck(2, "db.add(%s)", kbuf);
         lock();
         auto rv = kyotocabinet::HashDB::add(kbuf, ksiz, vbuf, vsiz);
         unlock();
@@ -29,11 +30,11 @@ namespace Skree {
         const char * kbuf,
         size_t ksiz
     ) {
-        // printf("db_wrapper::remove(");
+        // fprintf(stderr, "db_wrapper::remove(");
         // for(size_t i = 0; i < ksiz; ++i) {
-        //     printf("%.2X", kbuf[i]);
+        //     fprintf(stderr, "%.2X", kbuf[i]);
         // }
-        // printf(")\n");
+        // Utils::cluck(1, ")");
         // abort();
         lock();
         auto rv = kyotocabinet::HashDB::remove(kbuf, ksiz);
@@ -149,7 +150,7 @@ namespace Skree {
                     memcpy(key, _key, key_len);
                     key[key_len] = '\0';
                     // if(strncmp(key,"wrinseq",7)!=0)
-                    // printf("got %s\n",key);
+                    // Utils::cluck(2, "got %s\n",key);
 
                     char* value = (char*)malloc(value_len);
                     memcpy(value, _value, value_len);

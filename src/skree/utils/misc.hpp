@@ -9,6 +9,12 @@
 #include <sys/socket.h>
 #include <netinet/tcp.h>
 #include <atomic>
+#include <execinfo.h>
+#include <stdlib.h>
+#include <cxxabi.h>
+#include <string>
+#include <dlfcn.h>
+#include <stdarg.h>
 
 #include "atomic_hash_map.hpp"
 
@@ -188,6 +194,69 @@ namespace Skree {
             }
 
             return total;
+        }
+
+        static inline std::string longmess(int offset = 1) {
+            std::string out;
+
+            void* callstack[128];
+            int frames = backtrace(callstack, 128);
+            int status;
+            char* name;
+            bool dli_ok;
+            Dl_info info;
+            char tmp [21];
+            int starting_offset = offset;
+
+            for(; offset < frames; ++offset) {
+                status = dladdr(callstack[offset], &info);
+
+                if((status != 0) && (info.dli_sname != nullptr)) {
+                    dli_ok = true;
+                    name = abi::__cxa_demangle(info.dli_sname, 0, 0, &status);
+
+                    if(status != 0) {
+                        name = strdup(info.dli_sname);
+                    }
+
+                } else {
+                    if(status != 0)
+                        dli_ok = true;
+
+                    name = (char*)malloc(4);
+                    sprintf(name, "???");
+                    status = 1;
+                }
+
+                out.append("\t");
+
+                sprintf(tmp, "%d", (offset - starting_offset));
+                out.append(tmp);
+                out.append("\t");
+
+                out.append((dli_ok ? info.dli_fname : name));
+                out.append("\t");
+                out.append(name);
+
+                out.append("\n");
+
+                free(name);
+            }
+
+            return out;
+        }
+
+        static inline void cluck(int n, ...) {
+            va_list args;
+            va_start(args, n);
+            auto format = va_arg(args, const char*);
+
+            vfprintf(stderr, format, args);
+            va_end(args);
+
+            fprintf(stderr, "\n");
+            fprintf(stderr, "%s", longmess(2).c_str());
+            fprintf(stderr, "\n");
         }
     }
 }

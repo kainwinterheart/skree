@@ -4,7 +4,7 @@ namespace Skree {
     namespace Actions {
         void X::in(
             const uint64_t& in_len, const char*& in_data,
-            uint64_t& out_len, char*& out_data
+            Skree::Base::PendingWrite::QueueItem*& out
         ) {
             uint64_t in_pos = 0;
             uint32_t _tmp;
@@ -31,7 +31,7 @@ namespace Skree {
             auto eit = server.known_events.find(event_id);
 
             if(eit == server.known_events.end()) {
-                fprintf(stderr, "[X::in] Got unknown event: %s\n", event_id);
+                Utils::cluck(2, "[X::in] Got unknown event: %s\n", event_id);
                 return;
             }
 
@@ -54,40 +54,30 @@ namespace Skree {
             event.unfailover(suffix);
         }
 
-        Utils::muh_str_t* X::out_init(
+        Skree::Base::PendingWrite::QueueItem* X::out_init(
             Utils::muh_str_t*& peer_id,
             Utils::known_event_t& event,
             const uint64_t& rid
         ) {
-            Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
-            out->len = 1;
-            out->data = (char*)malloc(
-                out->len
-                + sizeof(peer_id->len)
+            auto out = new Skree::Base::PendingWrite::QueueItem((
+                sizeof(peer_id->len)
                 + peer_id->len
                 + sizeof(uint32_t) /*sizeof(event.id_len)*/
                 + event.id_len
                 + sizeof(rid)
-            );
-
-            out->data[0] = 'x';
+            ), opcode());
 
             uint32_t peer_id_len_net = htonl(peer_id->len);
-            memcpy(out->data + out->len, (char*)&peer_id_len_net, sizeof(peer_id_len_net));
-            out->len += sizeof(peer_id_len_net);
+            out->push(sizeof(peer_id_len_net), (char*)&peer_id_len_net);
 
-            memcpy(out->data + out->len, peer_id->data, peer_id->len);
-            out->len += peer_id->len;
-
-            memcpy(out->data + out->len, (char*)&(event.id_len_net), sizeof(uint32_t) /*sizeof(event.id_len)*/);
-            out->len += sizeof(uint32_t) /*sizeof(event.id_len)*/;
-
-            memcpy(out->data + out->len, event.id, event.id_len);
-            out->len += event.id_len;
+            out->push(peer_id->len, peer_id->data);
+            out->push(sizeof(uint32_t) /*sizeof(event.id_len)*/, (char*)&(event.id_len_net));
+            out->push(event.id_len, event.id);
 
             uint64_t rid_net = htonll(rid);
-            memcpy(out->data + out->len, (char*)&rid_net, sizeof(rid_net));
-            out->len += sizeof(rid_net);
+            out->push(sizeof(rid_net), (char*)&rid_net);
+
+            out->finish(); // TODO?
 
             return out;
         }

@@ -33,7 +33,7 @@ namespace Skree {
             | kyotocabinet::HashDB::ONOLOCK
             | kyotocabinet::HashDB::OAUTOTRAN
         )) {
-            fprintf(stderr, "Failed to open database: %s\n", kv->error().name());
+            Utils::cluck(2, "Failed to open database: %s\n", kv->error().name());
             abort();
         }
 
@@ -259,8 +259,7 @@ namespace Skree {
         }
 
         if(!known_flag) {
-            // fprintf(stderr, "flag: %lld, access_flag: %lld, mmap_prot: %lld, O_RDONLY: %lld, O_WRONLY: %lld, O_RDWR: %lld\n", flag, access_flag, mmap_prot, O_RDONLY, O_WRONLY, O_RDWR);
-            throw new std::logic_error ("QueueDb::open_page: Bad flags");
+            throw std::logic_error ("QueueDb::open_page: Bad flags");
         }
 
         if(effective_file_size == 0) {
@@ -301,7 +300,7 @@ namespace Skree {
         if(async && !force_sync) return;
 
         if(effective_file_size == 0) {
-            fprintf(stderr, "Zero-length file: %s\n", file);
+            Utils::cluck(2, "Zero-length file: %s\n", file);
             abort();
         }
 
@@ -330,19 +329,6 @@ namespace Skree {
         );
 
         next->open_page();
-
-        // {
-        //     void* callstack[128];
-        //     int frames = backtrace(callstack, 128);
-        //     char** strs = backtrace_symbols(callstack, frames);
-        //
-        //     for(int i = 0; i < frames; ++i) {
-        //         printf("get_next(%d) [%d]: %s\n", num.load(), i, strs[i]);
-        //     }
-        //     printf("\n");
-        //
-        //     free(strs);
-        // }
 
         return next;
     }
@@ -400,7 +386,7 @@ namespace Skree {
 
     void QueueDb::sync_read_offset(bool commit) {
         if(read_rollbacks.empty()) {
-            throw new std::logic_error ("There are no read rollbacks, what are you syncing?");
+            throw std::logic_error ("There are no read rollbacks, what are you syncing?");
         }
 
         if(commit) {
@@ -466,7 +452,7 @@ namespace Skree {
             && (offset == effective_file_size)
             && (addr != next->addr)
         ) {
-            // fprintf(stderr, "read_page_file_size(%d): %d\n", read_page_num, read_page_file_size);
+            // Utils::cluck(3, "read_page_file_size(%d): %d\n", read_page_num, read_page_file_size);
             munmap(addr, effective_file_size);
             close(fh);
 
@@ -488,7 +474,7 @@ namespace Skree {
 
     QueueDb::read_rollback_t* QueueDb::Page::_read(uint64_t len, unsigned char* dest) {
         uint64_t rest = (effective_file_size - offset);
-        // fprintf(stderr, "read_page_num: %llu, need to read: %llu, free: %llu, addr: 0x%llx, read_page_offset: %llu\n", read_page_num, len, rest, this, read_page_offset);
+        // Utils::cluck(6, "read_page_num: %llu, need to read: %llu, free: %llu, addr: 0x%llx, read_page_offset: %llu\n", read_page_num, len, rest, this, read_page_offset);
         auto rollback = new QueueDb::read_rollback_t {
             .l1 = 0,
             .l2 = nullptr
@@ -500,7 +486,7 @@ namespace Skree {
             rollback->l1 = len;
 
             // for(int i = 0; i < len; ++i)
-            //     printf("read byte [%d]: 0x%.2X\n", i,dest[i]);
+            //     Utils::cluck(3, "read byte [%d]: 0x%.2X\n", i,dest[i]);
 
         } else {
             if(rest > 0) {
@@ -546,9 +532,9 @@ namespace Skree {
 
     void QueueDb::Page::_write(uint64_t len, const unsigned char* src) {
         uint64_t rest = (effective_file_size - offset);
-        // fprintf(stderr, "write_page_num: %llu, need to write: %llu, free: %llu, addr: 0x%llx, write_page_offset: %llu\n", num.load(), len, rest, this, offset.load());
+        // Utils::cluck(6, "write_page_num: %llu, need to write: %llu, free: %llu, addr: 0x%llx, write_page_offset: %llu\n", num.load(), len, rest, this, offset.load());
         if(rest >= len) {
-            // printf("write_page: 0x%lx, write_page_offset: %lu, src: 0x%lx\n", (intptr_t)write_page, write_page_offset, (intptr_t)src);
+            // Utils::cluck(4, "write_page: 0x%lx, write_page_offset: %lu, src: 0x%lx\n", (intptr_t)write_page, write_page_offset, (intptr_t)src);
             memcpy(addr + offset, src, len);
             offset += len;
 
@@ -559,21 +545,21 @@ namespace Skree {
                 offset += rest;
             }
 
-            // fprintf(stderr, "before get_next\n");
+            // Utils::cluck(1, "before get_next\n");
             auto next = get_next();
-            // fprintf(stderr, "after get_next\n");
+            // Utils::cluck(1, "after get_next\n");
 
             if(next->async) next->open_page(true);
-            // fprintf(stderr, "after open_page\n");
+            // Utils::cluck(1, "after open_page\n");
 
             next->_write(len, src + rest);
-            // fprintf(stderr, "after write\n");
+            // Utils::cluck(1, "after write\n");
         }
     }
 
     char* QueueDb::read(uint64_t* _len) {
         if(!read_rollbacks.empty()) {
-            throw new std::logic_error ("You haven't committed previous read, why are you trying to read more?");
+            throw std::logic_error ("You haven't committed previous read, why are you trying to read more?");
         }
 
         write_page->lock();
@@ -599,9 +585,9 @@ namespace Skree {
         len = ntohll(len);
 
         if(len == 0) {
-            // fprintf(stderr, "QueueDb: got zero-length item, rollback\n");
+            // Utils::cluck(1, "QueueDb: got zero-length item, rollback\n");
             read_page->_rollback_read(rollback1);
-            throw new std::logic_error ("QueueDb: got zero-length item, rollback");
+            throw std::logic_error ("QueueDb: got zero-length item, rollback");
 
         } else {
             out = (char*)malloc(len);
@@ -627,7 +613,7 @@ namespace Skree {
 
     void QueueDb::write(uint64_t len, void* data) {
         if(len == 0) {
-            throw new std::logic_error("QueueDb: zero-length write, ignoring it");
+            throw std::logic_error("QueueDb: zero-length write, ignoring it");
         }
 
         uint64_t _len = htonll(len);
@@ -695,7 +681,7 @@ namespace Skree {
 
         } else {
             db.write_page->unlock();
-            throw new std::logic_error("QueueDb: zero-length write, ignoring it");
+            throw std::logic_error("QueueDb: zero-length write, ignoring it");
         }
     }
 }

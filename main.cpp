@@ -142,7 +142,7 @@ int main(int argc, char** argv) {
         for(auto group = config.begin(); group != config.end(); ++group) {
             if(group->Type() != YAML::NodeType::Map) {
                 fprintf(stderr, "Each event group should be a map\n");
-                exit(1);
+                abort();
             }
 
             const YAML::Node _name = (*group)["name"];
@@ -153,14 +153,14 @@ int main(int argc, char** argv) {
 
             } else {
                 fprintf(stderr, "Every event group should have a name\n");
-                exit(1);
+                abort();
             }
 
             const YAML::Node _events = (*group)["events"];
 
             if(!_events || (_events.Type() != YAML::NodeType::Sequence)) {
                 fprintf(stderr, "Every event group should have an event list\n");
-                exit(1);
+                abort();
             }
 
             Skree::Utils::event_group_t* event_group = (Skree::Utils::event_group_t*)malloc(sizeof(*event_group));
@@ -181,13 +181,13 @@ int main(int argc, char** argv) {
 
             } else {
                 fprintf(stderr, "Duplicate group name: %s\n", group_name_);
-                exit(1);
+                abort();
             }
 
             for(auto event = _events.begin(); event != _events.end(); ++event) {
                 if(event->Type() != YAML::NodeType::Map) {
                     fprintf(stderr, "Every event should be a map\n");
-                    exit(1);
+                    abort();
                 }
 
                 const YAML::Node _id = (*event)["id"];
@@ -201,7 +201,7 @@ int main(int argc, char** argv) {
 
                     } else {
                         fprintf(stderr, "Every event should have a ttl\n");
-                        exit(1);
+                        abort();
                     }
 
                     std::string id = _id.as<std::string>();
@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
 
                         if(it != known_events.end()) {
                             fprintf(stderr, "Duplicate event id: %s\n", id_);
-                            exit(1);
+                            abort();
                         }
                     }
 
@@ -237,7 +237,7 @@ int main(int argc, char** argv) {
 
                 } else {
                     fprintf(stderr, "Every event should have an id\n");
-                    exit(1);
+                    abort();
                 }
             }
         }

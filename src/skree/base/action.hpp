@@ -2,6 +2,9 @@
 namespace Skree {
     namespace Base {
         class Action;
+        namespace PendingWrite {
+            class QueueItem;
+        }
     }
     class Server;
     class Client;
@@ -32,9 +35,8 @@ namespace Skree {
 
             virtual void in(
                 const uint64_t& in_len, const char*& in_data,
-                uint64_t& out_len, char*& out_data
+                Skree::Base::PendingWrite::QueueItem*& out
             ) = 0;
         };
     }
 }
-

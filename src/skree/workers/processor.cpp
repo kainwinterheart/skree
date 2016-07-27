@@ -91,7 +91,7 @@ namespace Skree {
             auto _item = queue_r2.read(&item_len);
 
             if(_item == nullptr) {
-                // fprintf(stderr, "processor: empty queue\n");
+                // Utils::cluck(1, "processor: empty queue\n");
                 return false;
             }
 
@@ -123,7 +123,7 @@ namespace Skree {
             }
 
             if(repeat) {
-                printf("[processor::failover] releat: %llu, state: %u\n", item->id, state);
+                Utils::cluck(3, "[processor::failover] releat: %llu, state: %u\n", item->id, state);
                 queue_r2.sync_read_offset(false);
                 cleanup();
                 return false;
@@ -141,7 +141,7 @@ namespace Skree {
             }
 
             // if(key_removed) {
-            //     printf("[processor::failover] key %llu removed, reason: %d\n", item->id, reason);
+            //     Utils::cluck(3, "[processor::failover] key %llu removed, reason: %d\n", item->id, reason);
             // }
 
             queue_r2.sync_read_offset(key_removed);
@@ -151,13 +151,13 @@ namespace Skree {
 
         bool Processor::process(const uint64_t& now, Utils::known_event_t& event) {
             Skree::Client* peer;
-            // fprintf(stderr, "processor: before read\n");
+            // Utils::cluck(1, "processor: before read\n");
             auto& queue = *(event.queue);
             uint64_t item_len;
             auto _item = queue.read(&item_len);
 
             if(_item == nullptr) {
-                // fprintf(stderr, "processor: empty queue\n");
+                // Utils::cluck(1, "processor: empty queue\n");
                 return false;
             }
 
@@ -171,7 +171,7 @@ namespace Skree {
 
             if(server.get_event_state(item->id, event, now) == SKREE_META_EVENTSTATE_PROCESSING) {
                 // TODO: what should really happen here?
-                // fprintf(stderr, "skip repl: no_failover flag is set\n");
+                // Utils::cluck(1, "skip repl: no_failover flag is set\n");
                 cleanup();
                 queue.sync_read_offset(false);
                 return false;
@@ -196,15 +196,15 @@ namespace Skree {
                 }
 
             } else {
-                // printf("db.cas() failed: %s\n", kv.error().name());
+                // Utils::cluck(2, "db.cas() failed: %s\n", kv.error().name());
                 // size_t sz;
                 // char* val = kv.get((char*)&(item->id_net), sizeof(item->id_net), &sz);
-                // printf("value size: %lld\n", sz);
+                // Utils::cluck(2, "value size: %lld\n", sz);
                 // if(sz > 0) {
                 //     char _val [sz + 1];
                 //     memcpy(_val, &val, sz);
                 //     _val[sz] = '\0';
-                //     printf("value: %s\n", _val);
+                //     Utils::cluck(2, "value: %s\n", _val);
                 // }
                 // abort();
                 if(!do_failover(now, event, *item)) {
@@ -212,7 +212,7 @@ namespace Skree {
             }}
 
             queue.sync_read_offset(commit);
-            // fprintf(stderr, "processor: after sync_read_offset(), rid: %llu\n", item->id);
+            // Utils::cluck(2, "processor: after sync_read_offset(), rid: %llu\n", item->id);
 
             auto wip_end = wip.lock();
             auto it = wip.find(item->id);

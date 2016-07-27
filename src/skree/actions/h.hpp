@@ -20,11 +20,10 @@ namespace Skree {
 
             virtual void in(
                 const uint64_t& in_len, const char*& in_data,
-                uint64_t& out_len, char*& out_data
+                Skree::Base::PendingWrite::QueueItem*& out
             ) override;
 
-            static Utils::muh_str_t* out_init(const Server& server);
+            static Skree::Base::PendingWrite::QueueItem* out_init(const Server& server);
         };
     }
 }
-

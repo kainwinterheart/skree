@@ -41,8 +41,7 @@ namespace Skree {
         Client* client;
         std::vector<char*>* candidate_peer_ids;
         std::list<packet_r_ctx_peer*>* accepted_peers;
-        char* r_req;
-        size_t r_len;
+        const Skree::Base::PendingWrite::QueueItem* r_req;
         bool sync;
     };
 
@@ -73,17 +72,17 @@ namespace Skree {
 
             virtual void in(
                 const uint64_t& in_len, const char*& in_data,
-                uint64_t& out_len, char*& out_data
+                Skree::Base::PendingWrite::QueueItem*& out
             ) override;
 
-            static Utils::muh_str_t* out_init(
+            static Skree::Base::PendingWrite::QueueItem* out_init(
                 const Server& server, const uint32_t& event_name_len,
                 const char*& event_name, const uint32_t& cnt
             );
 
             static void out_add_event(
-                Utils::muh_str_t*& r_req, const uint64_t& id,
-                const uint32_t& len, const char*& data
+                Skree::Base::PendingWrite::QueueItem* r_req,
+                const uint64_t& id, const uint32_t& len, const char*& data
             );
         };
     }

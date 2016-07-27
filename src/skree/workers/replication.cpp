@@ -79,7 +79,7 @@ namespace Skree {
                 + 1 // \0
             );
             sprintf(out->failover_key, "%s:%llu", out->peer_id, out->rid);
-            // printf("repl thread: %s\n", suffix);
+            // Utils::cluck(2, "repl thread: %s\n", suffix);
 
             out->failover_key_len = strlen(out->failover_key);
 
@@ -124,8 +124,7 @@ namespace Skree {
                     return true;
 
                 } else {
-                    fprintf(
-                        stderr,
+                    Utils::cluck(3,
                         "Can't commit transaction for event %s: %s\n",
                         event.id,
                         kv.error().name()
@@ -140,8 +139,7 @@ namespace Skree {
                     queue.write(raw_item_len, raw_item);
 
                     if(!kv.cas(item.failover_key, item.failover_key_len, "1", 1, "0", 1)) {
-                        fprintf(
-                            stderr,
+                        Utils::cluck(3,
                             "Can't remove key %s: %s\n",
                             item.failover_key,
                             kv.error().name()
@@ -153,8 +151,7 @@ namespace Skree {
                 return commit();
 
             } else {
-                fprintf(
-                    stderr,
+                Utils::cluck(3,
                     "Can't create transaction for event %s: %s\n",
                     event.id,
                     kv.error().name()
@@ -170,7 +167,7 @@ namespace Skree {
             auto _item = queue_r2.read(&item_len);
 
             if(_item == nullptr) {
-                // fprintf(stderr, "replication: empty queue\n");
+                // Utils::cluck(1, "replication: empty queue\n");
                 return false;
             }
 
@@ -203,13 +200,13 @@ namespace Skree {
         }
 
         bool Replication::replication(const uint64_t& now, Utils::known_event_t& event) {
-            // fprintf(stderr, "replication: before read\n");
+            // Utils::cluck(1, "replication: before read\n");
             auto& queue = *(event.r_queue);
             uint64_t item_len;
             auto _item = queue.read(&item_len);
 
             if(_item == nullptr) {
-                // fprintf(stderr, "replication: empty queue\n");
+                // Utils::cluck(1, "replication: empty queue\n");
                 return false;
             }
 
@@ -221,11 +218,11 @@ namespace Skree {
                 free(_item);
             };
 
-            // printf("repl thread: %s\n", event.id);
+            // Utils::cluck(2, "repl thread: %s\n", event.id);
 
             // TODO: overflow
             if((item->rts + event.ttl) > now) {
-                // fprintf(stderr, "skip repl: not now, rts: %llu, now: %llu\n", item->rts, now);
+                // Utils::cluck(3, "skip repl: not now, rts: %llu, now: %llu\n", item->rts, now);
                 cleanup();
                 queue.sync_read_offset(false);
                 return false;
@@ -234,15 +231,15 @@ namespace Skree {
             auto& failover = event.failover;
 
             {
-                // fprintf(stderr, "asd1\n");
+                // Utils::cluck(1, "asd1\n");
                 auto failover_end = failover.lock();
                 auto it = failover.find(item->failover_key);
                 failover.unlock();
-                // fprintf(stderr, "asd2\n");
+                // Utils::cluck(1, "asd2\n");
 
                 if(it != failover_end) {
                     // TODO: what should really happen here?
-                    // fprintf(stderr, "skip repl: failover flag is set\n");
+                    // Utils::cluck(1, "skip repl: failover flag is set\n");
                     cleanup();
                     queue.sync_read_offset(false);
                     return false;
@@ -251,7 +248,7 @@ namespace Skree {
 
             if(check_no_failover(now, *item, event)) {
                 // TODO: what should really happen here?
-                // fprintf(stderr, "skip repl: no_failover flag is set\n");
+                // Utils::cluck(1, "skip repl: no_failover flag is set\n");
                 cleanup();
                 queue.sync_read_offset(false);
                 return false;
@@ -270,16 +267,14 @@ namespace Skree {
 
             if(queue.kv->cas(item->failover_key, item->failover_key_len, "0", 1, "1", 1)) {
                 event.r2_queue->write(item_len, _item);
-                // fprintf(
-                //     stderr,
+                // Utils::cluck(3,
                 //     "Key %s for event %s has been added to r2_queue\n",
                 //     item->failover_key,
                 //     event.id
                 // );
 
             } else {
-                fprintf(
-                    stderr,
+                Utils::cluck(3,
                     "Key %s could not be added to r2_queue: %s\n",
                     item->failover_key,
                     queue.kv->error().name()
@@ -295,7 +290,7 @@ namespace Skree {
                 cleanup();
                 return false;
             }
-            // fprintf(stderr, "replication: after sync_read_offset(), rid: %llu\n", item->rid);
+            // Utils::cluck(2, "replication: after sync_read_offset(), rid: %llu\n", item->rid);
 
             auto& known_peers = server.known_peers;
             auto known_peers_end = known_peers.lock();
@@ -304,7 +299,7 @@ namespace Skree {
 
             Skree::Client* peer = ((_peer == known_peers_end) ? nullptr : _peer->second.next());
 
-            // fprintf(stderr, "Seems like I need to failover task %llu\n", item->rid);
+            // Utils::cluck(2, "Seems like I need to failover task %llu\n", item->rid);
 
             if(peer == nullptr) {
                 size_t offset = 0;
@@ -333,8 +328,6 @@ namespace Skree {
 
                 if(item->peers_cnt > 0) {
                     *count_replicas = item->peers_cnt;
-
-                    auto i_req = Skree::Actions::I::out_init(__peer_id, event, item->rid_net);
 
                     size_t peer_id_len;
                     char* peer_id;
@@ -375,23 +368,17 @@ namespace Skree {
                                 .rid = item->rid
                             };
 
-                            const auto cb = new Skree::PendingReads::Callbacks::ReplicationProposeSelf(server);
-                            const auto item = new Skree::Base::PendingRead::QueueItem {
+                            auto i_req = Skree::Actions::I::out_init(__peer_id, event, item->rid_net);
+
+                            i_req->set_cb(new Skree::Base::PendingRead::QueueItem {
                                 .len = 1,
-                                .cb = cb,
+                                .cb = new Skree::PendingReads::Callbacks::ReplicationProposeSelf(server),
                                 .ctx = (void*)ctx,
                                 .opcode = true,
                                 .noop = false
-                            };
+                            });
 
-                            auto witem = new Skree::Base::PendingWrite::QueueItem {
-                                .len = i_req->len,
-                                .data = i_req->data,
-                                .pos = 0,
-                                .cb = item
-                            };
-
-                            it->second.next()->push_write_queue(witem);
+                            it->second.next()->push_write_queue(i_req);
                         }
 
                         --(item->peers_cnt);
@@ -443,25 +430,19 @@ namespace Skree {
                     .failover_key_len = item->failover_key_len
                 };
 
-                const auto cb = new Skree::PendingReads::Callbacks::ReplicationPingTask(server);
-                const auto _item = new Skree::Base::PendingRead::QueueItem {
+                auto c_req = Skree::Actions::C::out_init(event, item->rid_net, item->rin_len, item->rin);
+
+                c_req->set_cb(new Skree::Base::PendingRead::QueueItem {
                     .len = 1,
-                    .cb = cb,
+                    .cb = new Skree::PendingReads::Callbacks::ReplicationPingTask(server),
                     .ctx = (void*)ctx,
                     .opcode = true,
                     .noop = false
-                };
+                });
 
-                auto c_req = Skree::Actions::C::out_init(event, item->rid_net, item->rin_len, item->rin);
+                c_req->finish();
 
-                auto witem = new Skree::Base::PendingWrite::QueueItem {
-                    .len = c_req->len,
-                    .data = c_req->data,
-                    .pos = 0,
-                    .cb = _item
-                };
-
-                peer->push_write_queue(witem);
+                peer->push_write_queue(c_req);
             }
 
             return true;

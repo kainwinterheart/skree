@@ -12,7 +12,6 @@ namespace Skree {
 #include "server.hpp"
 #include "pending_reads/noop.hpp"
 #include "pending_reads/ordinary_packet.hpp"
-#include <fcntl.h>
 #include "actions/w.hpp"
 #include "actions/l.hpp"
 #include "actions/c.hpp"
@@ -20,8 +19,10 @@ namespace Skree {
 #include "actions/x.hpp"
 #include "actions/h.hpp"
 
+#include <fcntl.h>
 #include <deque>
 #include <memory>
+#include <atomic>
 
 namespace Skree {
     class Client {
@@ -48,6 +49,7 @@ namespace Skree {
         Server& server;
         uint32_t protocol_version;
         uint32_t max_parallel_connections = 1;
+        std::atomic<bool> destroyed;
 
         typedef Base::Action* handlers_t;
         handlers_t handlers [256] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
@@ -57,15 +59,11 @@ namespace Skree {
         void read_cb();
 
         static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events);
-
         void push_read_queue(size_t len, char* data);
-
-        void ordinary_packet_cb(
-            const char& opcode, char*& out_data,
-            size_t& out_len, const size_t& in_packet_len
-        );
-
+        void ordinary_packet_cb(const char& opcode, const size_t& in_packet_len);
         Skree::Base::PendingWrite::QueueItem* get_pending_write();
+        void destroy();
+
     public:
         Client(int _fh, struct ev_loop* _loop, sockaddr_in* _s_in, socklen_t _s_in_len, Server& _server);
         virtual ~Client();
@@ -131,8 +129,7 @@ namespace Skree {
 
         void set_protocol_version(uint32_t _protocol_version) {
             if(_protocol_version == 0) {
-                fprintf(
-                    stderr,
+                Utils::cluck(3,
                     "Client %s sent invalid protocol version: %u\n",
                     get_conn_id(),
                     _protocol_version
@@ -153,5 +150,26 @@ namespace Skree {
         inline void set_max_parallel_connections(const uint32_t& _max_parallel_connections) {
             max_parallel_connections = _max_parallel_connections;
         }
+
+        void drop();
+
+        inline bool is_alive() {
+            return !destroyed.load();
+        }
     };
+
+    template<>
+    inline Client* Utils::RoundRobinVector<Client*>::next() {
+        auto rv = next_impl();
+        int i = 0;
+
+        while(!rv->is_alive()) {
+            rv = next_impl();
+
+            if(++i > 100)
+                throw std::logic_error ("next() called on empty round-robin vector");
+        }
+
+        return rv;
+    }
 }

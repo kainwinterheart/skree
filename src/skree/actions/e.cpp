@@ -4,7 +4,7 @@ namespace Skree {
     namespace Actions {
         void E::in(
             const uint64_t& in_len, const char*& in_data,
-            uint64_t& out_len, char*& out_data
+            Skree::Base::PendingWrite::QueueItem*& out
         ) {
             uint64_t in_pos = 0;
             uint32_t _tmp;
@@ -21,10 +21,8 @@ namespace Skree {
             auto it = server.known_events.find(event_name);
 
             if(it == server.known_events.end()) {
-                fprintf(stderr, "[E::in] Got unknown event: %s\n", event_name);
-                out_data = (char*)malloc(1);
-                out_len += 1;
-                out_data[0] = SKREE_META_OPCODE_F;
+                Utils::cluck(2, "[E::in] Got unknown event: %s\n", event_name);
+                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
                 return;
             }
 
@@ -66,27 +64,21 @@ namespace Skree {
 
             short result = server.save_event(&ctx, ntohl(_tmp), &client, nullptr, *queue);
 
-            out_data = (char*)malloc(1);
-            out_len += 1;
-
             switch(result) {
                 case SAVE_EVENT_RESULT_F:
-                    out_data[0] = SKREE_META_OPCODE_F;
+                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
                     break;
                 case SAVE_EVENT_RESULT_A:
-                    out_data[0] = SKREE_META_OPCODE_A;
+                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_A);
                     break;
                 case SAVE_EVENT_RESULT_K:
-                    out_data[0] = SKREE_META_OPCODE_K;
+                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
                     break;
                 case SAVE_EVENT_RESULT_NULL:
-                    free(out_data);
-                    out_data = nullptr;
-                    out_len = 0;
                     break;
                 default:
-                    fprintf(stderr, "Unexpected save_event() result: %d\n", result);
-                    exit(1);
+                    Utils::cluck(2, "Unexpected save_event() result: %d\n", result);
+                    abort();
             };
         }
     }

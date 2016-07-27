@@ -4,7 +4,7 @@ namespace Skree {
     namespace Actions {
         void I::in(
             const uint64_t& in_len, const char*& in_data,
-            uint64_t& out_len, char*& out_data
+            Skree::Base::PendingWrite::QueueItem*& out
         ) {
             uint64_t in_pos = 0;
             uint32_t _tmp;
@@ -33,15 +33,12 @@ namespace Skree {
             in_pos += sizeof(_tmp64);
             uint64_t rid = ntohll(_tmp64);
 
-            out_data = (char*)malloc(1);
-            out_len += 1;
-
             auto eit = server.known_events.find(event_id);
 
             if(eit == server.known_events.end()) {
-                fprintf(stderr, "[I::in] Got unknown event: %s\n", event_id);
-                out_data[0] = SKREE_META_OPCODE_K; // current instance does not known
-                                                   // such event, so it won't do it itself
+                Utils::cluck(2, "[I::in] Got unknown event: %s\n", event_id);
+                // current instance does not known such event, so it won't do it itself
+                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
                 return;
             }
 
@@ -65,8 +62,8 @@ namespace Skree {
                 auto size = db.check(suffix, suffix_len);
 
                 if(size == 1) {
-                    out_data[0] = SKREE_META_OPCODE_K; // this instance has not tried
-                                                       // to failover the event yet
+                    // this instance has not tried to failover the event yet
+                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
 
                     auto& no_failover = event.no_failover;
                     no_failover.lock();
@@ -74,17 +71,16 @@ namespace Skree {
                     no_failover.unlock();
 
                 } else {
-                    out_data[0] = SKREE_META_OPCODE_F; // this instance has already
-                                                       // processed the event
+                    // this instance has already processed the event
+                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
                 }
 
             } else {
                 auto& id = it->second;
 
                 if(id == 0) {
-                    out_data[0] = SKREE_META_OPCODE_F; // this instance is currently
-                                                       // in the process of failovering
-                                                       // the event
+                    // this instance is currently in the process of failovering the event
+                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
 
                 } else {
                     auto now = std::time(nullptr);
@@ -92,11 +88,12 @@ namespace Skree {
 
                     if(state == SKREE_META_EVENTSTATE_LOST) {
                         // TODO: event is processed twice here: by local node and by remote node
-                        out_data[0] = SKREE_META_OPCODE_K; // this instance had lost the event
+                        // this instance had lost the event
+                        out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
 
                     } else {
-                        out_data[0] = SKREE_META_OPCODE_F; // event is or will be processed,
-                                                           // everything is fine
+                        // event is or will be processed, everything is fine
+                        out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
                     }
                 }
             }
@@ -104,39 +101,26 @@ namespace Skree {
             failover.unlock(); // TODO: transaction is too long
         }
 
-        Utils::muh_str_t* I::out_init(
+        Skree::Base::PendingWrite::QueueItem* I::out_init(
             Utils::muh_str_t*& peer_id,
             Utils::known_event_t& event,
             const uint64_t& rid_net
         ) {
-            Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
-            out->len = 1;
-            out->data = (char*)malloc(
-                out->len
-                + sizeof(peer_id->len)
+            auto out = new Skree::Base::PendingWrite::QueueItem((
+                sizeof(peer_id->len)
                 + peer_id->len
                 + sizeof(uint32_t) /* sizeof(event.id_len) */
                 + event.id_len
                 + sizeof(rid_net)
-            );
-
-            out->data[0] = opcode();
+            ), opcode());
 
             uint32_t peer_id_len_net = htonl(peer_id->len);
-            memcpy(out->data + out->len, &peer_id_len_net, sizeof(peer_id_len_net));
-            out->len += sizeof(peer_id_len_net);
+            out->push(sizeof(peer_id_len_net), &peer_id_len_net);
 
-            memcpy(out->data + out->len, peer_id->data, peer_id->len);
-            out->len += peer_id->len;
-
-            memcpy(out->data + out->len, (char*)&(event.id_len_net), sizeof(uint32_t) /*sizeof(event.id_len)*/);
-            out->len += sizeof(uint32_t) /*sizeof(event.id_len)*/;
-
-            memcpy(out->data + out->len, event.id, event.id_len);
-            out->len += event.id_len;
-
-            memcpy(out->data + out->len, (char*)&rid_net, sizeof(rid_net));
-            out->len += sizeof(rid_net);
+            out->push(peer_id->len, peer_id->data);
+            out->push(sizeof(uint32_t) /*sizeof(event.id_len)*/, (char*)&(event.id_len_net));
+            out->push(event.id_len, event.id);
+            out->push(sizeof(rid_net), (char*)&rid_net);
 
             return out;
         }

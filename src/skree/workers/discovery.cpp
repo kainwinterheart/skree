@@ -1,5 +1,6 @@
 #include "discovery.hpp"
 #include "../meta.hpp"
+#include "../pending_reads/new_client.hpp"
 
 #include <algorithm>
 
@@ -37,6 +38,9 @@ namespace Skree {
                         known_peers_by_conn_id.unlock();
 
                         found = (it != known_peers_by_conn_id_end);
+
+                        // if(!found)
+                        //     Utils::cluck(2, "no %s in known_peers_by_conn_id", conn_id);
                     }
 
                     if(!found) {
@@ -46,6 +50,9 @@ namespace Skree {
                         known_peers.unlock();
 
                         found = (it != known_peers_end);
+
+                        // if(!found)
+                        //     Utils::cluck(2, "no %s in known_peers", conn_id);
                     }
 
                     if(!found) {
@@ -55,6 +62,9 @@ namespace Skree {
                         me.unlock();
 
                         found = (it != me_end);
+
+                        // if(!found)
+                        //     Utils::cluck(2, "no %s in me", conn_id);
                     }
 
                     free(conn_id);
@@ -66,7 +76,7 @@ namespace Skree {
                         continue;
                     }
 
-                    new_client_t* new_client = new new_client_t {
+                    auto new_client = new new_client_t {
                         .fh = fh,
                         .cb = [this](Skree::Client& client) {
                             on_new_client(client);
@@ -106,7 +116,7 @@ namespace Skree {
             int rv;
 
             if((rv = getaddrinfo(host, port, &hints, &service_info)) != 0) {
-                fprintf(stderr, "getaddrinfo(%s, %u): %s\n", host, peer_port, gai_strerror(rv));
+                Utils::cluck(4, "getaddrinfo(%s, %u): %s\n", host, peer_port, gai_strerror(rv));
                 return false;
             }
 
@@ -187,25 +197,19 @@ namespace Skree {
                 return cb2(client, item, args);
             };
 
-            const auto cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb);
-            const auto item = new Skree::Base::PendingRead::QueueItem {
+            auto w_req = Skree::Actions::W::out_init();
+
+            w_req->set_cb(new Skree::Base::PendingRead::QueueItem {
                 .len = 1,
-                .cb = cb,
+                .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
                 .ctx = nullptr,
                 .opcode = true,
                 .noop = false
-            };
+            });
 
-            auto w_req = Skree::Actions::W::out_init();
+            w_req->finish();
 
-            auto witem = new Skree::Base::PendingWrite::QueueItem {
-                .len = w_req->len,
-                .data = w_req->data,
-                .pos = 0,
-                .cb = item
-            };
-
-            client.push_write_queue(witem);
+            client.push_write_queue(w_req);
         }
 
         Skree::Base::PendingWrite::QueueItem* Discovery::cb6(
@@ -214,10 +218,10 @@ namespace Skree {
             Skree::Base::PendingRead::Callback::Args& args
         ) {
             // for(int i = 0; i < item.len; ++i)
-            //     printf("[discovery::cb6] read from %s [%d]: 0x%.2X\n", client.get_peer_id(),i,args.data[i]);
+            //     fprintf(stderr, "[discovery::cb6] read from %s [%d]: 0x%.2X\n", client.get_peer_id(),i,args.data[i]);
 
-            if(args.data[0] == SKREE_META_OPCODE_K) {
-                uint64_t in_pos = 1;
+            if(args.opcode == SKREE_META_OPCODE_K) {
+                uint64_t in_pos = 0;
                 uint32_t _tmp;
 
                 memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
@@ -254,7 +258,7 @@ namespace Skree {
                     prev_item = peers_to_discover.find(_peer_id);
 
                     if(prev_item == peers_to_discover_end) {
-                        // printf("[discovery] fill peers_to_discover: %s:%u\n", host, port);
+                        // Utils::cluck("[discovery] fill peers_to_discover: %s:%u\n", host, port);
                         peers_to_discover[_peer_id] = new peer_to_discover_t {
                             .host = host,
                             .port = port
@@ -274,7 +278,7 @@ namespace Skree {
                     server.save_peers_to_discover();
             }
 
-            return (Skree::Base::PendingWrite::QueueItem*)nullptr;
+            return nullptr;
         }
 
         Skree::Base::PendingWrite::QueueItem* Discovery::cb5(
@@ -282,8 +286,8 @@ namespace Skree {
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
         ) {
-            // printf("DISCOVERY CB5 OPCODE: %c\n", args.data[0]);
-            if(args.data[0] == SKREE_META_OPCODE_K) {
+            // Utils::cluck(2, "DISCOVERY CB5 OPCODE: %c\n", args.opcode);
+            if(args.opcode == SKREE_META_OPCODE_K) {
                 auto& known_peers = server.known_peers;
                 auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
                 auto known_peers_end = known_peers.lock();
@@ -314,7 +318,7 @@ namespace Skree {
                 known_peers.unlock();
 
                 if(!args.stop) {
-                    const auto& max_parallel_connections(client.get_max_parallel_connections() - 1);
+                    int max_parallel_connections(client.get_max_parallel_connections() - 1);
 
                     for(int i = 0; i < max_parallel_connections; ++i) {
                         const auto& peer_name = client.get_peer_name();
@@ -331,7 +335,7 @@ namespace Skree {
                         const auto& peer_name_clone = strdup(peer_name);
                         const auto& peer_name_len = client.get_peer_name_len();
 
-                        new_client_t* new_client = new new_client_t {
+                        auto new_client = new new_client_t {
                             .fh = fh,
                             .cb = [
                                 this,
@@ -350,7 +354,7 @@ namespace Skree {
                                     const Skree::Base::PendingRead::QueueItem& item,
                                     Skree::Base::PendingRead::Callback::Args& args
                                 ) {
-                                    if(args.data[0] != SKREE_META_OPCODE_K)
+                                    if(args.opcode != SKREE_META_OPCODE_K)
                                         return nullptr;
 
                                     auto& known_peers = server.known_peers;
@@ -370,25 +374,19 @@ namespace Skree {
                                     return nullptr;
                                 };
 
-                                const auto cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb);
-                                const auto item = new Skree::Base::PendingRead::QueueItem {
+                                auto h_req = Skree::Actions::H::out_init(server);
+
+                                h_req->set_cb(new Skree::Base::PendingRead::QueueItem {
                                     .len = 1,
-                                    .cb = cb,
+                                    .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
                                     .ctx = nullptr,
                                     .opcode = true,
                                     .noop = false
-                                };
+                                });
 
-                                auto h_req = Skree::Actions::H::out_init(server);
+                                h_req->finish();
 
-                                auto witem = new Skree::Base::PendingWrite::QueueItem {
-                                    .len = h_req->len,
-                                    .data = h_req->data,
-                                    .pos = 0,
-                                    .cb = item
-                                };
-
-                                client.push_write_queue(witem);
+                                client.push_write_queue(h_req);
                             },
                             .s_in = addr,
                             .s_in_len = addr_len
@@ -408,30 +406,26 @@ namespace Skree {
                         return cb6(client, item, args);
                     };
 
-                    const auto cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb);
-                    const auto item = new Skree::Base::PendingRead::QueueItem {
+                    auto l_req = Skree::Actions::L::out_init();
+
+                    l_req->set_cb(new Skree::Base::PendingRead::QueueItem {
                         .len = 1,
-                        .cb = cb,
+                        .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
                         .ctx = nullptr,
                         .opcode = true,
                         .noop = false
-                    };
+                    });
 
-                    auto l_req = Skree::Actions::L::out_init();
+                    l_req->finish();
 
-                    return new Skree::Base::PendingWrite::QueueItem {
-                        .len = l_req->len,
-                        .data = l_req->data,
-                        .pos = 0,
-                        .cb = item
-                    };
+                    return l_req;
                 }
 
             } else {
                 args.stop = true;
             }
 
-            return (Skree::Base::PendingWrite::QueueItem*)nullptr;
+            return nullptr;
         }
 
         Skree::Base::PendingWrite::QueueItem* Discovery::cb2(
@@ -439,9 +433,9 @@ namespace Skree {
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
         ) {
-            // printf("DISCOVERY CB2 OPCODE: %c\n", args.data[0]);
-            if(args.data[0] == SKREE_META_OPCODE_K) {
-                uint64_t in_pos = 1;
+            // Utils::cluck(2, "DISCOVERY CB2 OPCODE: %c\n", args.opcode);
+            if(args.opcode == SKREE_META_OPCODE_K) {
+                uint64_t in_pos = 0;
                 uint32_t _tmp;
 
                 memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
@@ -512,25 +506,19 @@ namespace Skree {
                         return cb5(client, item, args);
                     };
 
-                    const auto cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb);
-                    const auto item = new Skree::Base::PendingRead::QueueItem {
+                    auto h_req = Skree::Actions::H::out_init(server);
+
+                    h_req->set_cb(new Skree::Base::PendingRead::QueueItem {
                         .len = 1,
-                        .cb = cb,
+                        .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
                         .ctx = nullptr,
                         .opcode = true,
                         .noop = false
-                    };
+                    });
 
-                    auto h_req = Skree::Actions::H::out_init(server);
+                    h_req->finish();
 
-                    auto witem = new Skree::Base::PendingWrite::QueueItem {
-                        .len = h_req->len,
-                        .data = h_req->data,
-                        .pos = 0,
-                        .cb = item
-                    };
-
-                    return witem;
+                    return h_req;
 
                 } else {
                     args.stop = true;
@@ -540,20 +528,32 @@ namespace Skree {
                 args.stop = true;
             }
 
-            return (Skree::Base::PendingWrite::QueueItem*)nullptr;
+            return nullptr;
         }
 
-        void Discovery::on_new_client(Skree::Client& client) {
-            const uint32_t protocol_version (htonl(PROTOCOL_VERSION));
-            char* str = (char*)malloc(sizeof(protocol_version)); // TODO
-            memcpy(str, &protocol_version, sizeof(protocol_version));
+        void Discovery::on_new_client(Skree::Client& client) { // TODO: also in Server::socket_cb
+            {
+                const uint32_t protocol_version (htonl(PROTOCOL_VERSION));
+                auto out = new Skree::Base::PendingWrite::QueueItem(sizeof(protocol_version));
 
-            client.push_write_queue(new Skree::Base::PendingWrite::QueueItem {
-                .len = sizeof(protocol_version),
-                .data = str,
-                .pos = 0,
-                .cb = Skree::PendingReads::noop(server)
-            }, true);
+                out->push(sizeof(protocol_version), &protocol_version);
+                out->finish();
+
+                client.push_write_queue(out, true);
+            }
+
+            {
+                const auto cb = new Skree::PendingReads::Callbacks::NewClient(server);
+                const auto item = new Skree::Base::PendingRead::QueueItem {
+                    .len = 8,
+                    .cb = cb,
+                    .ctx = nullptr,
+                    .opcode = false,
+                    .noop = false
+                };
+
+                client.push_pending_reads_queue(item, true);
+            }
         }
     }
 }

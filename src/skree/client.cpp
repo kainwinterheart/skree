@@ -1,15 +1,11 @@
 #include "client.hpp"
+#include "meta.hpp"
 // #include "base/pending_read.hpp"
 
-// #define SKREE_NET_DEBUG
-
 namespace Skree {
-    void Client::ordinary_packet_cb(
-        const char& opcode, char*& out_data,
-        size_t& out_len, const size_t& in_packet_len
-    ) {
+    void Client::ordinary_packet_cb(const char& opcode, const size_t& in_packet_len) {
         if(handlers[opcode] == nullptr) {
-            printf("Unknown packet header: 0x%.2X\n", opcode);
+            Utils::cluck(2, "Unknown packet header: 0x%.2X\n", opcode);
 
         } else {
             // TODO: should be one pending read instead of two
@@ -23,18 +19,18 @@ namespace Skree {
                     const Skree::Base::PendingRead::QueueItem& item,
                     Skree::Base::PendingRead::Callback::Args& args
                 ) {
-                    uint64_t _out_len = 0; // TODO: get rid of this
-                    handlers[opcode]->in(item.len, args.data, _out_len, args.out_data);
-                    args.out_len = _out_len;
-
+                    handlers[opcode]->in(item.len, args.data, args.out);
                     ++(server.stat_num_requests_detailed[opcode]);
-
-                    return (Skree::Base::PendingWrite::QueueItem*)nullptr;
+                    return nullptr;
                 };
 
                 uint32_t _tmp;
                 memcpy(&_tmp, args.data, sizeof(_tmp));
                 _tmp = ntohl(_tmp);
+
+#ifdef SKREE_NET_DEBUG
+                Utils::cluck(2, "Need to read %u more bytes", _tmp);
+#endif
 
                 if(_tmp == 0) {
                     _cb(client, item, args);
@@ -52,7 +48,7 @@ namespace Skree {
                     push_pending_reads_queue(_item, true);
                 }
 
-                return (Skree::Base::PendingWrite::QueueItem*)nullptr;
+                return nullptr;
             };
 
             const auto cb = new Skree::PendingReads::Callbacks::OrdinaryPacket<decltype(_cb)>(server, _cb);
@@ -71,17 +67,15 @@ namespace Skree {
     void Client::read_cb() {
         while(read_queue_length > 0) {
             size_t in_packet_len = 1;
-            size_t out_len = 0;
-
             char opcode = read_queue[0];
-            char* out_data = nullptr;
+            Skree::Base::PendingWrite::QueueItem* out = nullptr;
 
             if(!pending_reads.empty()) {
                 // Pending reads queue is a top priority callback
                 // If there is a pending read - incoming data should
                 // be passed to such a callback
 #ifdef SKREE_NET_DEBUG
-                printf("Got opcode: 0x%.2X, pending_reads not empty\n", opcode);
+                Utils::cluck(2, "Got opcode: 0x%.2X, pending_reads not empty\n", opcode);
 #endif
                 auto item = pending_reads.front();
 
@@ -104,21 +98,14 @@ namespace Skree {
                             const Skree::Base::PendingRead::QueueItem& _item,
                             Skree::Base::PendingRead::Callback::Args& args
                         ) {
-                            char data [_item.len + 1];
-                            data[0] = opcode;
-
-                            if(_item.len > 0) {
-                                memcpy(data + 1, args.data, _item.len); // TODO
-                            }
-
-                            const char* _data = data;
+                            const char* _data = args.data; // TODO?
 
                             // ***
                             Skree::Base::PendingRead::Callback::Args _args {
                                 .data = _data,
-                                .out_data = args.out_data,
-                                .out_len = args.out_len,
-                                .stop = args.stop
+                                .out = args.out,
+                                .stop = args.stop,
+                                .opcode = opcode
                             };
 
                             auto _cb = item->cb;
@@ -130,7 +117,7 @@ namespace Skree {
                                 .noop = false
                             };
 #ifdef SKREE_NET_DEBUG
-                            printf("About to run original callback with a packet of size %lu bytes\n", __item.len);
+                            Utils::cluck(2, "About to run original callback with a packet of size %lu bytes\n", __item.len);
 #endif
                             auto new_item = _cb->run(*this, __item, _args);
 
@@ -139,7 +126,7 @@ namespace Skree {
                             }
                             // ***
 
-                            return (Skree::Base::PendingWrite::QueueItem*)nullptr;
+                            return nullptr;
                         };
 
                         uint32_t _tmp;
@@ -167,12 +154,12 @@ namespace Skree {
                                 .noop = false
                             };
 #ifdef SKREE_NET_DEBUG
-                            printf("Got opcode for pending read, need to read %lu more bytes\n", _tmp);
+                            Utils::cluck(2, "Got opcode for pending read, need to read %lu more bytes\n", _tmp);
 #endif
                             push_pending_reads_queue(__item, true);
                         }
 
-                        return (Skree::Base::PendingWrite::QueueItem*)nullptr;
+                        return nullptr;
                     };
 
                     const auto cb = new Skree::PendingReads::Callbacks::OrdinaryPacket<decltype(_cb)>(server, _cb);
@@ -195,7 +182,7 @@ namespace Skree {
 
                     if(read_queue_length >= item->len) {
 #ifdef SKREE_NET_DEBUG
-                        printf("Got raw pending read of size %lu bytes\n", item->len);
+                        Utils::cluck(2, "Got raw pending read of size %lu bytes\n", item->len);
 #endif
                         bool stop = false;
                         const char* _data = read_queue + in_packet_len;
@@ -205,9 +192,9 @@ namespace Skree {
                         // ***
                         Skree::Base::PendingRead::Callback::Args args {
                             .data = _data,
-                            .out_data = out_data,
-                            .out_len = out_len,
-                            .stop = stop
+                            .out = out,
+                            .stop = stop,
+                            .opcode = '\0'
                         };
 
                         auto _cb = item->cb;
@@ -220,7 +207,8 @@ namespace Skree {
                         // ***
 
                         if(stop) {
-                            delete this;
+                            // Utils::cluck(1, "pending read signaled to stop");
+                            drop();
                             break;
                         }
 
@@ -236,14 +224,15 @@ namespace Skree {
                     // the reply opcode we've got here - process data as
                     // ordinary inbound packet
 
-                    // printf("ordinary_packet_cb 1\n");
+                    // Utils::cluck(1, "ordinary_packet_cb 1\n");
 #ifdef SKREE_NET_DEBUG
-                    printf("Got opcode: 0x%.2X, pending_reads is empty, but queue item is not suitable\n", opcode);
+                    Utils::cluck(2, "Got opcode: 0x%.2X, pending_reads is empty, but queue item is not suitable\n", opcode);
 #endif
-                    ordinary_packet_cb(opcode, out_data, out_len, in_packet_len);
+                    ordinary_packet_cb(opcode, in_packet_len);
 
                 } else {
-                    delete this; // TODO
+                    Utils::cluck(1, "invalid pending read");
+                    drop();
                     break;
                 }
 
@@ -251,14 +240,15 @@ namespace Skree {
                 // There is no pending reads, so data should be processed
                 // as ordinary inbound packet
 
-                // printf("ordinary_packet_cb 2\n");
+                // Utils::cluck(1, "ordinary_packet_cb 2\n");
 #ifdef SKREE_NET_DEBUG
-                printf("Got opcode: 0x%.2X, pending_reads is empty\n", opcode);
+                Utils::cluck(2, "Got opcode: 0x%.2X, pending_reads is empty\n", opcode);
 #endif
-                ordinary_packet_cb(opcode, out_data, out_len, in_packet_len);
+                ordinary_packet_cb(opcode, in_packet_len);
 
             } else {
-                delete this; // TODO
+                Utils::cluck(1, "no pending reads and no protocol_version");
+                drop();
                 break;
             }
 
@@ -267,17 +257,10 @@ namespace Skree {
             if(read_queue_length > 0)
                 memmove(read_queue, read_queue + in_packet_len, read_queue_length);
 
-            if(out_len > 0) {
-                ++(server.stat_num_responses_detailed[out_data[0]]);
-
-                auto item = new Skree::Base::PendingWrite::QueueItem {
-                    .len = out_len,
-                    .data = out_data,
-                    .pos = 0,
-                    .cb = Skree::PendingReads::noop(server)
-                };
-
-                push_write_queue(item);
+            if(out != nullptr) {
+                out->finish();
+                ++(server.stat_num_responses_detailed[out->get_opcode()]);
+                push_write_queue(out);
             }
         }
     }
@@ -293,6 +276,7 @@ namespace Skree {
         read_queue_length = 0;
         read_queue_mapped_length = 0;
         protocol_version = 0;
+        destroyed = false;
         pthread_mutex_init(&write_queue_mutex, nullptr);
 
         fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
@@ -318,6 +302,18 @@ namespace Skree {
     }
 
     Client::~Client() {
+        destroy();
+    }
+
+    void Client::destroy() {
+        bool _destroyed = destroyed.exchange(true);
+
+        if(_destroyed)
+            return;
+
+        // if((peer_id != nullptr) || (conn_id != nullptr))
+        //     Utils::cluck(3, "DROP(%s/%s)", peer_id, conn_id);
+
         auto& known_peers = server.known_peers;
         auto known_peers_end = known_peers.lock();
 
@@ -334,20 +330,20 @@ namespace Skree {
                 Utils::RoundRobinVector<Skree::Client*> new_list;
 
                 for(const auto& peer : list) {
-                    if(strcmp(conn_id, peer->get_conn_id()) != 0) {
+                    if(this != peer) // TODO?
                         new_list.push_back(peer);
-                    }
                 }
 
                 if(new_list.empty()) {
                     known_peers.erase(known_peer);
+                    // Utils::cluck(2, "ERASE(known_peers.%s)", peer_id);
 
                 } else {
                     list.swap(new_list);
                 }
             }
 
-            // free(peer_id); // TODO
+            // free(peer_id); // TODO: it will break all other clients with the same peer_id
         }
 
         if(conn_id != nullptr) {
@@ -356,17 +352,18 @@ namespace Skree {
             auto known_peer = known_peers_by_conn_id.find(conn_id);
 
             if(known_peer != known_peers_by_conn_id_end) {
+                // conn_id is NOT unique for outgoing connections
                 auto& list = known_peer->second;
                 Utils::RoundRobinVector<Skree::Client*> new_list;
 
                 for(const auto& peer : list) {
-                    if(strcmp(conn_id, peer->get_conn_id()) != 0) {
+                    if(this != peer) // TODO?
                         new_list.push_back(peer);
-                    }
                 }
 
                 if(new_list.empty()) {
                     known_peers_by_conn_id.erase(known_peer);
+                    // Utils::cluck(2, "ERASE(known_peers_by_conn_id.%s)", conn_id);
 
                 } else {
                     list.swap(new_list);
@@ -375,7 +372,7 @@ namespace Skree {
 
             known_peers_by_conn_id.unlock();
 
-            // free(conn_id); // TODO
+            // free(conn_id); // TODO: it will break all other clients with the same peer_id
         }
 
         known_peers.unlock();
@@ -391,16 +388,23 @@ namespace Skree {
             pending_reads.pop_front();
         }
 
+        pthread_mutex_lock(&write_queue_mutex);
+
         while(!write_queue.empty()) {
             auto item = write_queue.front();
             write_queue.pop_front();
 
-            auto _cb = item->cb->cb;
-            if(!_cb->noop()) {
-                _cb->error(*this, *(item->cb));
+            auto __cb = item->get_cb();
+
+            if(__cb != nullptr) {
+                auto _cb = __cb->cb;
+
+                if(!_cb->noop())
+                    _cb->error(*this, *__cb);
             }
         }
 
+        pthread_mutex_unlock(&write_queue_mutex);
         pthread_mutex_destroy(&write_queue_mutex);
 
         if(read_queue != nullptr) free(read_queue);
@@ -439,7 +443,7 @@ namespace Skree {
         while(!write_queue.empty()) {
             auto item = write_queue.front();
 
-            if((item->len > 0) && (item->pos < item->len)) {
+            if(item->can_be_written()) {
                 pthread_mutex_unlock(&write_queue_mutex);
                 return item;
             }
@@ -458,16 +462,7 @@ namespace Skree {
     void Client::push_write_queue(
         Skree::Base::PendingWrite::QueueItem* item, bool front
     ) {
-        //TODO: crutch
-        char* new_msg = (char*)malloc(item->len + 4);
-        new_msg[0] = item->data[0];
-        uint32_t len = htonl(item->len - 1);
-        memcpy(new_msg + 1, &len, 4);
-        memcpy(new_msg + 5, item->data + 1, item->len - 1);
-        item->len += 4;
-
-        free(item->data);
-        item->data = new_msg;
+        item->finish();
 
         pthread_mutex_lock(&write_queue_mutex);
 
@@ -486,12 +481,12 @@ namespace Skree {
         const Skree::Base::PendingRead::QueueItem* item, bool front
     ) {
         if(item->len == 0) {
-            printf("Client::push_pending_reads_queue() got zero-length pending read, ignoring it\n");
+            Utils::cluck(1, "Client::push_pending_reads_queue() got zero-length pending read, ignoring it\n");
             return;
         }
 
         // if(item->len == 9) {
-        //     throw new std::logic_error ("trap");
+        //     throw std::logic_error ("trap");
         // }
 
         if(front)
@@ -505,8 +500,8 @@ namespace Skree {
         Client*& client = watcher->client;
 
         if(events & EV_ERROR) {
-            printf("EV_ERROR!\n");
-            delete client;
+            Utils::cluck(1, "EV_ERROR!\n");
+            client->drop();
             return;
         }
 
@@ -517,7 +512,7 @@ namespace Skree {
             if(read > 0) {
 #ifdef SKREE_NET_DEBUG
                 for(int i = 0; i < read; ++i)
-                    printf("read from %s [%d]: 0x%.2X\n", client->get_peer_id(),i,buf[i]);
+                    fprintf(stderr, "read from %s/%s [%d]: 0x%.2X\n", client->get_peer_id(),client->get_conn_id(),i,((unsigned char*)buf)[i]);
 #endif
                 client->push_read_queue(read, buf);
                 free(buf);
@@ -526,13 +521,16 @@ namespace Skree {
                 if((errno != EAGAIN) && (errno != EINTR)) {
                     perror("recv");
                     free(buf);
-                    delete client;
+                    client->drop();
                     return;
                 }
 
             } else {
+                if(client->get_peer_id() != nullptr)
+                    Utils::cluck(3, "%s/%s disconnected", client->get_peer_id(), client->get_conn_id());
+
                 free(buf);
-                delete client;
+                client->drop();
                 return;
             }
         }
@@ -540,35 +538,13 @@ namespace Skree {
         if(events & EV_WRITE) {
             auto item = client->get_pending_write();
 
-            if(item != nullptr) {
-                int written = write(
-                    _watcher->fd,
-                    (item->data + item->pos),
-                    (item->len - item->pos)
-                );
-#ifdef SKREE_NET_DEBUG
-                printf("written %d bytes to %s/%s, len: %lu\n", written, client->get_peer_id(), client->get_conn_id(), item->len);
-#endif
-                if(written < 0) {
-                    if((errno != EAGAIN) && (errno != EINTR)) {
-                        perror("write");
-                        delete client;
-                        return;
-                    }
-
-                } else {
-#ifdef SKREE_NET_DEBUG
-                    for(int i = 0; i < written; ++i)
-                        printf("written to %s [%d]: 0x%.2X\n", client->get_peer_id(),i,((char*)(item->data + item->pos))[i]);
-#endif
-                    item->pos += written;
-
-                    if((item->pos >= item->len) && !item->cb->noop) {
-                        client->push_pending_reads_queue(item->cb);
-                        item->cb = Skree::PendingReads::noop(client->server);
-                    }
-                }
-            }
+            if(item != nullptr)
+                item->write(*client, _watcher->fd);
         }
+    }
+
+    void Client::drop() {
+        destroy();
+        // delete this; // TODO: does this break ReplicationPingTask somehow?
     }
 }

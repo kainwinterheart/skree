@@ -8,8 +8,9 @@ namespace Skree {
     namespace Actions {
         void C::in(
             const uint64_t& in_len, const char*& in_data,
-            uint64_t& out_len, char*& out_data
+            Skree::Base::PendingWrite::QueueItem*& out
         ) {
+            // Utils::cluck(1, "CHECK");
             uint64_t in_pos = 0;
 
             uint32_t event_name_len;
@@ -25,10 +26,8 @@ namespace Skree {
             auto eit = server.known_events.find(event_name);
 
             if(eit == server.known_events.end()) {
-                fprintf(stderr, "[C::in] Got unknown event: %s\n", event_name);
-                out_data = (char*)malloc(1);
-                out_len += 1;
-                out_data[0] = SKREE_META_OPCODE_F;
+                Utils::cluck(2, "[C::in] Got unknown event: %s\n", event_name);
+                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
                 return;
             }
 
@@ -45,14 +44,12 @@ namespace Skree {
             char* rin = (char*)(in_data + in_pos);
             in_pos += rin_len;
 
-            out_data = (char*)malloc(1);
-            out_len += 1;
-
             uint64_t now = std::time(nullptr);
             auto state = server.get_event_state(rid, *(eit->second), now);
 
             if(state == SKREE_META_EVENTSTATE_PROCESSED) {
-                out_data[0] = SKREE_META_OPCODE_K; // event is processed, everything is fine
+                // event is processed, everything is fine
+                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
 
             } else if(state == SKREE_META_EVENTSTATE_LOST) {
                 in_packet_e_ctx_event event {
@@ -79,55 +76,43 @@ namespace Skree {
                 );
 
                 if(result == SAVE_EVENT_RESULT_K) {
-                    out_data[0] = SKREE_META_OPCODE_K; // event has been lost, but just enqueued
-                                                       // again and will be re-replicated
+                    // event has been lost, but just enqueued, again and will be re-replicated
+                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
 
                     auto& db = *(eit->second->queue->kv);
 
                     if(!db.remove((char*)&rid_net, sizeof(rid_net)))
-                        fprintf(stderr, "db.remove failed: %s\n", db.error().name());
+                        Utils::cluck(2, "db.remove failed: %s\n", db.error().name());
 
                 } else {
-                    out_data[0] = SKREE_META_OPCODE_F; // can't re-save event, try again
+                    // can't re-save event, try again
+                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
                 }
 
             } else {
-                out_data[0] = SKREE_META_OPCODE_F; // event state is not terminal
+                // event state is not terminal
+                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
             }
         }
 
-        Utils::muh_str_t* C::out_init(
+        Skree::Base::PendingWrite::QueueItem* C::out_init(
             Utils::known_event_t& event, const uint64_t& rid_net,
-            const uint64_t& rin_len, char*& rin
+            const uint32_t& rin_len, char*& rin
         ) {
-            Utils::muh_str_t* out = (Utils::muh_str_t*)malloc(sizeof(*out));
-            out->len = 1;
-            out->data = (char*)malloc(
-                out->len
-                + sizeof(uint32_t) /*sizeof(event.id_len)*/
+            uint32_t rin_len_net = htonl(rin_len); // TODO
+            auto out = new Skree::Base::PendingWrite::QueueItem((
+                sizeof(uint32_t) /*sizeof(event.id_len)*/
                 + event.id_len
                 + sizeof(rid_net)
-                + sizeof(rin_len)
+                + sizeof(rin_len_net)
                 + rin_len
-            );
+            ), opcode());
 
-            out->data[0] = opcode();
-
-            memcpy(out->data + out->len, (char*)&(event.id_len_net), sizeof(uint32_t) /*sizeof(event.id_len)*/);
-            out->len += sizeof(uint32_t) /*sizeof(event.id_len)*/;
-
-            memcpy(out->data + out->len, event.id, event.id_len);
-            out->len += event.id_len;
-
-            memcpy(out->data + out->len, (char*)&rid_net, sizeof(rid_net));
-            out->len += sizeof(rid_net);
-
-            uint32_t rin_len_net = htonl(rin_len);
-            memcpy(out->data + out->len, (char*)&rin_len_net, sizeof(rin_len_net));
-            out->len += sizeof(rin_len_net);
-
-            memcpy(out->data + out->len, rin, rin_len);
-            out->len += rin_len;
+            out->push(sizeof(uint32_t) /*sizeof(event.id_len)*/, (char*)&(event.id_len_net));
+            out->push(event.id_len, event.id);
+            out->push(sizeof(rid_net), (char*)&rid_net);
+            out->push(sizeof(rin_len_net), (char*)&rin_len_net);
+            out->push(rin_len, rin);
 
             return out;
         }
