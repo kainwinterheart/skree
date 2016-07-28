@@ -78,7 +78,7 @@ namespace Skree {
 #endif
                     pos += written;
 
-                    if((pos >= real_len) && (cb != nullptr) && !cb->noop) {
+                    if((pos >= real_len) && (cb != nullptr)) {
                         client.push_pending_reads_queue(cb);
                         cb = nullptr;
                     }

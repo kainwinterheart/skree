@@ -41,8 +41,7 @@ namespace Skree {
                         .len = _tmp,
                         .cb = cb,
                         .ctx = nullptr,
-                        .opcode = false,
-                        .noop = false
+                        .opcode = false
                     };
 
                     push_pending_reads_queue(_item, true);
@@ -56,8 +55,7 @@ namespace Skree {
                 .len = 4,
                 .cb = cb,
                 .ctx = nullptr,
-                .opcode = false,
-                .noop = false
+                .opcode = false
             };
 
             push_pending_reads_queue(item, true);
@@ -113,8 +111,7 @@ namespace Skree {
                                 .len = _item.len + 1,
                                 .cb = _cb,
                                 .ctx = item->ctx,
-                                .opcode = true,
-                                .noop = false
+                                .opcode = true
                             };
 #ifdef SKREE_NET_DEBUG
                             Utils::cluck(2, "About to run original callback with a packet of size %lu bytes\n", __item.len);
@@ -138,8 +135,7 @@ namespace Skree {
                                 .len = 0,
                                 .cb = nullptr,
                                 .ctx = nullptr,
-                                .opcode = false,
-                                .noop = false
+                                .opcode = false
                             };
 
                             _cb(client, __item, args);
@@ -150,8 +146,7 @@ namespace Skree {
                                 .len = _tmp,
                                 .cb = cb,
                                 .ctx = nullptr,
-                                .opcode = false,
-                                .noop = false
+                                .opcode = false
                             };
 #ifdef SKREE_NET_DEBUG
                             Utils::cluck(2, "Got opcode for pending read, need to read %lu more bytes\n", _tmp);
@@ -167,8 +162,7 @@ namespace Skree {
                         .len = 4,
                         .cb = cb,
                         .ctx = nullptr,
-                        .opcode = false,
-                        .noop = false
+                        .opcode = false
                     };
 
                     push_pending_reads_queue(item, true);
@@ -379,11 +373,10 @@ namespace Skree {
 
         while(!pending_reads.empty()) {
             auto item = pending_reads.front();
-
             auto _cb = item->cb;
-            if(!_cb->noop()) {
+
+            if(_cb != nullptr)
                 _cb->error(*this, *item);
-            }
 
             pending_reads.pop_front();
         }
@@ -399,7 +392,7 @@ namespace Skree {
             if(__cb != nullptr) {
                 auto _cb = __cb->cb;
 
-                if(!_cb->noop())
+                if(_cb != nullptr)
                     _cb->error(*this, *__cb);
             }
         }

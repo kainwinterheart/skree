@@ -508,8 +508,7 @@ namespace Skree {
                     .len = 1,
                     .cb = new Skree::PendingReads::Callbacks::Replication(*this),
                     .ctx = (void*)r_ctx,
-                    .opcode = true,
-                    .noop = false
+                    .opcode = true
                 });
 
                 out->finish();
@@ -675,8 +674,7 @@ namespace Skree {
                         .len = 8,
                         .cb = cb,
                         .ctx = nullptr,
-                        .opcode = false,
-                        .noop = false
+                        .opcode = false
                     };
 
                     client.push_pending_reads_queue(item, true);

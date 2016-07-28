@@ -374,8 +374,7 @@ namespace Skree {
                                 .len = 1,
                                 .cb = new Skree::PendingReads::Callbacks::ReplicationProposeSelf(server),
                                 .ctx = (void*)ctx,
-                                .opcode = true,
-                                .noop = false
+                                .opcode = true
                             });
 
                             it->second.next()->push_write_queue(i_req);
@@ -436,8 +435,7 @@ namespace Skree {
                     .len = 1,
                     .cb = new Skree::PendingReads::Callbacks::ReplicationPingTask(server),
                     .ctx = (void*)ctx,
-                    .opcode = true,
-                    .noop = false
+                    .opcode = true
                 });
 
                 c_req->finish();

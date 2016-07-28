@@ -10,7 +10,6 @@ namespace Skree {
 #include "actions/e.hpp"
 #include "actions/r.hpp"
 #include "server.hpp"
-#include "pending_reads/noop.hpp"
 #include "pending_reads/ordinary_packet.hpp"
 #include "actions/w.hpp"
 #include "actions/l.hpp"

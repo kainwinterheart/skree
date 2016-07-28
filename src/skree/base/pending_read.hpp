@@ -42,8 +42,6 @@ namespace Skree {
                     Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item
                 ) {}
-
-                virtual bool noop() { return false; };
             };
 
             struct QueueItem {
@@ -51,7 +49,6 @@ namespace Skree {
                 Callback* cb;
                 void* ctx;
                 bool opcode;
-                bool noop;
             };
         }
     }

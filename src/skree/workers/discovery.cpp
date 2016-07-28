@@ -203,8 +203,7 @@ namespace Skree {
                 .len = 1,
                 .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
                 .ctx = nullptr,
-                .opcode = true,
-                .noop = false
+                .opcode = true
             });
 
             w_req->finish();
@@ -380,8 +379,7 @@ namespace Skree {
                                     .len = 1,
                                     .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
                                     .ctx = nullptr,
-                                    .opcode = true,
-                                    .noop = false
+                                    .opcode = true
                                 });
 
                                 h_req->finish();
@@ -412,8 +410,7 @@ namespace Skree {
                         .len = 1,
                         .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
                         .ctx = nullptr,
-                        .opcode = true,
-                        .noop = false
+                        .opcode = true
                     });
 
                     l_req->finish();
@@ -512,8 +509,7 @@ namespace Skree {
                         .len = 1,
                         .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
                         .ctx = nullptr,
-                        .opcode = true,
-                        .noop = false
+                        .opcode = true
                     });
 
                     h_req->finish();
@@ -548,8 +544,7 @@ namespace Skree {
                     .len = 8,
                     .cb = cb,
                     .ctx = nullptr,
-                    .opcode = false,
-                    .noop = false
+                    .opcode = false
                 };
 
                 client.push_pending_reads_queue(item, true);
