@@ -1,6 +1,5 @@
 #include "discovery.hpp"
 #include "../meta.hpp"
-#include "../pending_reads/new_client.hpp"
 
 #include <algorithm>
 
@@ -200,10 +199,8 @@ namespace Skree {
             auto w_req = Skree::Actions::W::out_init();
 
             w_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                .len = 1,
                 .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
-                .ctx = nullptr,
-                .opcode = true
+                .ctx = nullptr
             });
 
             w_req->finish();
@@ -376,10 +373,8 @@ namespace Skree {
                                 auto h_req = Skree::Actions::H::out_init(server);
 
                                 h_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                                    .len = 1,
                                     .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
-                                    .ctx = nullptr,
-                                    .opcode = true
+                                    .ctx = nullptr
                                 });
 
                                 h_req->finish();
@@ -407,10 +402,8 @@ namespace Skree {
                     auto l_req = Skree::Actions::L::out_init();
 
                     l_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                        .len = 1,
                         .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
-                        .ctx = nullptr,
-                        .opcode = true
+                        .ctx = nullptr
                     });
 
                     l_req->finish();
@@ -506,10 +499,8 @@ namespace Skree {
                     auto h_req = Skree::Actions::H::out_init(server);
 
                     h_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                        .len = 1,
                         .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
-                        .ctx = nullptr,
-                        .opcode = true
+                        .ctx = nullptr
                     });
 
                     h_req->finish();
@@ -528,27 +519,7 @@ namespace Skree {
         }
 
         void Discovery::on_new_client(Skree::Client& client) { // TODO: also in Server::socket_cb
-            {
-                const uint32_t protocol_version (htonl(PROTOCOL_VERSION));
-                auto out = new Skree::Base::PendingWrite::QueueItem(sizeof(protocol_version));
-
-                out->push(sizeof(protocol_version), &protocol_version);
-                out->finish();
-
-                client.push_write_queue(out, true);
-            }
-
-            {
-                const auto cb = new Skree::PendingReads::Callbacks::NewClient(server);
-                const auto item = new Skree::Base::PendingRead::QueueItem {
-                    .len = 8,
-                    .cb = cb,
-                    .ctx = nullptr,
-                    .opcode = false
-                };
-
-                client.push_pending_reads_queue(item, true);
-            }
+            client.push_write_queue(Skree::Actions::N::out_init(), true);
         }
     }
 }

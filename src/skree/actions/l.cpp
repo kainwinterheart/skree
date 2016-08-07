@@ -3,7 +3,7 @@
 namespace Skree {
     namespace Actions {
         void L::in(
-            const uint64_t& in_len, const char*& in_data,
+            const uint64_t in_len, const char* in_data,
             Skree::Base::PendingWrite::QueueItem*& out
         ) {
             uint32_t _known_peers_len;

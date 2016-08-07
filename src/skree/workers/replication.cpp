@@ -371,10 +371,8 @@ namespace Skree {
                             auto i_req = Skree::Actions::I::out_init(__peer_id, event, item->rid_net);
 
                             i_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                                .len = 1,
                                 .cb = new Skree::PendingReads::Callbacks::ReplicationProposeSelf(server),
-                                .ctx = (void*)ctx,
-                                .opcode = true
+                                .ctx = (void*)ctx
                             });
 
                             it->second.next()->push_write_queue(i_req);
@@ -432,10 +430,8 @@ namespace Skree {
                 auto c_req = Skree::Actions::C::out_init(event, item->rid_net, item->rin_len, item->rin);
 
                 c_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                    .len = 1,
                     .cb = new Skree::PendingReads::Callbacks::ReplicationPingTask(server),
-                    .ctx = (void*)ctx,
-                    .opcode = true
+                    .ctx = (void*)ctx
                 });
 
                 c_req->finish();

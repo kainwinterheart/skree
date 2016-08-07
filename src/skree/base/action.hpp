@@ -34,7 +34,7 @@ namespace Skree {
             static const char opcode();
 
             virtual void in(
-                const uint64_t& in_len, const char*& in_data,
+                const uint64_t in_len, const char* in_data,
                 Skree::Base::PendingWrite::QueueItem*& out
             ) = 0;
         };

@@ -17,6 +17,7 @@ namespace Skree {
 #include "actions/i.hpp"
 #include "actions/x.hpp"
 #include "actions/h.hpp"
+#include "actions/n.hpp"
 
 #include <fcntl.h>
 #include <deque>
@@ -29,9 +30,6 @@ namespace Skree {
         struct Utils::client_bound_ev_io watcher;
         int fh;
         struct ev_loop* loop;
-        char* read_queue;
-        size_t read_queue_length;
-        size_t read_queue_mapped_length;
         pthread_mutex_t write_queue_mutex;
         char* peer_name;
         size_t peer_name_len;
@@ -55,15 +53,16 @@ namespace Skree {
 
         template<typename T>
         void add_action_handler();
-        void read_cb();
+        bool read_cb(Base::PendingRead::Callback::Args& message);
 
         static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events);
-        void push_read_queue(size_t len, char* data);
-        void ordinary_packet_cb(const char& opcode, const size_t& in_packet_len);
+        void ordinary_packet_cb(Base::PendingRead::Callback::Args& message);
         Skree::Base::PendingWrite::QueueItem* get_pending_write();
         void destroy();
 
     public:
+        Base::PendingRead::Callback::Args* active_read;
+
         Client(int _fh, struct ev_loop* _loop, sockaddr_in* _s_in, socklen_t _s_in_len, Server& _server);
         virtual ~Client();
 

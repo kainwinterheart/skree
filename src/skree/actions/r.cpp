@@ -3,9 +3,10 @@
 namespace Skree {
     namespace Actions {
         void R::in(
-            const uint64_t& in_len, const char*& in_data,
+            const uint64_t in_len, const char* in_data,
             Skree::Base::PendingWrite::QueueItem*& out
         ) {
+            // Utils::cluck(1, "R::in begin");
             uint64_t in_pos = 0;
             uint32_t _tmp;
 
@@ -127,6 +128,7 @@ namespace Skree {
                 Utils::cluck(2, "Unexpected repl_save() result: %d\n", result);
                 abort();
             }
+            // Utils::cluck(1, "R::in end");
         }
 
         Skree::Base::PendingWrite::QueueItem* R::out_init(

@@ -29,7 +29,6 @@ namespace Skree {
                 uint32_t pos;
                 uint32_t data_offset;
                 uint32_t real_len;
-                bool has_opcode;
                 bool done;
                 const Skree::Base::PendingRead::QueueItem* cb;
                 QueueItem* prev;
@@ -51,26 +50,21 @@ namespace Skree {
 
             public:
                 QueueItem(
-                    uint32_t _len, char opcode = '\0',
+                    uint32_t _len, char opcode,
                     const Skree::Base::PendingRead::QueueItem* _cb = nullptr
                 )
                     : prev(nullptr)
                     , pos(0)
                     , cb(_cb)
                     , done(false)
-                    , has_opcode(opcode != '\0')
                     , backtrace(Utils::longmess())
                     , real_len(0)
                 {
-                    uint8_t opcode_len = (has_opcode ? 1 : 0);
-
-                    data = (char*)malloc(opcode_len + sizeof(_len) + _len);
-                    len = (uint32_t*)(data + opcode_len);
-                    *len = opcode_len + sizeof(_len) + _len;
-                    data_offset = opcode_len + sizeof(_len);
-
-                    if(has_opcode)
-                        data[0] = opcode;
+                    data = (char*)malloc(1 + sizeof(_len) + _len);
+                    len = (uint32_t*)(data + 1);
+                    *len = 1 + sizeof(_len) + _len;
+                    data_offset = 1 + sizeof(_len);
+                    data[0] = opcode;
 
                     // Utils::cluck(3, "ctor: 0x%llx, data: 0x%llx, len: 0x%llx", (uintptr_t)this, data, len);
                 }
@@ -87,7 +81,7 @@ namespace Skree {
                         Throw("grow() called on read-only write queue item");
 
                     data = (char*)realloc(data, _len + *len);
-                    len = (uint32_t*)(data + (has_opcode ? 1 : 0));
+                    len = (uint32_t*)(data + 1);
                     *len += _len;
                 }
 
@@ -133,9 +127,6 @@ namespace Skree {
                 }
 
                 char get_opcode() const {
-                    if(!has_opcode)
-                        Throw("get_opcode() called on write queue item without opcode");
-
                     return data[0];
                 }
 

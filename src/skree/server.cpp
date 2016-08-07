@@ -1,5 +1,4 @@
 #include "server.hpp"
-#include "pending_reads/new_client.hpp"
 #include "meta.hpp"
 
 namespace Skree {
@@ -505,10 +504,8 @@ namespace Skree {
                 ++(r_ctx->pending);
 
                 out->set_cb(new Skree::Base::PendingRead::QueueItem {
-                    .len = 1,
                     .cb = new Skree::PendingReads::Callbacks::Replication(*this),
-                    .ctx = (void*)r_ctx,
-                    .opcode = true
+                    .ctx = (void*)r_ctx
                 });
 
                 out->finish();
@@ -658,27 +655,7 @@ namespace Skree {
         new_client_t* new_client = new new_client_t {
             .fh = fh,
             .cb = [server](Client& client){ // TODO: also in Discovery::on_new_client
-                {
-                    const uint32_t protocol_version (htonl(PROTOCOL_VERSION));
-                    auto out = new Skree::Base::PendingWrite::QueueItem(sizeof(protocol_version));
-
-                    out->push(sizeof(protocol_version), &protocol_version);
-                    out->finish();
-
-                    client.push_write_queue(out, true);
-                }
-
-                {
-                    const auto cb = new Skree::PendingReads::Callbacks::NewClient(*server);
-                    const auto item = new Skree::Base::PendingRead::QueueItem {
-                        .len = 8,
-                        .cb = cb,
-                        .ctx = nullptr,
-                        .opcode = false
-                    };
-
-                    client.push_pending_reads_queue(item, true);
-                }
+                client.push_write_queue(Skree::Actions::N::out_init(), true);
             },
             .s_in = addr,
             .s_in_len = len

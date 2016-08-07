@@ -1,17 +1,15 @@
 #pragma once
 #include "../base/action.hpp"
 #include "../server.hpp"
-// #include "../meta/opcodes.hpp"
-
-// #include <ctime>
+#include "../meta.hpp"
 
 namespace Skree {
     namespace Actions {
-        class X : public Skree::Base::Action {
+        class N : public Skree::Base::Action {
         public:
-            static const char opcode() { return 'x'; }
+            static const char opcode() { return 'n'; }
 
-            X(
+            N(
                 Skree::Server& _server,
                 Skree::Client& _client
             ) : Skree::Base::Action(_server, _client) {}
@@ -21,11 +19,7 @@ namespace Skree {
                 Skree::Base::PendingWrite::QueueItem*& out
             ) override;
 
-            static Skree::Base::PendingWrite::QueueItem* out_init(
-                Utils::muh_str_t*& peer_id,
-                Utils::known_event_t& event,
-                const uint64_t& rid
-            );
+            static Skree::Base::PendingWrite::QueueItem* out_init();
         };
     }
 }

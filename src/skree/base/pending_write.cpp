@@ -9,11 +9,10 @@ namespace Skree {
     namespace Base {
         namespace PendingWrite {
             QueueItem::QueueItem(const QueueItem& prev)
-                : data(prev.data)
+                : data(prev.data) // TODO: this is NOT thread-safe
                 , len(prev.len)
                 , pos(0)
                 , data_offset(prev.data_offset)
-                , has_opcode(prev.has_opcode)
                 , done(true)
                 , cb(nullptr)
                 , prev(prev.prev)
@@ -32,18 +31,19 @@ namespace Skree {
                     Throw("calc_body_len() called on read-write write queue item");
 
                 if(prev == nullptr)
-                    return real_len - sizeof(*len) - (has_opcode ? 1 : 0);
+                    return (real_len - sizeof(*len) - 1);
 
-                return prev->calc_body_len() + real_len - sizeof(*len);
+                return (prev->calc_body_len() + real_len - sizeof(*len) - 1);
             }
 
             void QueueItem::write(Skree::Client& client, int fd, uint32_t total_len) {
                 if(pos == 0) {
                     if(prev == nullptr) {
                         *len = htonl(total_len); // original length is overwritten here
+                                                 // TODO: this is NOT thread-safe
 
                     } else {
-                        pos += sizeof(*len);
+                        pos += 1 + sizeof(*len);
                     }
                 }
 
@@ -63,15 +63,15 @@ namespace Skree {
                 if(written < 0) {
                     if((errno != EAGAIN) && (errno != EINTR)) {
                         perror("write");
-                        client.drop(); // TODO
-                        Throw("woot");
+                        client.drop(); // TODO?
+                        // Throw("woot");
                         return;
                     }
 
                 } else {
 #ifdef SKREE_NET_DEBUG
                     for(int i = 0; i < written; ++i)
-                        if(has_opcode && (i == 0))
+                        if((i == 0) && (prev == nullptr))
                             fprintf(stderr, "written to %s/%s [%d]: %c (opcode; 0x%.2X)\n", client.get_peer_id(),client.get_conn_id(),i,data[0], (unsigned char)data[0]);
                         else
                             fprintf(stderr, "written to %s/%s [%d]: 0x%.2X\n", client.get_peer_id(),client.get_conn_id(),i,((unsigned char*)(data + pos))[i]);
