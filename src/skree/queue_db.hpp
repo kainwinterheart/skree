@@ -144,12 +144,12 @@ namespace Skree {
         public:
             WriteStream(QueueDb& _db);
             ~WriteStream();
-            void write(uint64_t len, void* data);
+            void write(uint64_t len, const void* data);
         };
 
         friend class QueueDb::WriteStream;
 
         QueueDb::WriteStream* write();
-        void write(uint64_t len, void* data);
+        void write(uint64_t len, const void* data);
     };
 }

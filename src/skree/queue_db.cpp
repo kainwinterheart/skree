@@ -611,7 +611,7 @@ namespace Skree {
         return new QueueDb::WriteStream (*this);
     }
 
-    void QueueDb::write(uint64_t len, void* data) {
+    void QueueDb::write(uint64_t len, const void* data) {
         if(len == 0) {
             throw std::logic_error("QueueDb: zero-length write, ignoring it");
         }
@@ -627,7 +627,7 @@ namespace Skree {
         write_page->unlock();
     }
 
-    void QueueDb::WriteStream::write(uint64_t len, void* data) {
+    void QueueDb::WriteStream::write(uint64_t len, const void* data) {
         db._write(len, (const unsigned char*)data);
         total_len += len;
     }

@@ -13,15 +13,13 @@ namespace Skree {
             // Utils::cluck(1, "CHECK");
             uint64_t in_pos = 0;
 
-            uint32_t event_name_len;
-            memcpy(&event_name_len, in_data + in_pos, sizeof(event_name_len));
+            const uint32_t event_name_len (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(event_name_len);
-            event_name_len = ntohl(event_name_len);
 
             char event_name [event_name_len + 1];
             memcpy(event_name, in_data + in_pos, event_name_len);
             in_pos += sizeof(event_name_len);
-            event_name[event_name_len] = '\0';
+            event_name[event_name_len] = '\0'; // TODO
 
             auto eit = server.known_events.find(event_name);
 
@@ -31,21 +29,17 @@ namespace Skree {
                 return;
             }
 
-            uint64_t rid_net;
-            memcpy(&rid_net, in_data + in_pos, sizeof(rid_net));
+            const uint64_t rid_net (ntohll(*(uint64_t*)(in_data + in_pos)));
             in_pos += sizeof(rid_net);
-            uint64_t rid = ntohll(rid_net);
 
-            uint32_t rin_len;
-            memcpy(&rin_len, in_data + in_pos, sizeof(rin_len));
+            const uint32_t rin_len (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(rin_len);
-            rin_len = ntohl(rin_len);
 
-            char* rin = (char*)(in_data + in_pos);
+            const char* rin (in_data + in_pos);
             in_pos += rin_len;
 
             uint64_t now = std::time(nullptr);
-            auto state = server.get_event_state(rid, *(eit->second), now);
+            auto state = server.get_event_state(ntohll(rid_net), *(eit->second), now);
 
             if(state == SKREE_META_EVENTSTATE_PROCESSED) {
                 // event is processed, everything is fine

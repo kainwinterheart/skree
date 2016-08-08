@@ -196,9 +196,8 @@ namespace Skree {
             delete peer;
         }
 
-        if(_save_peers_to_discover) {
+        if(_save_peers_to_discover)
             save_peers_to_discover();
-        }
 
         uint64_t now = htonll(std::time(nullptr));
         size_t now_len = sizeof(now);
@@ -775,9 +774,9 @@ namespace Skree {
     }
 
     short Server::get_event_state(
-        uint64_t& id,
+        uint64_t id,
         Utils::known_event_t& event,
-        const uint64_t& now
+        const uint64_t now
     ) {
         auto wip_end = wip.lock();
         auto it = wip.find(id);

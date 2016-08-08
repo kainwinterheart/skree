@@ -137,9 +137,9 @@ namespace Skree {
         void replication_exec(out_packet_i_ctx* ctx);
 
         short get_event_state(
-            uint64_t& id,
+            uint64_t id,
             Utils::known_event_t& event,
-            const uint64_t& now
+            const uint64_t now
         );
 
         inline const uint32_t get_max_parallel_connections() const {

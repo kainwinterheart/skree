@@ -7,24 +7,21 @@ namespace Skree {
             Skree::Base::PendingWrite::QueueItem*& out
         ) {
             uint64_t in_pos = 0;
-            uint32_t _tmp;
 
-            memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-            in_pos += sizeof(_tmp);
-            uint32_t host_len = ntohl(_tmp);
+            const uint32_t host_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            in_pos += sizeof(host_len);
 
-            char* host = (char*)malloc(host_len + 1);
+            char* host = (char*)malloc(host_len + 1); // TODO: maybe I should keep it
             memcpy(host, in_data + in_pos, host_len);
             in_pos += host_len;
-            host[host_len] = '\0';
+            host[host_len] = '\0'; // TODO
 
-            memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-            in_pos += sizeof(_tmp);
-            uint16_t port = ntohl(_tmp);
+            const uint32_t port (ntohl(*(uint32_t*)(in_data + in_pos)));
+            in_pos += sizeof(port);
 
             // TODO: (char*)(char[len])
             char* _peer_id = Utils::make_peer_id(host_len, host, port);
-            const auto& conn_id = client.get_conn_id();
+            const auto conn_id = client.get_conn_id();
 
             auto& known_peers = server.known_peers;
             auto& known_peers_by_conn_id = server.known_peers_by_conn_id;

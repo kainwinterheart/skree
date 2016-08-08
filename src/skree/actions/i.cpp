@@ -7,31 +7,26 @@ namespace Skree {
             Skree::Base::PendingWrite::QueueItem*& out
         ) {
             uint64_t in_pos = 0;
-            uint32_t _tmp;
 
-            memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-            in_pos += sizeof(_tmp);
-            uint32_t peer_id_len = ntohl(_tmp);
+            const uint32_t peer_id_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            in_pos += sizeof(peer_id_len);
 
             char peer_id [peer_id_len + 1];
 
             memcpy(peer_id, in_data + in_pos, peer_id_len);
             in_pos += peer_id_len;
-            peer_id[peer_id_len] = '\0';
+            peer_id[peer_id_len] = '\0'; // TODO
 
-            memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-            in_pos += sizeof(_tmp);
-            uint32_t event_id_len = ntohl(_tmp);
+            const uint32_t event_id_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            in_pos += sizeof(event_id_len);
 
             char* event_id = (char*)malloc(event_id_len + 1);
             memcpy(event_id, in_data + in_pos, event_id_len);
             in_pos += event_id_len;
-            event_id[event_id_len] = '\0';
+            event_id[event_id_len] = '\0'; // TODO
 
-            uint64_t _tmp64;
-            memcpy(&_tmp64, in_data + in_pos, sizeof(_tmp64));
-            in_pos += sizeof(_tmp64);
-            uint64_t rid = ntohll(_tmp64);
+            const uint64_t rid (ntohll(*(uint64_t*)(in_data + in_pos)));
+            in_pos += sizeof(rid);
 
             auto eit = server.known_events.find(event_id);
 

@@ -99,7 +99,7 @@ namespace Skree {
 
                     // Utils::cluck(6, "this: 0x%lx, *len: %u, rest: %u, rest(computed): %u, data_offset: %u, _len: %u", (uintptr_t)this, *len, rest, ((*len) - data_offset), data_offset, _len);
 
-                    memcpy(data + data_offset, _data, _len);
+                    memcpy(data + data_offset, _data, _len); // TODO: should NOT copy event data
                     data_offset += _len;
                 }
 

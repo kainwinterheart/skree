@@ -8,29 +8,25 @@ namespace Skree {
         ) {
             // Utils::cluck(1, "R::in begin");
             uint64_t in_pos = 0;
-            uint32_t _tmp;
 
-            memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-            in_pos += sizeof(_tmp);
-            uint32_t hostname_len = ntohl(_tmp);
+            const uint32_t hostname_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            in_pos += sizeof(hostname_len);
 
             char* hostname = (char*)malloc(hostname_len + 1);
             memcpy(hostname, in_data + in_pos, hostname_len);
             in_pos += hostname_len;
-            hostname[hostname_len] = '\0';
+            hostname[hostname_len] = '\0'; // TODO
 
-            memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-            in_pos += sizeof(_tmp);
-            uint32_t port = ntohl(_tmp);
+            const uint32_t port (ntohl(*(uint32_t*)(in_data + in_pos)));
+            in_pos += sizeof(port);
 
-            memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-            in_pos += sizeof(_tmp);
-            uint32_t event_name_len = ntohl(_tmp);
+            const uint32_t event_name_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            in_pos += sizeof(event_name_len);
 
             char event_name [event_name_len + 1];
             memcpy(event_name, in_data + in_pos, event_name_len);
             in_pos += event_name_len;
-            event_name[event_name_len] = '\0';
+            event_name[event_name_len] = '\0'; // TODO
 
             auto it = server.known_events.find(event_name);
 
@@ -42,66 +38,50 @@ namespace Skree {
 
             auto queue = it->second->r_queue;
 
-            memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-            in_pos += sizeof(_tmp);
-            uint32_t cnt = ntohl(_tmp);
+            uint32_t cnt (ntohl(*(uint32_t*)(in_data + in_pos)));
+            in_pos += sizeof(cnt);
+
             const uint32_t events_count = cnt;
             in_packet_r_ctx_event* events [events_count];
-            uint64_t _tmp64;
 
             while(cnt > 0) {
                 --cnt;
 
-                memcpy(&_tmp64, in_data + in_pos, sizeof(_tmp64));
-                in_pos += sizeof(_tmp64);
-
-                memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-                in_pos += sizeof(_tmp);
-                _tmp = ntohl(_tmp);
-
-                auto event = new in_packet_r_ctx_event {
-                    .id_net = _tmp64,
+                events[cnt] = new in_packet_r_ctx_event {
+                    .id_net = *(uint64_t*)(in_data + in_pos),
                     .id = (char*)malloc(21),
-                    .len = _tmp,
-                    .data = (char*)malloc(_tmp)
+                    .len = ntohl(*(uint32_t*)(in_data + in_pos + sizeof(uint64_t))),
+                    .data = (in_data + in_pos + sizeof(uint64_t) + sizeof(uint32_t))
                 };
 
-                sprintf(event->id, "%llu", ntohll(_tmp64)); // TODO: is this really necessary?
-                // Utils::cluck(2, "repl got id: %lu\n", ntohll(event->id_net));
+                sprintf(events[cnt]->id, "%llu", ntohll(events[cnt]->id_net)); // TODO: is this really necessary?
+                // Utils::cluck(2, "repl got id: %lu\n", ntohll(events[cnt]->id_net));
 
-                memcpy(event->data, in_data + in_pos, _tmp);
-                in_pos += _tmp;
-
-                events[cnt] = event;
+                in_pos += sizeof(uint64_t) + sizeof(uint32_t) + events[cnt]->len;
             }
 
-            memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-            in_pos += sizeof(_tmp);
-            cnt = ntohl(_tmp);
+            cnt = ntohl(*(uint32_t*)(in_data + in_pos));
+            in_pos += sizeof(cnt);
+
             const uint32_t peers_count = cnt;
             packet_r_ctx_peer* peers [peers_count];
 
             while(cnt > 0) {
                 --cnt;
 
-                memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-                in_pos += sizeof(_tmp);
-                _tmp = ntohl(_tmp);
+                const uint32_t len (ntohl(*(uint32_t*)(in_data + in_pos)));
+                in_pos += sizeof(len);
 
-                auto peer = new packet_r_ctx_peer {
-                    .hostname_len = _tmp,
-                    .hostname = (char*)malloc(_tmp + 1)
+                peers[cnt] = new packet_r_ctx_peer {
+                    .hostname_len = len,
+                    .hostname = (char*)malloc(len + 1),
+                    .port = ntohl(*(uint32_t*)(in_data + in_pos + len))
                 };
 
-                memcpy(peer->hostname, in_data + in_pos, _tmp);
-                in_pos += _tmp;
-                peer->hostname[_tmp] = '\0';
+                memcpy(peers[cnt]->hostname, in_data + in_pos, len);
+                peers[cnt]->hostname[len] = '\0'; // TODO
 
-                memcpy(&_tmp, in_data + in_pos, sizeof(_tmp));
-                in_pos += sizeof(_tmp);
-                peer->port = ntohl(_tmp);
-
-                peers[cnt] = peer;
+                in_pos += len + sizeof(uint32_t);
             }
 
             in_packet_r_ctx ctx {

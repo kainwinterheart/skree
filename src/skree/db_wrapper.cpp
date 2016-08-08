@@ -134,42 +134,4 @@ namespace Skree {
         unlock();
         return rv;
     }
-
-    get_keys_result_t* DbWrapper::db_get_keys(std::vector<std::string>& keys) {
-        class VisitorImpl : public kyotocabinet::DB::Visitor {
-            public:
-                explicit VisitorImpl(get_keys_result_t* _out) : out(_out) {}
-
-            private:
-                const char* visit_full(
-                    const char* _key, size_t key_len,
-                    const char* _value, size_t value_len,
-                    size_t* sp
-                ) {
-                    char* key = (char*)malloc(key_len + 1);
-                    memcpy(key, _key, key_len);
-                    key[key_len] = '\0';
-                    // if(strncmp(key,"wrinseq",7)!=0)
-                    // Utils::cluck(2, "got %s\n",key);
-
-                    char* value = (char*)malloc(value_len);
-                    memcpy(value, _value, value_len);
-
-                    (*out)[key] = (Utils::muh_str_t*)malloc(sizeof(Utils::muh_str_t));
-                    (*out)[key]->len = value_len;
-                    (*out)[key]->data = value;
-
-                    return kyotocabinet::DB::Visitor::NOP;
-                }
-
-                get_keys_result_t* out;
-        };
-
-        get_keys_result_t* out = new get_keys_result_t();
-
-        VisitorImpl visitor(out);
-
-        if(accept_bulk(keys, &visitor, false)) return out;
-        else return nullptr;
-    }
 }

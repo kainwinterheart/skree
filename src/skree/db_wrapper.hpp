@@ -84,31 +84,6 @@ namespace Skree {
             size_t ksiz
         );
 
-        get_keys_result_t* db_get_keys(std::vector<std::string>& keys);
-
-        template <typename T>
-        T* parse_db_value(Utils::muh_str_t* _value, size_t* size = nullptr) {
-            if(_value == nullptr) return nullptr;
-            if(size != nullptr) *size = _value->len;
-
-            T* value = (T*)malloc(_value->len);
-            memcpy(value, _value->data, _value->len);
-
-            // free(_value->data);
-            delete _value;
-
-            return value;
-        }
-
-        template <typename T>
-        T* parse_db_value(get_keys_result_t* map, std::string* key, size_t* size = nullptr) {
-            get_keys_result_t::iterator it = map->find((char*)(key->c_str()));
-
-            if(it == map->end()) return nullptr;
-
-            return parse_db_value<T>(it->second, size);
-        }
-
     private:
         pthread_mutex_t mutex;
         pthread_mutexattr_t mutexattr;
@@ -117,4 +92,3 @@ namespace Skree {
         void unlock() { pthread_mutex_unlock(&mutex); }
     };
 }
-

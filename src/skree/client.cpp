@@ -364,8 +364,8 @@ namespace Skree {
                 }
 
             } else {
-                if(client->get_peer_id() != nullptr)
-                    Utils::cluck(3, "%s/%s disconnected", client->get_peer_id(), client->get_conn_id());
+                // if(client->get_peer_id() != nullptr)
+                //     Utils::cluck(3, "%s/%s disconnected", client->get_peer_id(), client->get_conn_id());
 
                 client->drop();
                 return;
