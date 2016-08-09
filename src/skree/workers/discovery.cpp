@@ -218,11 +218,9 @@ namespace Skree {
 
             if(args.opcode == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 0;
-                uint32_t _tmp;
 
-                memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
+                uint32_t cnt (ntohl(*(uint32_t*)(args.data + in_pos)));
                 in_pos += sizeof(_tmp);
-                uint32_t cnt = ntohl(_tmp);
 
                 uint32_t host_len;
                 char* host;
@@ -235,18 +233,17 @@ namespace Skree {
 
                 while(cnt > 0) {
                     --cnt;
-                    memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
-                    in_pos += sizeof(_tmp);
-                    host_len = ntohl(_tmp);
+
+                    host_len = ntohl(*(uint32_t*)(args.data + in_pos));
+                    in_pos += sizeof(host_len);
 
                     host = (char*)malloc(host_len + 1);
                     memcpy(host, args.data + in_pos, host_len);
                     in_pos += host_len;
-                    host[host_len] = '\0';
+                    host[host_len] = '\0'; // TODO
 
-                    memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
-                    in_pos += sizeof(_tmp);
-                    port = ntohl(_tmp);
+                    port = ntohl(*(uint32_t*)(args.data + in_pos));
+                    in_pos += sizeof(port);
 
                     _peer_id = Utils::make_peer_id(host_len, host, port);
 
@@ -426,23 +423,21 @@ namespace Skree {
             // Utils::cluck(2, "DISCOVERY CB2 OPCODE: %c\n", args.opcode);
             if(args.opcode == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 0;
-                uint32_t _tmp;
 
-                memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
-                in_pos += sizeof(_tmp);
-                uint32_t len = ntohl(_tmp);
+                const uint32_t len (ntohl(*(uint32_t*)(args.data + in_pos)));
+                in_pos += sizeof(len);
 
                 char* peer_name = (char*)malloc(len + 1);
                 memcpy(peer_name, args.data + in_pos, len);
                 in_pos += len;
-                peer_name[len] = '\0';
+                peer_name[len] = '\0'; // TODO
 
-                memcpy(&_tmp, args.data + in_pos, sizeof(_tmp));
+                uint32_t _tmp (ntohl(*(uint32_t*)(args.data + in_pos)))
                 in_pos += sizeof(_tmp);
 
                 client.set_max_parallel_connections(std::min(
                     server.get_max_parallel_connections(),
-                    ntohl(_tmp)
+                    _tmp
                 ));
 
                 _tmp = client.get_conn_port();

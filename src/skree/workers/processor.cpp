@@ -33,12 +33,11 @@ namespace Skree {
         Processor::QueueItem* Processor::parse_queue_item(
             Utils::known_event_t& event,
             const uint64_t& item_len,
-            char*& item
+            const char* item
         ) {
             auto out = new Processor::QueueItem;
 
-            memcpy(&(out->id_net), item, sizeof(out->id_net));
-
+            out->id_net = *(uint64_t*)item;
             out->id = ntohll(out->id_net);
             out->data = item + sizeof(out->id);
             out->len = item_len - sizeof(out->id);

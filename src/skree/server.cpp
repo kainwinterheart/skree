@@ -529,8 +529,8 @@ namespace Skree {
     void Server::save_peers_to_discover() {
         peers_to_discover.lock();
 
-        size_t cnt = htonll(peers_to_discover.size());
-        size_t dump_len = 0;
+        uint32_t cnt = htonl(peers_to_discover.size());
+        uint32_t dump_len = 0;
         char* dump = (char*)malloc(sizeof(cnt));
 
         memcpy(dump + dump_len, &cnt, sizeof(cnt));
@@ -584,14 +584,11 @@ namespace Skree {
         char* value = nullptr;//db.get(key, key_len, &value_len);
 
         if(value != nullptr) {
-            size_t offset = 0;
-
-            size_t cnt;
-            memcpy(&cnt, value + offset, sizeof(cnt));
-            cnt = ntohll(cnt);
+            uint32_t offset = 0;
+            uint32_t cnt (ntohl(*(uint64_t*)(value + offset)));
             offset += sizeof(cnt);
 
-            size_t hostname_len;
+            uint32_t hostname_len;
             char* hostname;
             uint32_t port;
             char* peer_id;
@@ -601,17 +598,16 @@ namespace Skree {
 
             while(cnt > 0) {
                 --cnt;
-                memcpy(&hostname_len, value + offset, sizeof(hostname_len));
-                hostname_len = ntohll(hostname_len);
+
+                hostname_len = ntohl(*(uint32_t*)(value + offset));
                 offset += sizeof(hostname_len);
 
                 hostname = (char*)malloc(hostname_len + 1);
                 memcpy(hostname, value + offset, hostname_len);
-                hostname[hostname_len] = '\0';
+                hostname[hostname_len] = '\0'; // TODO
                 offset += hostname_len;
 
-                memcpy(&port, value + offset, sizeof(port));
-                port = ntohl(port);
+                port = ntohl(*(uint32_t*)(value + offset));
                 offset += sizeof(port);
 
                 peer_id = Utils::make_peer_id(hostname_len, hostname, port);

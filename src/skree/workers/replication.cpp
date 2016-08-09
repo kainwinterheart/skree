@@ -31,41 +31,36 @@ namespace Skree {
 
         Replication::QueueItem* Replication::parse_queue_item(
             Utils::known_event_t& event,
-            char*& item
+            const char* item
         ) {
             auto out = new Replication::QueueItem;
             size_t item_pos = 0;
 
-            memcpy(&(out->rin_len), item + item_pos, sizeof(out->rin_len));
+            out->rin_len = ntohl(*(uint32_t*)(item + item_pos));
             item_pos += sizeof(out->rin_len);
-            out->rin_len = ntohl(out->rin_len);
 
             out->rin = item + item_pos;
             item_pos += out->rin_len;
 
-            memcpy(&(out->rts), item + item_pos, sizeof(out->rts));
+            out->rts = ntohll(*(uint64_t*)(item + item_pos));
             item_pos += sizeof(out->rts);
-            out->rts = ntohll(out->rts);
 
-            memcpy(&(out->rid_net), item + item_pos, sizeof(out->rid_net));
+            out->rid_net = *(uint64_t*)(item + item_pos);
             item_pos += sizeof(out->rid_net);
 
             out->rid = ntohll(out->rid_net);
 
-            memcpy(&(out->hostname_len), item + item_pos, sizeof(out->hostname_len));
+            out->hostname_len = ntohl(*(uint32_t*)(item + item_pos));
             item_pos += sizeof(out->hostname_len);
-            out->hostname_len = ntohl(out->hostname_len);
 
             out->hostname = item + item_pos;
             item_pos += out->hostname_len;
 
-            memcpy(&(out->port), item + item_pos, sizeof(out->port));
+            out->port = htonl(*(uint32_t*)(item + item_pos));
             item_pos += sizeof(out->port);
-            out->port = htonl(out->port);
 
-            memcpy(&(out->peers_cnt), item + item_pos, sizeof(out->peers_cnt));
+            out->peers_cnt = ntohl(*(uint32_t*)(item + item_pos));
             item_pos += sizeof(out->peers_cnt);
-            out->peers_cnt = ntohl(out->peers_cnt);
 
             out->rpr = item + item_pos;
 
