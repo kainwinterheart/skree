@@ -32,17 +32,15 @@ namespace Skree {
 
         Processor::QueueItem* Processor::parse_queue_item(
             Utils::known_event_t& event,
-            const uint64_t& item_len,
+            const uint64_t item_len,
             const char* item
         ) {
-            auto out = new Processor::QueueItem;
-
-            out->id_net = *(uint64_t*)item;
-            out->id = ntohll(out->id_net);
-            out->data = item + sizeof(out->id);
-            out->len = item_len - sizeof(out->id);
-
-            return out;
+            return new Processor::QueueItem {
+                .id_net = *(uint64_t*)item,
+                .id = ntohll(*(uint64_t*)item),
+                .data = item + sizeof(uint64_t),
+                .len = item_len - sizeof(uint64_t)
+            };
         }
 
         bool Processor::do_failover(
@@ -51,7 +49,7 @@ namespace Skree {
             const Processor::QueueItem& item
         ) {
             in_packet_e_ctx_event _event {
-               .len = item.len,
+               .len = (uint32_t)(item.len), // TODO
                .data = item.data
             };
 

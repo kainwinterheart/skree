@@ -112,8 +112,8 @@ namespace Skree {
         }
 
         Skree::Base::PendingWrite::QueueItem* R::out_init(
-            const Server& server, const uint32_t& event_name_len,
-            const char*& event_name, const uint32_t& cnt
+            const Server& server, const uint32_t event_name_len,
+            const char* event_name, const uint32_t cnt
         ) {
             uint32_t _cnt = htonl(cnt);
             auto out = new Skree::Base::PendingWrite::QueueItem((
@@ -142,19 +142,27 @@ namespace Skree {
             return out;
         }
 
-        void R::out_add_event(
+        Skree::Base::PendingWrite::QueueItem* R::out_add_event(
             Skree::Base::PendingWrite::QueueItem* r_req,
-            const uint64_t& id, const uint32_t& len, const char*& data
+            const uint64_t id, const uint32_t len, const char* data
         ) {
-            uint64_t _id = htonll(id);
-            r_req->grow(sizeof(_id) + sizeof(len) + len);
+            r_req->finish();
 
-            r_req->push(sizeof(_id), (char*)&_id);
+            auto header = new Skree::Base::PendingWrite::QueueItem(
+                r_req, (sizeof(id) + sizeof(len))
+            );
+
+            uint64_t _id = htonll(id);
+            header->push(sizeof(_id), (char*)&_id);
 
             uint32_t _event_len = htonl(len);
-            r_req->push(sizeof(_event_len), (char*)&_event_len);
+            header->push(sizeof(_event_len), (char*)&_event_len);
 
-            r_req->push(len, data);
+            header->finish();
+
+            return new Skree::Base::PendingWrite::QueueItem(
+                len, data, header
+            );
         }
     }
 }

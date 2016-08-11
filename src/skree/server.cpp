@@ -315,7 +315,7 @@ namespace Skree {
                     ++num_inserted;
 
                     _event_data = event->data; // TODO
-                    Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
+                    r_req = Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
 
                     // {
                     //     size_t sz;

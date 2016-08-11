@@ -22,8 +22,8 @@ namespace Skree {
             ) override;
 
             static Skree::Base::PendingWrite::QueueItem* out_init(
-                Utils::known_event_t& event, const uint64_t& rid_net,
-                const uint32_t& rin_len, char*& rin
+                Utils::known_event_t& event, const uint64_t rid_net,
+                const uint32_t rin_len, const char* rin
             );
         };
     }

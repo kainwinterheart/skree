@@ -8,22 +8,25 @@
 namespace Skree {
     namespace Base {
         namespace PendingWrite {
-            QueueItem::QueueItem(const QueueItem& prev)
-                : data(prev.data) // TODO: this is NOT thread-safe
-                , len(prev.len)
+            QueueItem::QueueItem(const QueueItem& _prev)
+                : data(_prev.data) // TODO: this is NOT thread-safe
                 , pos(0)
-                , data_offset(prev.data_offset)
+                , data_offset(_prev.data_offset)
                 , done(true)
                 , cb(nullptr)
-                , prev(prev.prev)
-                , backtrace(prev.backtrace)
-                , real_len(prev.real_len)
+                , prev(nullptr)
+                , backtrace(_prev.backtrace)
+                , real_len(_prev.real_len)
+                , raw(_prev.raw)
             {
-                if(!prev.done)
+                if(!_prev.done)
                     Throw("Attempt to copy read-write write queue item");
 
-                if(prev.cb != nullptr)
+                if(_prev.cb != nullptr)
                     Throw("Attempt to copy write queue item with callback");
+
+                if(_prev.prev != nullptr)
+                    prev = new QueueItem(*_prev.prev); // TODO: this is shit
             }
 
             uint32_t QueueItem::calc_body_len() const {
@@ -31,19 +34,20 @@ namespace Skree {
                     Throw("calc_body_len() called on read-write write queue item");
 
                 if(prev == nullptr)
-                    return (real_len - sizeof(*len) - 1);
+                    return (real_len - sizeof(real_len) - 1);
 
-                return (prev->calc_body_len() + real_len - sizeof(*len) - 1);
+                return (prev->calc_body_len() + real_len - (raw ? 0 : (sizeof(real_len) + 1)));
             }
 
             void QueueItem::write(Skree::Client& client, int fd, uint32_t total_len) {
                 if(pos == 0) {
                     if(prev == nullptr) {
-                        *len = htonl(total_len); // original length is overwritten here
-                                                 // TODO: this is NOT thread-safe
+                        // original length is overwritten here
+                        // TODO: this is NOT thread-safe
+                        *(uint32_t*)(data + 1) = htonl(total_len);
 
-                    } else {
-                        pos += 1 + sizeof(*len);
+                    } else if(!raw) {
+                        pos += 1 + sizeof(real_len);
                     }
                 }
 

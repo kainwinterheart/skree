@@ -20,7 +20,7 @@ namespace Skree {
             struct QueueItem {
                 uint32_t rin_len;
                 uint32_t hostname_len;
-                char* rin;
+                const char* rin;
                 uint64_t rts;
                 uint64_t rid_net;
                 uint64_t rid;
@@ -36,7 +36,7 @@ namespace Skree {
 
             static Replication::QueueItem* parse_queue_item(
                 Utils::known_event_t& event,
-                char*& item
+                const char* item
             );
 
             bool failover(const uint64_t& now, Utils::known_event_t& event);

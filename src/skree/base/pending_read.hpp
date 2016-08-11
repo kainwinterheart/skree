@@ -59,8 +59,8 @@ namespace Skree {
                     ~Args() {
                         free(buf);
 
-                        if(data != nullptr)
-                            free(data);
+                        // if(data != nullptr)
+                            // free(data); // TODO
                     }
 
                     void begin_data() {

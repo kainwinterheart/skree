@@ -25,14 +25,14 @@ namespace Skree {
             class QueueItem {
             private:
                 char* data;
-                uint32_t* len;
                 uint32_t pos;
                 uint32_t data_offset;
                 uint32_t real_len;
                 bool done;
+                bool raw;
                 const Skree::Base::PendingRead::QueueItem* cb;
                 QueueItem* prev;
-                std::string backtrace;
+                std::string backtrace; // TODO: capturing backtrace in production could be slow
 
                 QueueItem(const QueueItem& prev);
                 uint32_t calc_body_len() const;
@@ -49,50 +49,72 @@ namespace Skree {
                 }
 
             public:
-                QueueItem(
-                    uint32_t _len, char opcode,
-                    const Skree::Base::PendingRead::QueueItem* _cb = nullptr
-                )
+                QueueItem(uint32_t _len, char opcode)
                     : prev(nullptr)
                     , pos(0)
-                    , cb(_cb)
+                    , cb(nullptr)
                     , done(false)
                     , backtrace(Utils::longmess())
                     , real_len(0)
+                    , raw(false)
                 {
                     data = (char*)malloc(1 + sizeof(_len) + _len);
-                    len = (uint32_t*)(data + 1);
-                    *len = 1 + sizeof(_len) + _len;
+                    real_len = 1 + sizeof(_len) + _len;
                     data_offset = 1 + sizeof(_len);
                     data[0] = opcode;
 
                     // Utils::cluck(3, "ctor: 0x%llx, data: 0x%llx, len: 0x%llx", (uintptr_t)this, data, len);
                 }
 
-                QueueItem(
-                    const QueueItem* _prev, uint32_t _len,
-                    const Skree::Base::PendingRead::QueueItem* _cb = nullptr
-                ) : QueueItem(_len, '\0', _cb) {
+                QueueItem(const QueueItem* _prev, uint32_t _len)
+                    : QueueItem(_len, '\0')
+                {
                     prev = new QueueItem(*_prev);
+                }
+
+                QueueItem(uint32_t _len, const char* _data, QueueItem* prev)
+                    : prev(prev)
+                    , pos(0)
+                    , cb(nullptr)
+                    , done(false)
+                    , backtrace(Utils::longmess())
+                    , real_len(_len)
+                    , data((char*)_data) // Yeah
+                    , data_offset(0)
+                    , raw(true)
+                {
+                    if(prev == nullptr)
+                        Throw("Raw write queue item should have a header");
+                }
+
+                ~QueueItem() {
+                    // TODO
+                    // if(!raw)
+                    //     free(data);
                 }
 
                 void grow(uint32_t _len) {
                     if(done)
                         Throw("grow() called on read-only write queue item");
 
-                    data = (char*)realloc(data, _len + *len);
-                    len = (uint32_t*)(data + 1);
-                    *len += _len;
+                    if(raw)
+                        Throw("grow() called on raw write queue item");
+
+                    data = (char*)realloc(data, _len + real_len);
+                    real_len += _len;
                 }
 
                 void push(uint32_t _len, const void* _data) {
                     if(done)
                         Throw("push() called on read-only write queue item");
 
-                    if(data_offset > *len)
-                        Throw("data_offset > *len");
+                    if(raw)
+                        Throw("push() called on raw write queue item");
 
-                    uint32_t rest = (*len) - data_offset;
+                    if(data_offset > real_len)
+                        Throw("data_offset > real_len");
+
+                    uint32_t rest = (real_len - data_offset);
 
                     if(rest < _len)
                         grow(_len - rest);
@@ -116,7 +138,6 @@ namespace Skree {
                         // Throw("finish() called on read-only write queue item");
 
                     done = true;
-                    real_len = *len;
                 }
 
                 void write(Skree::Client& client, int fd) {
@@ -127,6 +148,9 @@ namespace Skree {
                 }
 
                 char get_opcode() const {
+                    if(raw)
+                        Throw("get_opcode() called on raw write queue item");
+
                     return data[0];
                 }
 

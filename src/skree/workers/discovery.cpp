@@ -220,7 +220,7 @@ namespace Skree {
                 uint64_t in_pos = 0;
 
                 uint32_t cnt (ntohl(*(uint32_t*)(args.data + in_pos)));
-                in_pos += sizeof(_tmp);
+                in_pos += sizeof(cnt);
 
                 uint32_t host_len;
                 char* host;
@@ -432,7 +432,7 @@ namespace Skree {
                 in_pos += len;
                 peer_name[len] = '\0'; // TODO
 
-                uint32_t _tmp (ntohl(*(uint32_t*)(args.data + in_pos)))
+                uint32_t _tmp (ntohl(*(uint32_t*)(args.data + in_pos)));
                 in_pos += sizeof(_tmp);
 
                 client.set_max_parallel_connections(std::min(

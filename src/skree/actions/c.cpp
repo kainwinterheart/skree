@@ -90,25 +90,27 @@ namespace Skree {
         }
 
         Skree::Base::PendingWrite::QueueItem* C::out_init(
-            Utils::known_event_t& event, const uint64_t& rid_net,
-            const uint32_t& rin_len, char*& rin
+            Utils::known_event_t& event, const uint64_t rid_net,
+            const uint32_t rin_len, const char* rin
         ) {
-            uint32_t rin_len_net = htonl(rin_len); // TODO
-            auto out = new Skree::Base::PendingWrite::QueueItem((
+            const uint32_t rin_len_net = htonl(rin_len); // TODO?
+            auto header = new Skree::Base::PendingWrite::QueueItem((
                 sizeof(uint32_t) /*sizeof(event.id_len)*/
                 + event.id_len
                 + sizeof(rid_net)
                 + sizeof(rin_len_net)
-                + rin_len
             ), opcode());
 
-            out->push(sizeof(uint32_t) /*sizeof(event.id_len)*/, (char*)&(event.id_len_net));
-            out->push(event.id_len, event.id);
-            out->push(sizeof(rid_net), (char*)&rid_net);
-            out->push(sizeof(rin_len_net), (char*)&rin_len_net);
-            out->push(rin_len, rin);
+            header->push(sizeof(uint32_t) /*sizeof(event.id_len)*/, (char*)&(event.id_len_net));
+            header->push(event.id_len, event.id);
+            header->push(sizeof(rid_net), (char*)&rid_net);
+            header->push(sizeof(rin_len_net), (char*)&rin_len_net);
 
-            return out;
+            header->finish();
+
+            return new Skree::Base::PendingWrite::QueueItem(
+                rin_len, rin, header
+            );
         }
     }
 }

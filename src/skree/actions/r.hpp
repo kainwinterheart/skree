@@ -76,13 +76,13 @@ namespace Skree {
             ) override;
 
             static Skree::Base::PendingWrite::QueueItem* out_init(
-                const Server& server, const uint32_t& event_name_len,
-                const char*& event_name, const uint32_t& cnt
+                const Server& server, const uint32_t event_name_len,
+                const char* event_name, const uint32_t cnt
             );
 
-            static void out_add_event(
+            static Skree::Base::PendingWrite::QueueItem* out_add_event(
                 Skree::Base::PendingWrite::QueueItem* r_req,
-                const uint64_t& id, const uint32_t& len, const char*& data
+                const uint64_t id, const uint32_t len, const char* data
             );
         };
     }

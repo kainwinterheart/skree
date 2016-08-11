@@ -33,13 +33,14 @@ namespace Skree {
             Utils::known_event_t& event,
             const char* item
         ) {
-            auto out = new Replication::QueueItem;
             size_t item_pos = 0;
+            auto out = new Replication::QueueItem {
+                .rin = (item + item_pos + sizeof(uint32_t))
+            };
 
             out->rin_len = ntohl(*(uint32_t*)(item + item_pos));
             item_pos += sizeof(out->rin_len);
 
-            out->rin = item + item_pos;
             item_pos += out->rin_len;
 
             out->rts = ntohll(*(uint64_t*)(item + item_pos));
@@ -53,7 +54,7 @@ namespace Skree {
             out->hostname_len = ntohl(*(uint32_t*)(item + item_pos));
             item_pos += sizeof(out->hostname_len);
 
-            out->hostname = item + item_pos;
+            out->hostname = (char*)(item + item_pos); // TODO?
             item_pos += out->hostname_len;
 
             out->port = htonl(*(uint32_t*)(item + item_pos));
@@ -62,7 +63,7 @@ namespace Skree {
             out->peers_cnt = ntohl(*(uint32_t*)(item + item_pos));
             item_pos += sizeof(out->peers_cnt);
 
-            out->rpr = item + item_pos;
+            out->rpr = (char*)(item + item_pos); // TODO?
 
             out->peer_id = Utils::make_peer_id(out->hostname_len, out->hostname, out->port);
             out->peer_id_len = strlen(out->peer_id);
@@ -313,7 +314,7 @@ namespace Skree {
 
                 auto data_str = new Utils::muh_str_t {
                     .len = item->rin_len,
-                    .data = item->rin
+                    .data = (char*)(item->rin) // TODO
                 };
 
                 auto __peer_id = new Utils::muh_str_t {
@@ -400,7 +401,7 @@ namespace Skree {
                 // TODO: rin_str's type
                 auto rin_str = new Utils::muh_str_t {
                     .len = item->rin_len,
-                    .data = item->rin
+                    .data = (char*)(item->rin) // TODO
                 };
 
                 Utils::muh_str_t* rpr_str = nullptr;

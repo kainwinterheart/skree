@@ -19,14 +19,14 @@ namespace Skree {
             struct QueueItem {
                 uint64_t id;
                 uint64_t id_net;
-                char* data;
-                uint32_t len;
+                const char* data;
+                uint64_t len; // TODO: 64 or 32?
             };
 
             static Processor::QueueItem* parse_queue_item(
                 Utils::known_event_t& event,
-                const uint64_t& item_len,
-                char*& item
+                const uint64_t item_len,
+                const char* item
             );
 
             bool failover(const uint64_t& now, Utils::known_event_t& event);
