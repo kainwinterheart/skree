@@ -74,12 +74,12 @@ namespace Skree {
             ), opcode());
 
             uint32_t _hostname_len = htonl(server.my_hostname_len);
-            out->push(sizeof(_hostname_len), &_hostname_len);
+            out->copy_concat(sizeof(_hostname_len), &_hostname_len);
 
-            out->push(server.my_hostname_len, server.my_hostname);
+            out->concat(server.my_hostname_len, server.my_hostname);
 
             uint32_t _my_port = htonl(server.my_port);
-            out->push(sizeof(_my_port), &_my_port);
+            out->copy_concat(sizeof(_my_port), &_my_port);
 
             return out;
         }

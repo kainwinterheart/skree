@@ -239,6 +239,7 @@ namespace Skree {
                 delete stream;
 
                 ++processed;
+                ++stat_num_replications;
 
             } else {
                 Utils::cluck(3, "[repl_save] db.add(%s) failed: %s\n", failover_key, db.error().name());
@@ -248,8 +249,6 @@ namespace Skree {
             // free(event->data); // TODO
             delete event;
         }
-
-        stat_num_replications += processed;
 
         free(serialized_peers);
         free(ctx->hostname);
@@ -313,6 +312,7 @@ namespace Skree {
                         task_ids[_cnt] = max_id;
 
                     ++num_inserted;
+                    ++stat_num_inserts;
 
                     _event_data = event->data; // TODO
                     r_req = Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
@@ -335,8 +335,6 @@ namespace Skree {
             r_req->finish();
 
             if(num_inserted == ctx->cnt) {
-                stat_num_inserts += num_inserted;
-
                 /*****************************/
                 std::vector<char*>* candidate_peer_ids = new std::vector<char*>();
                 auto accepted_peers = new std::list<packet_r_ctx_peer*>();
@@ -481,7 +479,7 @@ namespace Skree {
                 );
 
                 uint32_t _accepted_peers_count = htonl(accepted_peers_count);
-                out->push(sizeof(_accepted_peers_count), &_accepted_peers_count);
+                out->copy_concat(sizeof(_accepted_peers_count), &_accepted_peers_count);
 
                 for(
                     std::list<packet_r_ctx_peer*>::const_iterator it =
@@ -491,13 +489,13 @@ namespace Skree {
                 ) {
                     packet_r_ctx_peer* peer = *it;
 
-                    out->grow(sizeof(peer->hostname_len) + peer->hostname_len + sizeof(peer->port));
+                    // out->grow(sizeof(peer->hostname_len) + peer->hostname_len + sizeof(peer->port));
 
                     uint32_t _len = htonl(peer->hostname_len);
-                    out->push(sizeof(_len), &_len);
+                    out->copy_concat(sizeof(_len), &_len);
 
-                    out->push(peer->hostname_len, peer->hostname);
-                    out->push(sizeof(peer->port), &(peer->port));
+                    out->concat(peer->hostname_len, peer->hostname);
+                    out->copy_concat(sizeof(peer->port), &(peer->port));
                 }
 
                 ++(r_ctx->pending);

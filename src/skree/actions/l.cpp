@@ -18,7 +18,7 @@ namespace Skree {
             known_peers.lock();
 
             _known_peers_len = htonl(known_peers.size());
-            out->push(sizeof(_known_peers_len), &_known_peers_len);
+            out->copy_concat(sizeof(_known_peers_len), &_known_peers_len);
 
             for(auto& it : known_peers) {
                 if(it.second.empty()) continue;
@@ -28,11 +28,11 @@ namespace Skree {
                 _peer_name_len = htonl(peer_name_len);
                 _peer_port = htonl(peer->get_peer_port());
 
-                out->grow(sizeof(_peer_name_len) + peer_name_len + sizeof(_peer_port));
+                // out->grow(sizeof(_peer_name_len) + peer_name_len + sizeof(_peer_port));
 
-                out->push(sizeof(_peer_name_len), &_peer_name_len);
-                out->push(peer_name_len, peer->get_peer_name());
-                out->push(sizeof(_peer_port), &_peer_port);
+                out->copy_concat(sizeof(_peer_name_len), &_peer_name_len);
+                out->concat(peer_name_len, peer->get_peer_name());
+                out->copy_concat(sizeof(_peer_port), &_peer_port);
             }
 
             known_peers.unlock();

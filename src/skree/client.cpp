@@ -340,7 +340,7 @@ namespace Skree {
                             Utils::cluck(1, "[client_cb] data is empty, run");
 #endif
                             if(client->read_cb(*active_read)) {
-                                delete active_read;
+                                // delete active_read; // TODO
                                 client->active_read = nullptr;
                             }
                         }
@@ -350,7 +350,7 @@ namespace Skree {
                         Utils::cluck(1, "[client_cb] data already began, run");
 #endif
                         if(client->read_cb(*active_read)) {
-                            delete active_read;
+                            // delete active_read; // TODO
                             client->active_read = nullptr;
                         }
                     }

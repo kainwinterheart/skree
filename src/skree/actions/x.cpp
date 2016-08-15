@@ -63,14 +63,14 @@ namespace Skree {
             ), opcode());
 
             uint32_t peer_id_len_net = htonl(peer_id->len);
-            out->push(sizeof(peer_id_len_net), (char*)&peer_id_len_net);
+            out->copy_concat(sizeof(peer_id_len_net), &peer_id_len_net);
 
-            out->push(peer_id->len, peer_id->data);
-            out->push(sizeof(uint32_t) /*sizeof(event.id_len)*/, (char*)&(event.id_len_net));
-            out->push(event.id_len, event.id);
+            out->concat(peer_id->len, peer_id->data);
+            out->copy_concat(sizeof(uint32_t) /*sizeof(event.id_len)*/, &event.id_len_net);
+            out->concat(event.id_len, event.id);
 
             uint64_t rid_net = htonll(rid);
-            out->push(sizeof(rid_net), (char*)&rid_net);
+            out->copy_concat(sizeof(rid_net), &rid_net);
 
             out->finish(); // TODO?
 

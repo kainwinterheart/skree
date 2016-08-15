@@ -13,7 +13,7 @@ namespace Skree {
             const uint32_t protocol_version (htonl(PROTOCOL_VERSION));
             auto* out = new Skree::Base::PendingWrite::QueueItem(sizeof(protocol_version), opcode());
 
-            out->push(sizeof(protocol_version), &protocol_version);
+            out->copy_concat(sizeof(protocol_version), &protocol_version);
             out->finish();
 
             return out;

@@ -11,7 +11,8 @@ namespace Skree {
             const uint32_t event_name_len (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(event_name_len);
 
-            char event_name [event_name_len + 1];
+            // char event_name [event_name_len + 1]; // TODO
+            char* event_name = (char*)malloc(event_name_len + 1);
             memcpy(event_name, in_data + in_pos, event_name_len);
             in_pos += event_name_len;
             event_name[event_name_len] = '\0'; // TODO

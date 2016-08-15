@@ -126,18 +126,18 @@ namespace Skree {
             ), opcode());
 
             uint32_t _hostname_len = htonl(server.my_hostname_len);
-            out->push(sizeof(_hostname_len), &_hostname_len);
+            out->copy_concat(sizeof(_hostname_len), &_hostname_len);
 
-            out->push(server.my_hostname_len, server.my_hostname);
+            out->concat(server.my_hostname_len, server.my_hostname);
 
             uint32_t _my_port = htonl(server.my_port);
-            out->push(sizeof(_my_port), (char*)&_my_port);
+            out->copy_concat(sizeof(_my_port), &_my_port);
 
             uint32_t _event_name_len = htonl(event_name_len);
-            out->push(sizeof(_event_name_len), (char*)&_event_name_len);
+            out->copy_concat(sizeof(_event_name_len), &_event_name_len);
 
-            out->push(event_name_len, event_name);
-            out->push(sizeof(_cnt), (char*)&_cnt);
+            out->concat(event_name_len, event_name);
+            out->copy_concat(sizeof(_cnt), &_cnt);
 
             return out;
         }
@@ -146,23 +146,15 @@ namespace Skree {
             Skree::Base::PendingWrite::QueueItem* r_req,
             const uint64_t id, const uint32_t len, const char* data
         ) {
-            r_req->finish();
-
-            auto header = new Skree::Base::PendingWrite::QueueItem(
-                r_req, (sizeof(id) + sizeof(len))
-            );
-
             uint64_t _id = htonll(id);
-            header->push(sizeof(_id), (char*)&_id);
+            r_req->copy_concat(sizeof(_id), &_id);
 
             uint32_t _event_len = htonl(len);
-            header->push(sizeof(_event_len), (char*)&_event_len);
+            r_req->copy_concat(sizeof(_event_len), &_event_len);
 
-            header->finish();
+            r_req->concat(len, data);
 
-            return new Skree::Base::PendingWrite::QueueItem(
-                len, data, header
-            );
+            return r_req;
         }
     }
 }

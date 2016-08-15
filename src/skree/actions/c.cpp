@@ -94,23 +94,20 @@ namespace Skree {
             const uint32_t rin_len, const char* rin
         ) {
             const uint32_t rin_len_net = htonl(rin_len); // TODO?
-            auto header = new Skree::Base::PendingWrite::QueueItem((
+            auto out = new Skree::Base::PendingWrite::QueueItem((
                 sizeof(uint32_t) /*sizeof(event.id_len)*/
                 + event.id_len
                 + sizeof(rid_net)
                 + sizeof(rin_len_net)
             ), opcode());
 
-            header->push(sizeof(uint32_t) /*sizeof(event.id_len)*/, (char*)&(event.id_len_net));
-            header->push(event.id_len, event.id);
-            header->push(sizeof(rid_net), (char*)&rid_net);
-            header->push(sizeof(rin_len_net), (char*)&rin_len_net);
+            out->copy_concat(sizeof(uint32_t) /*sizeof(event.id_len)*/, &event.id_len_net);
+            out->concat(event.id_len, event.id);
+            out->copy_concat(sizeof(rid_net), &rid_net);
+            out->copy_concat(sizeof(rin_len_net), (char*)&rin_len_net);
+            out->concat(rin_len, rin);
 
-            header->finish();
-
-            return new Skree::Base::PendingWrite::QueueItem(
-                rin_len, rin, header
-            );
+            return out;
         }
     }
 }

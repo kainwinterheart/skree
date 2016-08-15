@@ -13,32 +13,38 @@ namespace Skree {
 #include <string.h>
 #include <string>
 #include <atomic>
+#include <stack>
 
 // #include "../server.hpp"
 // #include "../client.hpp"
 #include "pending_read.hpp"
 #include "../utils/misc.hpp"
+#include "../utils/string_sequence.hpp"
 
 namespace Skree {
     namespace Base {
         namespace PendingWrite {
             class QueueItem {
             private:
-                char* data;
                 uint32_t pos;
-                uint32_t data_offset;
+                uint32_t data_pos;
                 uint32_t real_len;
                 bool done;
                 bool raw;
                 const Skree::Base::PendingRead::QueueItem* cb;
                 QueueItem* prev;
                 std::string backtrace; // TODO: capturing backtrace in production could be slow
+                Utils::StringSequence* data_first = nullptr;
+                Utils::StringSequence* data_second = nullptr;
+                Utils::StringSequence* data_last = nullptr;
+                std::stack<char*> stash;
+                char opcode;
 
                 QueueItem(const QueueItem& prev);
                 uint32_t calc_body_len() const;
                 void write(Skree::Client& client, int fd, uint32_t total_len);
 
-                void Throw(const char* text) const {
+                inline void Throw(const char* text) const {
                     std::string out;
 
                     out.append(text);
@@ -49,42 +55,59 @@ namespace Skree {
                 }
 
             public:
-                QueueItem(uint32_t _len, char opcode)
+                inline QueueItem(uint32_t _len, char _opcode)
                     : prev(nullptr)
                     , pos(0)
                     , cb(nullptr)
                     , done(false)
                     , backtrace(Utils::longmess())
-                    , real_len(0)
+                    , real_len(5)
                     , raw(false)
+                    , opcode(_opcode)
+                    , data_pos(0)
                 {
-                    data = (char*)malloc(1 + sizeof(_len) + _len);
-                    real_len = 1 + sizeof(_len) + _len;
-                    data_offset = 1 + sizeof(_len);
-                    data[0] = opcode;
+                    char* str = (char*)malloc(1);
+                    str[0] = _opcode;
+                    data_first = new Utils::StringSequence (1, str);
+                    stash.push(str);
+
+                    // See QueueItem::write
+                    data_last = data_second = new Utils::StringSequence (4, nullptr);
+
+                    data_first->concat(data_last);
 
                     // Utils::cluck(3, "ctor: 0x%llx, data: 0x%llx, len: 0x%llx", (uintptr_t)this, data, len);
                 }
 
-                QueueItem(const QueueItem* _prev, uint32_t _len)
+                inline QueueItem(const QueueItem* _prev, uint32_t _len)
                     : QueueItem(_len, '\0')
                 {
                     prev = new QueueItem(*_prev);
                 }
 
-                QueueItem(uint32_t _len, const char* _data, QueueItem* prev)
-                    : prev(prev)
-                    , pos(0)
-                    , cb(nullptr)
-                    , done(false)
-                    , backtrace(Utils::longmess())
-                    , real_len(_len)
-                    , data((char*)_data) // Yeah
-                    , data_offset(0)
-                    , raw(true)
-                {
-                    if(prev == nullptr)
-                        Throw("Raw write queue item should have a header");
+                inline void concat(uint32_t _len, const char* _data) {
+                    if(done)
+                        Throw("push() called on read-only write queue item");
+
+                    auto* node = new Utils::StringSequence (_len, _data);
+
+                    data_last->concat(node);
+                    data_last = node;
+
+                    real_len += _len;
+                }
+
+                inline void own_concat(uint32_t _len, const char* _data) {
+                    stash.push((char*)_data); // Yeah :)
+
+                    concat(_len, _data);
+                }
+
+                inline void copy_concat(uint32_t _len, const void* _data) {
+                    char* str = (char*)malloc(_len);
+                    memcpy(str, _data, _len);
+
+                    own_concat(_len, str);
                 }
 
                 ~QueueItem() {
@@ -93,75 +116,41 @@ namespace Skree {
                     //     free(data);
                 }
 
-                void grow(uint32_t _len) {
-                    if(done)
-                        Throw("grow() called on read-only write queue item");
-
-                    if(raw)
-                        Throw("grow() called on raw write queue item");
-
-                    data = (char*)realloc(data, _len + real_len);
-                    real_len += _len;
-                }
-
-                void push(uint32_t _len, const void* _data) {
-                    if(done)
-                        Throw("push() called on read-only write queue item");
-
-                    if(raw)
-                        Throw("push() called on raw write queue item");
-
-                    if(data_offset > real_len)
-                        Throw("data_offset > real_len");
-
-                    uint32_t rest = (real_len - data_offset);
-
-                    if(rest < _len)
-                        grow(_len - rest);
-
-                    // Utils::cluck(6, "this: 0x%lx, *len: %u, rest: %u, rest(computed): %u, data_offset: %u, _len: %u", (uintptr_t)this, *len, rest, ((*len) - data_offset), data_offset, _len);
-
-                    memcpy(data + data_offset, _data, _len); // TODO: should NOT copy event data
-                    data_offset += _len;
-                }
-
-                void set_cb(const Skree::Base::PendingRead::QueueItem* _cb) {
+                inline void set_cb(const Skree::Base::PendingRead::QueueItem* _cb) {
                     if(done)
                         Throw("set_cb() called on read-only write queue item");
 
                     cb = _cb;
                 }
 
-                void finish() {
+                inline void finish() {
                     if(done)
                         return;
                         // Throw("finish() called on read-only write queue item");
 
                     done = true;
+                    data_last = data_first;
                 }
 
-                void write(Skree::Client& client, int fd) {
+                inline void write(Skree::Client& client, int fd) {
                     if(!done)
                         Throw("write() called on read-write write queue item");
 
                     write(client, fd, calc_body_len());
                 }
 
-                char get_opcode() const {
-                    if(raw)
-                        Throw("get_opcode() called on raw write queue item");
-
-                    return data[0];
+                inline char get_opcode() const {
+                    return opcode;
                 }
 
-                bool can_be_written() const {
+                inline bool can_be_written() const {
                     if(!done)
                         Throw("can_be_written() called on read-write write queue item");
 
                     return ((real_len > 0) && (pos < real_len));
                 }
 
-                decltype(cb) get_cb() {
+                inline decltype(cb) get_cb() {
                     return cb;
                 }
             };
