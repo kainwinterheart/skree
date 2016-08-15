@@ -58,7 +58,7 @@ namespace Skree {
 
         struct char_pointer_hasher {
             //BKDR hash algorithm
-            int operator()(char* key) const {
+            int operator()(const char* key) const {
                 const int seed = 131; //31 131 1313 13131131313 etc//
                 int hash = 0;
                 const size_t len = strlen(key);
@@ -124,9 +124,9 @@ namespace Skree {
             }
         };
 
-        typedef std::unordered_map<char*, skree_module_t*, char_pointer_hasher, char_pointer_comparator> skree_modules_t;
-        typedef std::unordered_map<char*, event_group_t*, char_pointer_hasher, char_pointer_comparator> event_groups_t;
-        typedef std::unordered_map<char*, known_event_t*, char_pointer_hasher, char_pointer_comparator> known_events_t;
+        typedef std::unordered_map<const char*, skree_module_t*, char_pointer_hasher, char_pointer_comparator> skree_modules_t;
+        typedef std::unordered_map<const char*, event_group_t*, char_pointer_hasher, char_pointer_comparator> event_groups_t;
+        typedef std::unordered_map<const char*, known_event_t*, char_pointer_hasher, char_pointer_comparator> known_events_t;
 
         static inline char* make_peer_id(
             const size_t& peer_name_len,

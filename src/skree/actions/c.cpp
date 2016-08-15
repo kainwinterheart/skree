@@ -16,10 +16,8 @@ namespace Skree {
             const uint32_t event_name_len (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(event_name_len);
 
-            char event_name [event_name_len + 1];
-            memcpy(event_name, in_data + in_pos, event_name_len);
-            in_pos += sizeof(event_name_len);
-            event_name[event_name_len] = '\0'; // TODO
+            const char* event_name = in_data + in_pos;
+            in_pos += event_name_len + 1;
 
             auto eit = server.known_events.find(event_name);
 
@@ -102,7 +100,7 @@ namespace Skree {
             ), opcode());
 
             out->copy_concat(sizeof(uint32_t) /*sizeof(event.id_len)*/, &event.id_len_net);
-            out->concat(event.id_len, event.id);
+            out->concat(event.id_len + 1, event.id);
             out->copy_concat(sizeof(rid_net), &rid_net);
             out->copy_concat(sizeof(rin_len_net), (char*)&rin_len_net);
             out->concat(rin_len, rin);

@@ -146,15 +146,17 @@ namespace Skree {
         Client& client,
         QueueDb& queue
     ) {
-        uint32_t _peers_cnt = htonl(ctx->peers_count);
-        uint64_t serialized_peers_len = sizeof(_peers_cnt);
-        char* serialized_peers = (char*)malloc(serialized_peers_len);
-        memcpy(serialized_peers, &_peers_cnt, serialized_peers_len);
+        const uint32_t _peers_cnt = htonl(ctx->peers_count);
+        auto* serialized_peers = new Skree::Utils::StringSequence (
+            sizeof(_peers_cnt),
+            (const char*)&_peers_cnt
+        );
+        decltype(serialized_peers) serialized_peers_last = serialized_peers;
 
         packet_r_ctx_peer* peer;
         char* _peer_id;
-        bool keep_peer_id;
-        uint64_t _peer_id_len;
+        // bool keep_peer_id;
+        // uint64_t _peer_id_len;
         peers_to_discover_t::iterator prev_item;
         peers_to_discover_t::iterator peers_to_discover_end;
         bool _save_peers_to_discover = false;
@@ -163,35 +165,37 @@ namespace Skree {
             peer = ctx->peers[i];
             _peer_id = Utils::make_peer_id(peer->hostname_len, peer->hostname, peer->port);
 
-            keep_peer_id = false;
-            _peer_id_len = strlen(_peer_id);
+            // keep_peer_id = false;
+            // _peer_id_len = strlen(_peer_id);
 
             peers_to_discover_end = peers_to_discover.lock();
             prev_item = peers_to_discover.find(_peer_id);
 
             if(prev_item == peers_to_discover_end) {
                 peers_to_discover[_peer_id] = new peer_to_discover_t {
-                    .host = peer->hostname,
+                    .host = strdup(peer->hostname),
                     .port = peer->port
                 };
 
-                keep_peer_id = true;
+                // keep_peer_id = true;
                 _save_peers_to_discover = true;
             }
 
             peers_to_discover.unlock();
 
-            serialized_peers = (char*)realloc(serialized_peers, serialized_peers_len + _peer_id_len + 1);
+            auto* next = new Skree::Utils::StringSequence (
+                strlen(_peer_id) + 1,
+                _peer_id
+            );
 
-            memcpy(serialized_peers + serialized_peers_len, _peer_id, _peer_id_len);
-            serialized_peers_len += _peer_id_len;
+            serialized_peers_last->concat(next);
+            serialized_peers_last = next;
 
-            serialized_peers[ serialized_peers_len++ ] = '\0';
-
-            if(!keep_peer_id) {
-                free(_peer_id);
-                free(peer->hostname);
-            }
+            // TODO
+            // if(!keep_peer_id) {
+            //     free(_peer_id);
+            //     free(peer->hostname);
+            // }
 
             delete peer;
         }
@@ -234,7 +238,7 @@ namespace Skree {
                 stream->write(sizeof(_hostname_len), &_hostname_len);
                 stream->write(ctx->hostname_len, ctx->hostname);
                 stream->write(sizeof(_port), &_port);
-                stream->write(serialized_peers_len, serialized_peers);
+                stream->write(serialized_peers);
 
                 delete stream;
 
@@ -250,8 +254,8 @@ namespace Skree {
             delete event;
         }
 
-        free(serialized_peers);
-        free(ctx->hostname);
+        delete serialized_peers;
+        // free(ctx->hostname); // TODO
 
         return ((processed == ctx->events_count) ? REPL_SAVE_RESULT_K : REPL_SAVE_RESULT_F);
     }
@@ -494,7 +498,7 @@ namespace Skree {
                     uint32_t _len = htonl(peer->hostname_len);
                     out->copy_concat(sizeof(_len), &_len);
 
-                    out->concat(peer->hostname_len, peer->hostname);
+                    out->concat(peer->hostname_len + 1, peer->hostname);
                     out->copy_concat(sizeof(peer->port), &(peer->port));
                 }
 

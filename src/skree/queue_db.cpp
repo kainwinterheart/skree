@@ -632,6 +632,17 @@ namespace Skree {
         total_len += len;
     }
 
+    void QueueDb::WriteStream::write(Skree::Utils::StringSequence* sequence) {
+        decltype(sequence) next = sequence;
+
+        while(next != nullptr) {
+            uint64_t len;
+            const char* str = next->read(0, &len);
+            write(len, str);
+            next = next->get_next();
+        }
+    }
+
     QueueDb::WriteStream::WriteStream(QueueDb& _db) : db(_db) {
         db.write_page->lock();
         db.write_page->open_page(true);

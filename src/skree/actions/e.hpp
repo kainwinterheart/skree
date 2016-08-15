@@ -19,7 +19,7 @@ namespace Skree {
     struct in_packet_e_ctx {
         uint32_t cnt;
         uint32_t event_name_len;
-        char* event_name;
+        const char* event_name;
         in_packet_e_ctx_event** events;
     };
 

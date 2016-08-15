@@ -20,18 +20,18 @@ namespace Skree {
     struct packet_r_ctx_peer {
         uint32_t hostname_len;
         uint32_t port;
-        char* hostname;
+        const char* hostname;
     };
 
     struct in_packet_r_ctx {
         uint32_t hostname_len;
         uint32_t port;
-        char* hostname;
+        const char* hostname;
         uint32_t events_count;
         uint32_t peers_count;
         in_packet_r_ctx_event** events;
         packet_r_ctx_peer** peers;
-        char* event_name;
+        const char* event_name;
         uint32_t event_name_len;
     };
 

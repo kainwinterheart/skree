@@ -12,10 +12,8 @@ namespace Skree {
             const uint32_t hostname_len (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(hostname_len);
 
-            char* hostname = (char*)malloc(hostname_len + 1);
-            memcpy(hostname, in_data + in_pos, hostname_len);
-            in_pos += hostname_len;
-            hostname[hostname_len] = '\0'; // TODO
+            const char* hostname = in_data + in_pos;
+            in_pos += hostname_len + 1;
 
             const uint32_t port (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(port);
@@ -23,10 +21,8 @@ namespace Skree {
             const uint32_t event_name_len (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(event_name_len);
 
-            char event_name [event_name_len + 1];
-            memcpy(event_name, in_data + in_pos, event_name_len);
-            in_pos += event_name_len;
-            event_name[event_name_len] = '\0'; // TODO
+            const char* event_name = in_data + in_pos;
+            in_pos += event_name_len + 1;
 
             auto it = server.known_events.find(event_name);
 
@@ -74,14 +70,11 @@ namespace Skree {
 
                 peers[cnt] = new packet_r_ctx_peer {
                     .hostname_len = len,
-                    .hostname = (char*)malloc(len + 1),
+                    .hostname = in_data + in_pos,
                     .port = ntohl(*(uint32_t*)(in_data + in_pos + len))
                 };
 
-                memcpy(peers[cnt]->hostname, in_data + in_pos, len);
-                peers[cnt]->hostname[len] = '\0'; // TODO
-
-                in_pos += len + sizeof(uint32_t);
+                in_pos += len + 1 + sizeof(uint32_t);
             }
 
             in_packet_r_ctx ctx {
@@ -128,7 +121,8 @@ namespace Skree {
             uint32_t _hostname_len = htonl(server.my_hostname_len);
             out->copy_concat(sizeof(_hostname_len), &_hostname_len);
 
-            out->concat(server.my_hostname_len, server.my_hostname);
+            // TODO: this is unnecessary
+            out->concat(server.my_hostname_len + 1, server.my_hostname);
 
             uint32_t _my_port = htonl(server.my_port);
             out->copy_concat(sizeof(_my_port), &_my_port);
@@ -136,7 +130,7 @@ namespace Skree {
             uint32_t _event_name_len = htonl(event_name_len);
             out->copy_concat(sizeof(_event_name_len), &_event_name_len);
 
-            out->concat(event_name_len, event_name);
+            out->concat(event_name_len + 1, event_name);
             out->copy_concat(sizeof(_cnt), &_cnt);
 
             return out;

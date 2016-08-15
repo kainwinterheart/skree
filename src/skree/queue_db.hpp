@@ -5,6 +5,7 @@
 #include "db_wrapper.hpp"
 #include "workers/queue_db_async_alloc.hpp"
 #include "utils/atomic_hash_map.hpp"
+#include "utils/string_sequence.hpp"
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -145,6 +146,7 @@ namespace Skree {
             WriteStream(QueueDb& _db);
             ~WriteStream();
             void write(uint64_t len, const void* data);
+            void write(Skree::Utils::StringSequence* sequence);
         };
 
         friend class QueueDb::WriteStream;
