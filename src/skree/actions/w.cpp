@@ -14,7 +14,7 @@ namespace Skree {
 
             uint32_t _hostname_len = htonl(server.my_hostname_len);
             out->copy_concat(sizeof(_hostname_len), &_hostname_len);
-            out->concat(server.my_hostname_len, server.my_hostname);
+            out->concat(server.my_hostname_len + 1, server.my_hostname);
 
             const uint32_t max_parallel_connections (htonl(server.get_max_parallel_connections()));
             out->copy_concat(sizeof(max_parallel_connections), &max_parallel_connections);

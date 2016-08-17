@@ -11,10 +11,8 @@ namespace Skree {
             const uint32_t host_len (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(host_len);
 
-            char* host = (char*)malloc(host_len + 1); // TODO: maybe I should keep it
-            memcpy(host, in_data + in_pos, host_len);
-            in_pos += host_len;
-            host[host_len] = '\0'; // TODO
+            const char* host = in_data + in_pos;
+            in_pos += host_len + 1;
 
             const uint32_t port (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(port);
@@ -45,7 +43,7 @@ namespace Skree {
 
                 if(found) {
                     free(_peer_id);
-                    free(host);
+                    // free(host);
                     out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
 
                 } else {
@@ -54,7 +52,7 @@ namespace Skree {
             }
 
             if(out->get_opcode() == SKREE_META_OPCODE_K) {
-                client.set_peer_name(host_len, host);
+                client.set_peer_name(host_len, strndup(host. host_len));
                 client.set_peer_port(port);
                 client.set_peer_id(_peer_id);
 
@@ -76,7 +74,7 @@ namespace Skree {
             uint32_t _hostname_len = htonl(server.my_hostname_len);
             out->copy_concat(sizeof(_hostname_len), &_hostname_len);
 
-            out->concat(server.my_hostname_len, server.my_hostname);
+            out->concat(server.my_hostname_len + 1, server.my_hostname);
 
             uint32_t _my_port = htonl(server.my_port);
             out->copy_concat(sizeof(_my_port), &_my_port);

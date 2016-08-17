@@ -11,19 +11,14 @@ namespace Skree {
             const uint32_t peer_id_len (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(peer_id_len);
 
-            char peer_id [peer_id_len + 1];
-
-            memcpy(peer_id, in_data + in_pos, peer_id_len);
-            in_pos += peer_id_len;
-            peer_id[peer_id_len] = '\0'; // TODO
+            const char* peer_id = in_data + in_pos;
+            in_pos += peer_id_len + 1;
 
             const uint32_t event_id_len (ntohl(*(uint32_t*)(in_data + in_pos)));
             in_pos += sizeof(event_id_len);
 
-            char* event_id = (char*)malloc(event_id_len + 1);
-            memcpy(event_id, in_data + in_pos, event_id_len);
-            in_pos += event_id_len;
-            event_id[event_id_len] = '\0'; // TODO
+            const char* event_id = in_data + in_pos;
+            in_pos += event_id_len + 1;
 
             const uint64_t rid (ntohll(*(uint64_t*)(in_data + in_pos)));
             in_pos += sizeof(rid);
@@ -112,9 +107,9 @@ namespace Skree {
             uint32_t peer_id_len_net = htonl(peer_id->len);
             out->copy_concat(sizeof(peer_id_len_net), &peer_id_len_net);
 
-            out->concat(peer_id->len, peer_id->data);
+            out->concat(peer_id->len + 1, peer_id->data);
             out->copy_concat(sizeof(uint32_t) /*sizeof(event.id_len)*/, &event.id_len_net);
-            out->concat(event.id_len, event.id);
+            out->concat(event.id_len + 1, event.id);
             out->copy_concat(sizeof(rid_net), &rid_net);
 
             return out;

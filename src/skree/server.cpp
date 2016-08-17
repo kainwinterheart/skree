@@ -173,7 +173,7 @@ namespace Skree {
 
             if(prev_item == peers_to_discover_end) {
                 peers_to_discover[_peer_id] = new peer_to_discover_t {
-                    .host = strdup(peer->hostname),
+                    .host = strndup(peer->hostname, peer->hostname_len),
                     .port = peer->port
                 };
 

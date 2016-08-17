@@ -31,7 +31,7 @@ namespace Skree {
                 // out->grow(sizeof(_peer_name_len) + peer_name_len + sizeof(_peer_port));
 
                 out->copy_concat(sizeof(_peer_name_len), &_peer_name_len);
-                out->concat(peer_name_len, peer->get_peer_name());
+                out->concat(peer_name_len + 1, peer->get_peer_name());
                 out->copy_concat(sizeof(_peer_port), &_peer_port);
             }
 

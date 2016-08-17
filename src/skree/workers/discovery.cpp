@@ -223,7 +223,6 @@ namespace Skree {
                 in_pos += sizeof(cnt);
 
                 uint32_t host_len;
-                char* host;
                 uint32_t port;
                 char* _peer_id;
                 bool got_new_peers = false;
@@ -237,10 +236,8 @@ namespace Skree {
                     host_len = ntohl(*(uint32_t*)(args.data + in_pos));
                     in_pos += sizeof(host_len);
 
-                    host = (char*)malloc(host_len + 1);
-                    memcpy(host, args.data + in_pos, host_len);
-                    in_pos += host_len;
-                    host[host_len] = '\0'; // TODO
+                    const char* host = args.data + in_pos;
+                    in_pos += host_len + 1;
 
                     port = ntohl(*(uint32_t*)(args.data + in_pos));
                     in_pos += sizeof(port);
@@ -253,7 +250,7 @@ namespace Skree {
                     if(prev_item == peers_to_discover_end) {
                         // Utils::cluck("[discovery] fill peers_to_discover: %s:%u\n", host, port);
                         peers_to_discover[_peer_id] = new peer_to_discover_t {
-                            .host = host,
+                            .host = strndup(host, host_len),
                             .port = port
                         };
 
@@ -261,7 +258,7 @@ namespace Skree {
 
                     } else {
                         free(_peer_id);
-                        free(host);
+                        // free(host);
                     }
 
                     peers_to_discover.unlock();
@@ -427,10 +424,8 @@ namespace Skree {
                 const uint32_t len (ntohl(*(uint32_t*)(args.data + in_pos)));
                 in_pos += sizeof(len);
 
-                char* peer_name = (char*)malloc(len + 1);
-                memcpy(peer_name, args.data + in_pos, len);
-                in_pos += len;
-                peer_name[len] = '\0'; // TODO
+                const char* peer_name = args.data + in_pos;
+                in_pos += len + 1;
 
                 uint32_t _tmp (ntohl(*(uint32_t*)(args.data + in_pos)));
                 in_pos += sizeof(_tmp);
@@ -467,10 +462,10 @@ namespace Skree {
 
                         me.unlock();
 
-                        free(peer_name);
+                        // free(peer_name);
 
                     } else {
-                        client.set_peer_name(len, peer_name);
+                        client.set_peer_name(len, strndup(peer_name, len));
                         client.set_peer_port(_tmp);
                         client.set_peer_id(_peer_id);
 
@@ -479,7 +474,7 @@ namespace Skree {
 
                 } else {
                     free(_peer_id);
-                    free(peer_name);
+                    // free(peer_name);
                 }
 
                 if(accepted) {
