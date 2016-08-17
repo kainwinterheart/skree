@@ -52,7 +52,7 @@ namespace Skree {
             }
 
             if(out->get_opcode() == SKREE_META_OPCODE_K) {
-                client.set_peer_name(host_len, strndup(host. host_len));
+                client.set_peer_name(host_len, strndup(host, host_len));
                 client.set_peer_port(port);
                 client.set_peer_id(_peer_id);
 
