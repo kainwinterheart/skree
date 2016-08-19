@@ -6,6 +6,7 @@
 #include "workers/queue_db_async_alloc.hpp"
 #include "utils/atomic_hash_map.hpp"
 #include "utils/string_sequence.hpp"
+#include "utils/mapped_file.hpp"
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -14,6 +15,8 @@
 #include <stdlib.h>
 #include <stack>
 #include <sys/stat.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 namespace Skree {
     class QueueDb {
@@ -31,21 +34,29 @@ namespace Skree {
         typedef Skree::Utils::AtomicHashMap<uint64_t, QueueDb::AsyncAllocatorsItem*> async_allocators_t;
 
         class Page {
+        public:
+            struct Args {
+                size_t& recommended_file_size;
+                const char* path;
+                size_t path_len;
+                QueueDb::async_allocators_t& async_allocators;
+                int flag;
+                Utils::MappedFile* pos_file;
+            };
+
         private:
-            std::atomic<uint64_t> num;
-            std::atomic<uint64_t> offset;
             char* addr;
             int fh;
             pthread_mutex_t mutex;
             std::atomic<size_t> effective_file_size;
-            size_t& recommended_file_size;
             Page* next;
-            const char*& path;
-            size_t& path_len;
+            Args args;
+
             bool async;
             bool close_fhs;
-            QueueDb::async_allocators_t& async_allocators;
-            int flag;
+            std::atomic<uint64_t> num;
+            std::atomic<uint64_t> offset;
+            std::atomic<uint8_t> block; // TODO?
 
             size_t alloc_page(const char* file) const;
             void async_alloc_page(char* _file);
@@ -53,11 +64,8 @@ namespace Skree {
         public:
             Page* get_next();
 
-            explicit Page(
-                size_t& _path_len, const char*& _path, size_t& _file_size,
-                uint64_t _num, uint64_t _offset, bool _async, bool _close_fhs,
-                async_allocators_t& _async_allocators, int _flag
-            );
+            explicit Page(Args& _args);
+            explicit Page(Page* prev);
             virtual ~Page();
 
             void open_page(bool force_sync = false);
@@ -94,6 +102,21 @@ namespace Skree {
             inline size_t get_effective_file_size() const {
                 return effective_file_size;
             }
+
+            // inline void sync(size_t from, size_t to) const {
+            inline void sync() const {
+                if(msync(addr, effective_file_size, MS_SYNC) == -1) {
+                    perror("msync");
+                    abort();
+                }
+
+                if(fsync(fh) == -1) {
+                    perror("fsync");
+                    abort();
+                }
+            }
+
+            inline void atomic_sync_offset(const uint64_t& page_num, const uint64_t& page_offset);
         };
 
         friend class QueueDb::Page;
@@ -108,10 +131,7 @@ namespace Skree {
         std::stack<QueueDb::read_rollback_t*> read_rollbacks;
         async_allocators_t async_allocators;
 
-        void get_page_num(const char* name, uint64_t& page_num, uint64_t& offset) const;
-        void atomic_sync_offset(const char* file, uint64_t& page_num, uint64_t& page_offset) const;
-        void read_uint64(int& fh, uint64_t& dest) const;
-        void read_uint64(int& fh, std::atomic<uint64_t>& dest) const;
+        Utils::MappedFile* get_page_num_file(const char* name) const;
         inline void _write(uint64_t len, const unsigned char* src);
         inline QueueDb::read_rollback_t* _read(uint64_t len, unsigned char* dest);
         void sync_write_offset();

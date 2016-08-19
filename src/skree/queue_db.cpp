@@ -5,21 +5,31 @@ namespace Skree {
     QueueDb::QueueDb(const char* _path, size_t _file_size) : path(_path), file_size(_file_size) {
         path_len = strlen(path);
 
-        uint64_t page_num, page_offset;
+        {
+            QueueDb::Page::Args args {
+                .path_len = path_len,
+                .path = path,
+                .recommended_file_size = file_size,
+                .pos_file = get_page_num_file("rpos"),
+                .async_allocators = async_allocators,
+                .flag = O_RDONLY
+            };
 
-        get_page_num("rpos", page_num, page_offset);
-        read_page = new QueueDb::Page(
-            path_len, path, file_size,
-            page_num, page_offset, /*async=*/false,
-            /*close_fhs=*/true, async_allocators, O_RDONLY
-        );
+            read_page = new QueueDb::Page(args);
+        }
 
-        get_page_num("wpos", page_num, page_offset);
-        write_page = new QueueDb::Page(
-            path_len, path, file_size,
-            page_num, page_offset, /*async=*/false,
-            /*close_fhs=*/true, async_allocators, O_RDWR
-        );
+        {
+            QueueDb::Page::Args args {
+                .path_len = path_len,
+                .path = path,
+                .recommended_file_size = file_size,
+                .pos_file = get_page_num_file("wpos"),
+                .async_allocators = async_allocators,
+                .flag = O_RDWR
+            };
+
+            write_page = new QueueDb::Page(args);
+        }
 
         kv = new DbWrapper;
 
@@ -47,30 +57,42 @@ namespace Skree {
         delete kv;
     }
 
-    QueueDb::Page::Page(
-        size_t& _path_len, const char*& _path, size_t& _file_size,
-        uint64_t _num, uint64_t _offset, bool _async, bool _close_fhs,
-        QueueDb::async_allocators_t& _async_allocators, int _flag
-    )
-        : path_len(_path_len)
-        , path(_path)
-        , recommended_file_size(_file_size)
-        , num(_num)
-        , offset(_offset)
-        , async(_async)
-        , close_fhs(_close_fhs)
-        , async_allocators(_async_allocators)
-        , flag(_flag)
+    QueueDb::Page::Page(Args& _args)
+        : args(_args)
+        , async(false)
+        , close_fhs(true)
+        , fh(-1)
+        , addr(nullptr)
+        , next(nullptr)
+        , effective_file_size(0)
     {
         pthread_mutex_init(&mutex, nullptr);
 
-        fh = -1;
-        addr = nullptr;
-        next = nullptr;
-        effective_file_size = 0;
-        open_page();
+        auto* addr = args.pos_file->begin();
 
-        if(!async) get_next();
+        block = *(uint8_t*)addr;
+        num = ntohll(*(uint64_t*)(addr + 1 + (block * (8 * 2))));
+        offset = ntohll(*(uint64_t*)(addr + 1 + (block * (8 * 2)) + 8));
+
+        open_page();
+        get_next();
+    }
+
+    QueueDb::Page::Page(Page* prev)
+        : args(prev->args)
+        , num(prev->num + 1)
+        , offset(0)
+        , async(true)
+        , close_fhs(false)
+        , block(prev->block.load()) // TODO?
+        , fh(-1)
+        , addr(nullptr)
+        , next(nullptr)
+        , effective_file_size(0)
+    {
+        pthread_mutex_init(&mutex, nullptr);
+
+        open_page();
     }
 
     QueueDb::Page::~Page() {
@@ -87,7 +109,7 @@ namespace Skree {
         }
     }
 
-    void QueueDb::get_page_num(const char* name, uint64_t& page_num, uint64_t& offset) const {
+    Utils::MappedFile* QueueDb::get_page_num_file(const char* name) const {
         auto name_len = strlen(name);
         char file [path_len + 1 + name_len + 1];
 
@@ -96,42 +118,7 @@ namespace Skree {
         memcpy(file + path_len + 1, name, name_len);
         file[path_len + 1 + name_len] = '\0';
 
-        int fh = open(file, O_RDWR | O_CREAT);
-
-        if(fh == -1) {
-            perror("open");
-            abort();
-
-        } else {
-            fchmod(fh, 0000644);
-        }
-
-        read_uint64(fh, page_num);
-        read_uint64(fh, offset);
-
-        if(close(fh) == -1) {
-            perror("close");
-        }
-    }
-
-    void QueueDb::read_uint64(int& fh, std::atomic<uint64_t>& dest) const {
-        uint64_t value;
-        read_uint64(fh, value);
-        dest = value;
-    }
-
-    void QueueDb::read_uint64(int& fh, uint64_t& dest) const {
-        int read_total = 0;
-        int read;
-
-        while(
-            ((read = ::read(fh, (&dest + read_total), (8 - read_total))) > 0)
-            && (read_total < 8)
-        ) {
-            read_total += read;
-        }
-
-        dest = ((read_total == 8) ? ntohll(dest) : 0);
+        return new Utils::MappedFile(file, 1 + 8 * 2 * 2);
     }
 
     size_t QueueDb::Page::alloc_page(const char* file) const {
@@ -150,11 +137,11 @@ namespace Skree {
         size_t chunk_size;
         size_t written;
 
-        while(total < recommended_file_size) {
+        while(total < args.recommended_file_size) {
             chunk_size = (
-                ((recommended_file_size - total) > SKREE_QUEUEDB_ZERO_BATCH_SIZE)
+                ((args.recommended_file_size - total) > SKREE_QUEUEDB_ZERO_BATCH_SIZE)
                     ? SKREE_QUEUEDB_ZERO_BATCH_SIZE
-                    : (recommended_file_size - total)
+                    : (args.recommended_file_size - total)
             );
             written = Utils::write_chunk(fh, chunk_size, batch);
             total += written;
@@ -174,27 +161,27 @@ namespace Skree {
     }
 
     void QueueDb::Page::async_alloc_page(char* _file) {
-        auto end = async_allocators.lock();
-        auto it = async_allocators.find(num);
+        auto end = args.async_allocators.lock();
+        auto it = args.async_allocators.find(num);
 
         if(it != end) {
-            async_allocators.unlock();
+            args.async_allocators.unlock();
             return;
         }
 
-        async_allocators[num] = new QueueDb::AsyncAllocatorsItem {
+        args.async_allocators[num] = new QueueDb::AsyncAllocatorsItem {
             .sz = 0
         };
-        async_allocators[num]->done = 0;
-        async_allocators.unlock();
+        args.async_allocators[num]->done = 0;
+        args.async_allocators.unlock();
 
         char* file = strdup(_file);
 
         auto cb = [this, file](){
             auto size = alloc_page(file);
-            auto end = async_allocators.lock();
-            auto it = async_allocators.find(num);
-            async_allocators.unlock();
+            auto end = args.async_allocators.lock();
+            auto it = args.async_allocators.find(num);
+            args.async_allocators.unlock();
 
             if(it == end) {
                 abort();
@@ -214,22 +201,22 @@ namespace Skree {
         if(fh != -1) return;
 
         if(async) {
-            auto end = async_allocators.lock();
-            auto it = async_allocators.find(num);
-            async_allocators.unlock();
+            auto end = args.async_allocators.lock();
+            auto it = args.async_allocators.find(num);
+            args.async_allocators.unlock();
 
             if(it != end) {
                 if(force_sync) {
                     while(it->second->done == 0) {
-                        usleep(500);
+                        usleep(500); // TODO?
                     }
 
                     effective_file_size = it->second->sz;
                     delete it->second;
 
-                    async_allocators.lock();
-                    async_allocators.erase(it);
-                    async_allocators.unlock();
+                    args.async_allocators.lock();
+                    args.async_allocators.erase(it);
+                    args.async_allocators.unlock();
 
                 } else {
                     return;
@@ -237,14 +224,16 @@ namespace Skree {
             }
         }
 
-        char file [path_len + 1 + 21 + 1];
+        char file [args.path_len + 1 + 21 + 1];
         int access_flag = 0;
         int mmap_prot = 0;
         bool known_flag = false;
 
-        memcpy(file, path, path_len);
-        file[path_len] = '/';
-        sprintf(file + path_len + 1, "%lu", num.load());
+        memcpy(file, args.path, args.path_len);
+        file[args.path_len] = '/';
+        sprintf(file + args.path_len + 1, "%lu", num.load());
+
+        auto flag = args.flag;
 
         if((flag & O_RDONLY) || (flag == O_RDONLY) || (flag & O_RDWR) || (flag == O_RDWR)) {
             access_flag |= R_OK;
@@ -321,67 +310,18 @@ namespace Skree {
 
     QueueDb::Page* QueueDb::Page::get_next() {
         if(next != nullptr) return next;
-
-        next = new QueueDb::Page(
-            path_len, path, recommended_file_size,
-            num + 1, /*offset=*/0, /*async=*/true,
-            /*close_fhs=*/false, async_allocators, flag
-        );
-
-        next->open_page();
-
-        return next;
+        return next = new QueueDb::Page(this);
     }
 
-    void QueueDb::atomic_sync_offset(const char* name, uint64_t& page_num, uint64_t& page_offset) const {
-        auto name_len = strlen(name);
-        auto file_len = path_len + 1 + name_len;
-        auto tmp_file_len = file_len + 4;
+    void QueueDb::Page::atomic_sync_offset(const uint64_t& _offset, const uint64_t& _page_num) {
+        uint8_t new_block = (1 - block);
+        auto* addr = args.pos_file->begin();
 
-        char file [file_len + 1];
-        char tmp_file [tmp_file_len + 1];
+        *(uint64_t*)(addr + 1 + (new_block * (8 * 2)) + 8) = htonll(_offset);
+        *(uint64_t*)(addr + 1 + (new_block * (8 * 2))) = htonll(_page_num);
+        block = *(uint8_t*)addr = new_block;
 
-        memcpy(file, path, path_len);
-        file[path_len] = '/';
-        memcpy(file + path_len + 1, name, name_len);
-        file[path_len + 1 + name_len] = '\0';
-
-        memcpy(tmp_file, file, file_len);
-        tmp_file[file_len] = '.';
-        tmp_file[file_len + 1] = 'n';
-        tmp_file[file_len + 2] = 'e';
-        tmp_file[file_len + 3] = 'w';
-        tmp_file[tmp_file_len] = '\0';
-
-        int fh = open(tmp_file, O_RDWR | O_CREAT);
-
-        if(fh == -1) {
-            perror("open");
-            abort();
-
-        } else {
-            fchmod(fh, 0000644);
-        }
-
-        // TODO: check result
-        bool written = (
-            (Utils::write_chunk(fh, sizeof(page_num), &page_num) == sizeof(page_num))
-            && (Utils::write_chunk(fh, sizeof(page_offset), &page_offset) == sizeof(page_offset))
-        );
-
-        if(close(fh) == -1) {
-            perror("close");
-        }
-
-        if(written) {
-            if(rename(tmp_file, file) == -1) {
-                perror("rename");
-                abort();
-            }
-
-        } else {
-            abort();
-        }
+        args.pos_file->sync();
     }
 
     void QueueDb::sync_read_offset(bool commit) {
@@ -400,10 +340,7 @@ namespace Skree {
                 _read_page_offset = page->get_offset();
             }
 
-            _read_page_num = htonll(_read_page_num);
-            _read_page_offset = htonll(_read_page_offset);
-
-            atomic_sync_offset("rpos", _read_page_num, _read_page_offset);
+            read_page->atomic_sync_offset(_read_page_offset, _read_page_num);
             read_page->close_if_can();
 
             while(!read_rollbacks.empty()) {
@@ -434,10 +371,7 @@ namespace Skree {
             _write_page_offset = page->get_offset();
         }
 
-        _write_page_num = htonll(_write_page_num);
-        _write_page_offset = htonll(_write_page_offset);
-
-        atomic_sync_offset("wpos", _write_page_num, _write_page_offset);
+        write_page->atomic_sync_offset(_write_page_offset, _write_page_num);
         write_page->close_if_can();
     }
 
@@ -667,7 +601,7 @@ namespace Skree {
 
         last_page->set_offset(begin_offset);
 
-        bool wrap = ((last_page->get_effective_file_size() - begin_offset) < sizeof(total_len));
+        bool wrap = ((last_page->get_effective_file_size() - begin_offset) < total_len);
         uint64_t next_end_offset;
 
         if(wrap) {
