@@ -65,6 +65,7 @@ namespace Skree {
         , addr(nullptr)
         , next(nullptr)
         , effective_file_size(0)
+        , loaded(false)
     {
         pthread_mutex_init(&mutex, nullptr);
 
@@ -89,6 +90,7 @@ namespace Skree {
         , addr(nullptr)
         , next(nullptr)
         , effective_file_size(0)
+        , loaded(false)
     {
         pthread_mutex_init(&mutex, nullptr);
 
@@ -301,6 +303,7 @@ namespace Skree {
         }
 
         addr = (char*)mmap(0, effective_file_size, mmap_prot, MAP_FILE | MAP_SHARED, fh, 0); // TODO: restore MAP_NOCACHE
+        loaded = true;
 
         if(addr == MAP_FAILED) {
             perror("mmap");
@@ -321,7 +324,7 @@ namespace Skree {
         *(uint64_t*)(addr + 1 + (new_block * (8 * 2))) = htonll(_page_num);
         block = *(uint8_t*)addr = new_block;
 
-        args.pos_file->sync();
+        // args.pos_file->sync();
     }
 
     void QueueDb::sync_read_offset(bool commit) {

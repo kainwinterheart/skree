@@ -57,9 +57,24 @@ namespace Skree {
             std::atomic<uint64_t> num;
             std::atomic<uint64_t> offset;
             std::atomic<uint8_t> block; // TODO?
+            std::atomic<bool> loaded;
 
             size_t alloc_page(const char* file) const;
             void async_alloc_page(char* _file);
+
+            inline void sync_data() const {
+                if(!loaded) return;
+
+                if(msync(addr, effective_file_size, MS_SYNC) == -1) {
+                    perror("msync");
+                    abort();
+                }
+
+                if(fsync(fh) == -1) {
+                    perror("fsync");
+                    abort();
+                }
+            }
 
         public:
             Page* get_next();
@@ -103,17 +118,17 @@ namespace Skree {
                 return effective_file_size;
             }
 
-            // inline void sync(size_t from, size_t to) const {
-            inline void sync() const {
-                if(msync(addr, effective_file_size, MS_SYNC) == -1) {
-                    perror("msync");
-                    abort();
-                }
+            inline void sync_all_data() {
+                Page* node = this;
 
-                if(fsync(fh) == -1) {
-                    perror("fsync");
-                    abort();
+                while(node != nullptr) {
+                    node->sync_data();
+                    node = node->next;
                 }
+            }
+
+            inline void sync_pos() {
+                args.pos_file->sync();
             }
 
             inline void atomic_sync_offset(const uint64_t& page_num, const uint64_t& page_offset);
@@ -173,5 +188,11 @@ namespace Skree {
 
         QueueDb::WriteStream* write();
         void write(uint64_t len, const void* data);
+
+        inline void sync() {
+            write_page->sync_all_data();
+            write_page->sync_pos();
+            read_page->sync_pos();
+        }
     };
 }

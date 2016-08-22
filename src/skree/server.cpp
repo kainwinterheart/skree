@@ -69,6 +69,9 @@ namespace Skree {
         ev_io_init((ev_io*)&socket_watcher, socket_cb, fh, EV_READ);
         ev_io_start(loop, (ev_io*)&socket_watcher);
 
+        Skree::Workers::Cleanup cleanup (*this);
+        cleanup.start();
+
         Skree::Workers::Synchronization synchronization (*this);
         synchronization.start();
 

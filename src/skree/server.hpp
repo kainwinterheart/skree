@@ -33,6 +33,7 @@ namespace Skree {
 #include "queue_db.hpp"
 #include "workers/processor.hpp"
 #include "meta/states.hpp"
+#include "workers/cleanup.hpp"
 
 #include <stdexcept>
 #include <functional>
