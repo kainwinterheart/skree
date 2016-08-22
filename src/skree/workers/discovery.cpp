@@ -160,7 +160,14 @@ namespace Skree {
 
                 if(connect(fh, ai_it->ai_addr, ai_it->ai_addrlen) == -1) {
                     if(errno != EINPROGRESS) {
-                        perror("connect");
+                        std::string str ("connect(");
+                        str += host;
+                        str += ":";
+                        str += port;
+                        str += ")";
+
+                        perror(str.c_str());
+
                         close(fh);
                         continue;
                     }
@@ -353,7 +360,7 @@ namespace Skree {
                                     auto known_peers_end = known_peers.lock();
                                     known_peers_by_conn_id.lock();
 
-                                    const auto& conn_id = client.get_conn_id();
+                                    auto* conn_id = client.get_conn_id();
 
                                     known_peers[peer_id_clone].push_back(&client);
                                     known_peers_by_conn_id[conn_id].push_back(&client);

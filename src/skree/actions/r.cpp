@@ -71,7 +71,7 @@ namespace Skree {
                 peers[cnt] = new packet_r_ctx_peer {
                     .hostname_len = len,
                     .hostname = in_data + in_pos,
-                    .port = ntohl(*(uint32_t*)(in_data + in_pos + len))
+                    .port = ntohl(*(uint32_t*)(in_data + in_pos + len + 1))
                 };
 
                 in_pos += len + 1 + sizeof(uint32_t);
