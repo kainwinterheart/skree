@@ -143,7 +143,7 @@ namespace Skree {
 
             queue_r2.sync_read_offset(key_removed);
             cleanup();
-            return true;
+            return key_removed;
         }
 
         bool Processor::process(const uint64_t& now, Utils::known_event_t& event) {
@@ -221,7 +221,7 @@ namespace Skree {
 
             wip.unlock();
 
-            return true;
+            return commit;
         }
     }
 }

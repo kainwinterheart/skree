@@ -18,6 +18,9 @@ namespace Skree {
             Worker(Skree::Server& _server, const void* _args = nullptr)
                 : Skree::Base::WorkerLite(_args), server(_server) {
             }
+
+            virtual ~Worker() {
+            }
         };
     }
 }

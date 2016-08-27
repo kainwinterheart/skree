@@ -269,7 +269,7 @@ namespace Skree {
                 //     event.id
                 // );
 
-            } else {
+            } else if(queue.kv->check(item->failover_key, item->failover_key_len) > 0) {
                 Utils::cluck(3,
                     "Key %s could not be added to r2_queue: %s\n",
                     item->failover_key,
@@ -435,7 +435,7 @@ namespace Skree {
                 peer->push_write_queue(c_req);
             }
 
-            return true;
+            return commit;
         }
     }
 }

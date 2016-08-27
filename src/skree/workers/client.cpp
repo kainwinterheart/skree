@@ -3,37 +3,34 @@
 namespace Skree {
     namespace Workers {
         void Client::run() {
-            struct ev_loop* loop = ev_loop_new(0);
+            ev_run(((Args*)args)->loop, 0);
+        }
 
-            while(true) {
-                ev_run(loop, EVRUN_NOWAIT);
+        void Client::async_cb(struct ev_loop* loop, ev_async* _watcher, int events) {
+            ((Client::bound_ev_async*)_watcher)->worker->accept();
+        }
 
-                if(!server.new_clients.empty()) {
-                    pthread_mutex_lock(&(server.new_clients_mutex));
+        void Client::accept() {
+            pthread_mutex_lock((((Args*)args)->mutex));
 
-                    if(!server.new_clients.empty()) {
-                        new_client_t* new_client = server.new_clients.front();
-                        server.new_clients.pop();
+            while(!((Args*)args)->queue->empty()) {
+                new_client_t* new_client = ((Args*)args)->queue->front();
+                ((Args*)args)->queue->pop();
 
-                        pthread_mutex_unlock(&(server.new_clients_mutex));
+                Skree::Client* client = new Skree::Client(
+                    new_client->fh,
+                    ((Args*)args)->loop,
+                    new_client->s_in,
+                    new_client->s_in_len,
+                    server
+                );
 
-                        Skree::Client* client = new Skree::Client(
-                            new_client->fh,
-                            loop,
-                            new_client->s_in,
-                            new_client->s_in_len,
-                            server
-                        );
+                new_client->cb(*client);
 
-                        new_client->cb(*client);
-
-                        delete new_client;
-
-                    } else {
-                        pthread_mutex_unlock(&(server.new_clients_mutex));
-                    }
-                }
+                delete new_client;
             }
+
+            pthread_mutex_unlock((((Args*)args)->mutex));
         }
     }
 }

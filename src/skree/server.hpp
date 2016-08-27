@@ -39,6 +39,7 @@ namespace Skree {
 #include <functional>
 #include <algorithm>
 #include <atomic>
+#include <utility>
 
 namespace Skree {
     struct new_client_t {
@@ -67,16 +68,21 @@ namespace Skree {
     };
 
     typedef Utils::AtomicHashMap<char*, peer_to_discover_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> peers_to_discover_t;
+    typedef std::pair<Workers::Client::Args*, Workers::Client*> ClientWorkerPair;
+
+    template<>
+    inline ClientWorkerPair Utils::RoundRobinVector<ClientWorkerPair>::next() {
+        return next_impl();
+    }
 
     class Server {
     private:
-        std::queue<Workers::Client*> threads;
+        Utils::RoundRobinVector<ClientWorkerPair> threads;
         const uint32_t max_client_threads;
         const uint32_t max_parallel_connections;
         void load_peers_to_discover();
         static void socket_cb(struct ev_loop* loop, ev_io* watcher, int events);
     public:
-        std::queue<new_client_t*> new_clients;
         const size_t read_size = 131072;
         const uint64_t no_failover_time = 10 * 60;
         const time_t discovery_timeout_milliseconds = 3000;
@@ -88,8 +94,6 @@ namespace Skree {
         std::atomic<uint_fast64_t> stat_num_repl_it;
         std::atomic<uint_fast64_t> stat_num_requests_detailed [256];
         std::atomic<uint_fast64_t> stat_num_responses_detailed [256];
-
-        pthread_mutex_t new_clients_mutex;
 
         char* my_hostname;
         uint32_t my_hostname_len;
@@ -146,5 +150,7 @@ namespace Skree {
         inline const uint32_t get_max_parallel_connections() const {
             return max_parallel_connections;
         }
+
+        void push_new_client(new_client_t* new_client);
     };
 }

@@ -75,7 +75,7 @@ namespace Skree {
                         continue;
                     }
 
-                    auto new_client = new new_client_t {
+                    server.push_new_client(new new_client_t {
                         .fh = fh,
                         .cb = [this](Skree::Client& client) {
                             on_new_client(client);
@@ -83,12 +83,7 @@ namespace Skree {
                         },
                         .s_in = addr,
                         .s_in_len = addr_len
-                    };
-
-                    pthread_mutex_lock(&(server.new_clients_mutex));
-                    server.new_clients.push(new_client);
-                    // server.push_new_clients(new_client); // TODO
-                    pthread_mutex_unlock(&(server.new_clients_mutex));
+                    });
                 }
 
                 sleep(5);
@@ -332,7 +327,7 @@ namespace Skree {
                         const auto& peer_name_clone = strdup(peer_name);
                         const auto& peer_name_len = client.get_peer_name_len();
 
-                        auto new_client = new new_client_t {
+                        server.push_new_client(new new_client_t {
                             .fh = fh,
                             .cb = [
                                 this,
@@ -384,12 +379,7 @@ namespace Skree {
                             },
                             .s_in = addr,
                             .s_in_len = addr_len
-                        };
-
-                        pthread_mutex_lock(&(server.new_clients_mutex));
-                        server.new_clients.push(new_client);
-                        // server.push_new_clients(new_client); // TODO
-                        pthread_mutex_unlock(&(server.new_clients_mutex));
+                        });
                     }
 
                     auto _cb = [this](

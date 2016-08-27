@@ -66,7 +66,14 @@ namespace Skree {
                 if(!loaded) return;
 
                 if(msync(addr, effective_file_size, MS_SYNC) == -1) {
-                    perror("msync");
+                    char _addr [21];
+                    sprintf(_addr, "0x%lx", (uintptr_t)addr);
+
+                    std::string str ("msync(");
+                    str += _addr;
+                    str += ')';
+
+                    perror(str.c_str());
                     abort();
                 }
 

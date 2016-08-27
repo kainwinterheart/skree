@@ -13,8 +13,6 @@ namespace Skree {
       , max_parallel_connections(_max_parallel_connections)
       , known_events(_known_events)
     {
-        pthread_mutex_init(&new_clients_mutex, nullptr);
-
         stat_num_inserts = 0;
         stat_num_replications = 0;
         stat_num_repl_it = 0;
@@ -64,7 +62,7 @@ namespace Skree {
 
         Utils::server_bound_ev_io socket_watcher;
         socket_watcher.server = this;
-        struct ev_loop* loop = ev_loop_new(0);
+        struct ev_loop* loop = ev_loop_new(EVBACKEND_KQUEUE | EVBACKEND_EPOLL | EVFLAG_NOSIGMASK);
 
         ev_io_init((ev_io*)&socket_watcher, socket_cb, fh, EV_READ);
         ev_io_start(loop, (ev_io*)&socket_watcher);
@@ -76,8 +74,19 @@ namespace Skree {
         synchronization.start();
 
         for(int i = 0; i < max_client_threads; ++i) {
-            auto client = new Skree::Workers::Client(*this);
-            threads.push(client);
+            auto* args = new Skree::Workers::Client::Args {
+                .loop = ev_loop_new(EVBACKEND_KQUEUE | EVBACKEND_EPOLL | EVFLAG_NOSIGMASK),
+                .watcher = new Skree::Workers::Client::bound_ev_async,
+                .queue = new std::queue<new_client_t*>,
+                .mutex = new pthread_mutex_t
+            };
+
+            pthread_mutex_init(args->mutex, NULL);
+
+            auto* client = new Skree::Workers::Client(*this, args);
+
+            threads.push_back(std::make_pair(args, client));
+
             client->start();
         }
 
@@ -136,12 +145,15 @@ namespace Skree {
 
     Server::~Server() {
         while(!threads.empty()) {
-            auto thread = threads.front();
-            threads.pop();
-            delete thread; // TODO
+            auto thread = threads.back();
+            threads.pop_back();
+            delete thread.first->loop;
+            delete thread.first->watcher;
+            delete thread.first->queue;
+            delete thread.first->mutex;
+            delete thread.first;
+            delete thread.second; // TODO?
         }
-
-        pthread_mutex_destroy(&new_clients_mutex);
     }
 
     short Server::repl_save(
@@ -640,7 +652,7 @@ namespace Skree {
 
     void Server::socket_cb(struct ev_loop* loop, ev_io* _watcher, int events) {
         struct Utils::server_bound_ev_io* watcher = (struct Utils::server_bound_ev_io*)_watcher;
-        auto server = watcher->server;
+        auto* server = watcher->server;
         sockaddr_in* addr = (sockaddr_in*)malloc(sizeof(*addr));
         socklen_t len = sizeof(*addr);
 
@@ -652,19 +664,24 @@ namespace Skree {
             return;
         }
 
-        new_client_t* new_client = new new_client_t {
+        server->push_new_client(new new_client_t {
             .fh = fh,
-            .cb = [server](Client& client){ // TODO: also in Discovery::on_new_client
+            .cb = [](Client& client){ // TODO: also in Discovery::on_new_client
                 client.push_write_queue(Skree::Actions::N::out_init(), true);
             },
             .s_in = addr,
             .s_in_len = len
-        };
+        });
+    }
 
-        // TODO
-        pthread_mutex_lock(&(server->new_clients_mutex));
-        server->new_clients.push(new_client);
-        pthread_mutex_unlock(&(server->new_clients_mutex));
+    void Server::push_new_client(new_client_t* new_client) {
+        auto thread = threads.next();
+
+        pthread_mutex_lock(thread.first->mutex);
+        thread.first->queue->push(new_client);
+        pthread_mutex_unlock(thread.first->mutex);
+
+        ev_async_send(thread.first->loop, (ev_async*)thread.first->watcher);
     }
 
     void Server::replication_exec(out_packet_i_ctx* ctx) {

@@ -38,3 +38,4 @@ clean_contrib: clean_contrib_yaml_cpp
 
 clean_contrib_yaml_cpp:
 	cd contrib/yaml-cpp && make DESTDIR=../../contrib-build uninstall && make clean ||:
+	rm contrib/yaml-cpp/CMakeCache.txt ||:

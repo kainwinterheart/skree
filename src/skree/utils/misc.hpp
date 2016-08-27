@@ -15,6 +15,7 @@
 #include <string>
 #include <dlfcn.h>
 #include <stdarg.h>
+#include <unistd.h>
 
 #include "atomic_hash_map.hpp"
 

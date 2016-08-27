@@ -79,7 +79,31 @@ namespace Skree {
 #endif
                 if(written < 0) {
                     if((errno != EAGAIN) && (errno != EINTR)) {
-                        perror("write");
+                        std::string str ("write(");
+
+                        {
+                            const char* peer_id = client.get_peer_id();
+
+                            if(peer_id == nullptr)
+                                str += "(null)";
+                            else
+                                str += peer_id;
+                        }
+
+                        str += '/';
+
+                        {
+                            const char* conn_id = client.get_conn_id();
+
+                            if(conn_id == nullptr)
+                                str += "(null)";
+                            else
+                                str += conn_id;
+                        }
+
+                        str += ')';
+
+                        perror(str.c_str());
                         client.drop(); // TODO?
                         // Throw("woot");
                         return;
