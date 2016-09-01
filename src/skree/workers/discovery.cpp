@@ -75,7 +75,8 @@ namespace Skree {
                         continue;
                     }
 
-                    server.push_new_client(new new_client_t {
+                    std::shared_ptr<new_client_t> new_client;
+                    new_client.reset(new new_client_t {
                         .fh = fh,
                         .cb = [this](Skree::Client& client) {
                             on_new_client(client);
@@ -84,6 +85,8 @@ namespace Skree {
                         .s_in = addr,
                         .s_in_len = addr_len
                     });
+
+                    server.push_new_client(new_client);
                 }
 
                 sleep(5);
@@ -200,17 +203,17 @@ namespace Skree {
 
             auto w_req = Skree::Actions::W::out_init();
 
-            w_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
-                .ctx = nullptr
-            });
+            w_req->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
+                std::shared_ptr<void>(),
+                std::make_shared<Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>>(server, _cb)
+            ));
 
             w_req->finish();
 
             client.push_write_queue(w_req);
         }
 
-        Skree::Base::PendingWrite::QueueItem* Discovery::cb6(
+        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Discovery::cb6(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
@@ -270,10 +273,10 @@ namespace Skree {
                     server.save_peers_to_discover();
             }
 
-            return nullptr;
+            return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
         }
 
-        Skree::Base::PendingWrite::QueueItem* Discovery::cb5(
+        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Discovery::cb5(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
@@ -327,7 +330,8 @@ namespace Skree {
                         const auto& peer_name_clone = strdup(peer_name);
                         const auto& peer_name_len = client.get_peer_name_len();
 
-                        server.push_new_client(new new_client_t {
+                        std::shared_ptr<new_client_t> new_client;
+                        new_client.reset(new new_client_t {
                             .fh = fh,
                             .cb = [
                                 this,
@@ -347,7 +351,7 @@ namespace Skree {
                                     Skree::Base::PendingRead::Callback::Args& args
                                 ) {
                                     if(args.opcode != SKREE_META_OPCODE_K)
-                                        return nullptr;
+                                        return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
 
                                     auto& known_peers = server.known_peers;
                                     auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
@@ -363,15 +367,15 @@ namespace Skree {
                                     known_peers_by_conn_id.unlock();
                                     known_peers.unlock();
 
-                                    return nullptr;
+                                    return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
                                 };
 
                                 auto h_req = Skree::Actions::H::out_init(server);
 
-                                h_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                                    .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
-                                    .ctx = nullptr
-                                });
+                                h_req->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
+                                    std::shared_ptr<void>(),
+                                    std::make_shared<Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>>(server, _cb)
+                                ));
 
                                 h_req->finish();
 
@@ -380,6 +384,8 @@ namespace Skree {
                             .s_in = addr,
                             .s_in_len = addr_len
                         });
+
+                        server.push_new_client(new_client);
                     }
 
                     auto _cb = [this](
@@ -392,10 +398,10 @@ namespace Skree {
 
                     auto l_req = Skree::Actions::L::out_init();
 
-                    l_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                        .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
-                        .ctx = nullptr
-                    });
+                    l_req->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
+                        std::shared_ptr<void>(),
+                        std::make_shared<Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>>(server, _cb)
+                    ));
 
                     l_req->finish();
 
@@ -406,10 +412,10 @@ namespace Skree {
                 args.stop = true;
             }
 
-            return nullptr;
+            return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
         }
 
-        Skree::Base::PendingWrite::QueueItem* Discovery::cb2(
+        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Discovery::cb2(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
             Skree::Base::PendingRead::Callback::Args& args
@@ -485,10 +491,10 @@ namespace Skree {
 
                     auto h_req = Skree::Actions::H::out_init(server);
 
-                    h_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                        .cb = new Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>(server, _cb),
-                        .ctx = nullptr
-                    });
+                    h_req->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
+                        std::shared_ptr<void>(),
+                        std::make_shared<Skree::PendingReads::Callbacks::Discovery<decltype(_cb)>>(server, _cb)
+                    ));
 
                     h_req->finish();
 
@@ -502,7 +508,7 @@ namespace Skree {
                 args.stop = true;
             }
 
-            return nullptr;
+            return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
         }
 
         void Discovery::on_new_client(Skree::Client& client) { // TODO: also in Server::socket_cb

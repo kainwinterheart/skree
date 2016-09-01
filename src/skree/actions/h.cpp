@@ -4,7 +4,7 @@ namespace Skree {
     namespace Actions {
         void H::in(
             const uint64_t in_len, const char* in_data,
-            Skree::Base::PendingWrite::QueueItem*& out
+            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
         ) {
             uint64_t in_pos = 0;
 
@@ -28,7 +28,7 @@ namespace Skree {
             known_peers_by_conn_id.lock();
 
             if(known_peer == end) {
-                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
+                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
             } else {
                 bool found = false;
@@ -44,10 +44,10 @@ namespace Skree {
                 if(found) {
                     free(_peer_id);
                     // free(host);
-                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
+                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
 
                 } else {
-                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
+                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
                 }
             }
 
@@ -64,12 +64,8 @@ namespace Skree {
             known_peers.unlock();
         }
 
-        Skree::Base::PendingWrite::QueueItem* H::out_init(const Server& server) {
-            auto out = new Skree::Base::PendingWrite::QueueItem((
-                sizeof(server.my_hostname_len)
-                + server.my_hostname_len
-                + sizeof(server.my_port)
-            ), opcode());
+        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> H::out_init(const Server& server) {
+            auto out = std::make_shared<Skree::Base::PendingWrite::QueueItem>(opcode());
 
             uint32_t _hostname_len = htonl(server.my_hostname_len);
             out->copy_concat(sizeof(_hostname_len), &_hostname_len);

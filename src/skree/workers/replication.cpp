@@ -29,14 +29,15 @@ namespace Skree {
             }
         }
 
-        Replication::QueueItem* Replication::parse_queue_item(
+        std::shared_ptr<Replication::QueueItem> Replication::parse_queue_item(
             Utils::known_event_t& event,
             const char* item
         ) {
             size_t item_pos = 0;
-            auto out = new Replication::QueueItem {
+            std::shared_ptr<Replication::QueueItem> out;
+            out.reset(new Replication::QueueItem {
                 .rin = (item + item_pos + sizeof(uint32_t))
-            };
+            });
 
             out->rin_len = ntohl(*(uint32_t*)(item + item_pos));
             item_pos += sizeof(out->rin_len);
@@ -189,7 +190,7 @@ namespace Skree {
 
             free(item->peer_id);
             free(item->failover_key);
-            delete item;
+            // delete item;
             free(_item);
 
             return commit;
@@ -210,7 +211,7 @@ namespace Skree {
             auto cleanup = [&item, &_item](){
                 free(item->peer_id);
                 free(item->failover_key);
-                delete item;
+                // delete item;
                 free(_item);
             };
 
@@ -309,18 +310,20 @@ namespace Skree {
                 *acceptances = 0;
                 *pending = 0;
 
-                pthread_mutex_t* mutex = (pthread_mutex_t*)malloc(sizeof(*mutex));
-                pthread_mutex_init(mutex, nullptr);
+                auto mutex = std::make_shared<pthread_mutex_t>();
+                pthread_mutex_init(mutex.get(), nullptr);
 
-                auto data_str = new Utils::muh_str_t {
+                std::shared_ptr<Utils::muh_str_t> data_str;
+                data_str.reset(new Utils::muh_str_t {
                     .len = item->rin_len,
                     .data = (char*)(item->rin) // TODO
-                };
+                });
 
-                auto __peer_id = new Utils::muh_str_t {
+                std::shared_ptr<Utils::muh_str_t> __peer_id;
+                __peer_id.reset(new Utils::muh_str_t {
                     .len = item->peer_id_len,
                     .data = item->peer_id
-                };
+                });
 
                 if(item->peers_cnt > 0) {
                     *count_replicas = item->peers_cnt;
@@ -339,17 +342,18 @@ namespace Skree {
                         known_peers.unlock();
 
                         if(it == known_peers_end) {
-                            pthread_mutex_lock(mutex);
+                            pthread_mutex_lock(mutex.get());
                             ++(*acceptances);
-                            pthread_mutex_unlock(mutex);
+                            pthread_mutex_unlock(mutex.get());
 
                         } else {
                             have_rpr = true;
-                            pthread_mutex_lock(mutex);
+                            pthread_mutex_lock(mutex.get());
                             ++(*pending);
-                            pthread_mutex_unlock(mutex);
+                            pthread_mutex_unlock(mutex.get());
 
-                            auto ctx = new out_packet_i_ctx {
+                            std::shared_ptr<out_packet_i_ctx> ctx;
+                            ctx.reset(new out_packet_i_ctx {
                                 .count_replicas = count_replicas,
                                 .pending = pending,
                                 .acceptances = acceptances,
@@ -362,14 +366,14 @@ namespace Skree {
                                 .rpr = item->rpr,
                                 .peers_cnt = _peers_cnt, // TODO
                                 .rid = item->rid
-                            };
+                            });
 
                             auto i_req = Skree::Actions::I::out_init(__peer_id, event, item->rid_net);
+                            std::shared_ptr<void> _ctx (ctx, (void*)ctx.get());
 
-                            i_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                                .cb = new Skree::PendingReads::Callbacks::ReplicationProposeSelf(server),
-                                .ctx = (void*)ctx
-                            });
+                            i_req->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
+                                _ctx, std::make_shared<Skree::PendingReads::Callbacks::ReplicationProposeSelf>(server)
+                            ));
 
                             it->second.next()->push_write_queue(i_req);
                         }
@@ -379,7 +383,7 @@ namespace Skree {
                 }
 
                 if(!have_rpr) {
-                    auto ctx = new out_packet_i_ctx {
+                    out_packet_i_ctx ctx {
                         .count_replicas = count_replicas,
                         .pending = pending,
                         .acceptances = acceptances,
@@ -399,36 +403,38 @@ namespace Skree {
 
             } else {
                 // TODO: rin_str's type
-                auto rin_str = new Utils::muh_str_t {
+                std::shared_ptr<Utils::muh_str_t> rin_str;
+                rin_str.reset(new Utils::muh_str_t {
                     .len = item->rin_len,
-                    .data = (char*)(item->rin) // TODO
-                };
+                    .data = (char*)(item->rin) // TODO?
+                });
 
-                Utils::muh_str_t* rpr_str = nullptr;
+                std::shared_ptr<Utils::muh_str_t> rpr_str;
 
                 if(item->peers_cnt > 0) {
-                    rpr_str = new Utils::muh_str_t {
+                    rpr_str.reset(new Utils::muh_str_t {
                         // .len = (uint32_t)strlen(item->rpr), // TODO: it is incorrect
                         .len = (uint32_t)(item_len - (item->rpr - _item)), // TODO: unreliable crutch
                         .data = item->rpr
-                    };
+                    });
                 }
 
-                auto ctx = new out_data_c_ctx {
+                std::shared_ptr<out_data_c_ctx> ctx;
+                ctx.reset(new out_data_c_ctx {
                     .event = &event,
                     .rin = rin_str,
                     .rpr = rpr_str, // TODO?
                     .rid = item->rid,
                     .failover_key = item->failover_key,
                     .failover_key_len = item->failover_key_len
-                };
+                });
 
                 auto c_req = Skree::Actions::C::out_init(event, item->rid_net, item->rin_len, item->rin);
+                std::shared_ptr<void> _ctx (ctx, (void*)ctx.get());
 
-                c_req->set_cb(new Skree::Base::PendingRead::QueueItem {
-                    .cb = new Skree::PendingReads::Callbacks::ReplicationPingTask(server),
-                    .ctx = (void*)ctx
-                });
+                c_req->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
+                    _ctx, std::make_shared<Skree::PendingReads::Callbacks::ReplicationPingTask>(server)
+                ));
 
                 c_req->finish();
 

@@ -30,17 +30,20 @@ namespace Skree {
             }
         }
 
-        Processor::QueueItem* Processor::parse_queue_item(
+        std::shared_ptr<Processor::QueueItem> Processor::parse_queue_item(
             Utils::known_event_t& event,
             const uint64_t item_len,
             const char* item
         ) {
-            return new Processor::QueueItem {
+            std::shared_ptr<Processor::QueueItem> _item;
+            _item.reset(new Processor::QueueItem {
                 .id_net = *(uint64_t*)item,
                 .id = ntohll(*(uint64_t*)item),
                 .data = item + sizeof(uint64_t),
                 .len = item_len - sizeof(uint64_t)
-            };
+            });
+
+            return _item;
         }
 
         bool Processor::do_failover(
@@ -48,13 +51,12 @@ namespace Skree {
             Utils::known_event_t& event,
             const Processor::QueueItem& item
         ) {
-            in_packet_e_ctx_event _event {
+            auto events = std::make_shared<std::vector<std::shared_ptr<in_packet_e_ctx_event>>>(1);
+
+            (*events.get())[0].reset(new in_packet_e_ctx_event {
                .len = (uint32_t)(item.len), // TODO
                .data = item.data
-            };
-
-            in_packet_e_ctx_event* events [1];
-            events[0] = &_event;
+            });
 
             in_packet_e_ctx e_ctx {
                .cnt = 1,
@@ -64,7 +66,7 @@ namespace Skree {
             };
 
             short result = server.save_event(
-               &e_ctx,
+               e_ctx,
                0, // TODO: should wait for synchronous replication
                nullptr,
                nullptr,
@@ -94,7 +96,7 @@ namespace Skree {
 
             auto item = parse_queue_item(event, item_len, _item);
             auto cleanup = [&item, &_item](){
-                delete item;
+                // delete item;
                 free(_item);
             };
 
@@ -162,7 +164,7 @@ namespace Skree {
 
             auto item = parse_queue_item(event, item_len, _item);
             auto cleanup = [&item, &_item](){
-                delete item;
+                // delete item;
                 free(_item);
             };
 

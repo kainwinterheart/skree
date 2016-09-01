@@ -8,7 +8,7 @@ namespace Skree {
     namespace Actions {
         void C::in(
             const uint64_t in_len, const char* in_data,
-            Skree::Base::PendingWrite::QueueItem*& out
+            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
         ) {
             // Utils::cluck(1, "CHECK");
             uint64_t in_pos = 0;
@@ -23,7 +23,7 @@ namespace Skree {
 
             if(eit == server.known_events.end()) {
                 Utils::cluck(2, "[C::in] Got unknown event: %s\n", event_name);
-                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
+                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
                 return;
             }
 
@@ -41,16 +41,15 @@ namespace Skree {
 
             if(state == SKREE_META_EVENTSTATE_PROCESSED) {
                 // event is processed, everything is fine
-                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
+                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
             } else if(state == SKREE_META_EVENTSTATE_LOST) {
-                in_packet_e_ctx_event event {
+                auto events = std::make_shared<std::vector<std::shared_ptr<in_packet_e_ctx_event>>>(1);
+
+                (*events.get())[0].reset(new in_packet_e_ctx_event {
                    .len = rin_len,
                    .data = rin
-                };
-
-                in_packet_e_ctx_event* events [1];
-                events[0] = &event;
+                });
 
                 in_packet_e_ctx e_ctx {
                    .cnt = 1,
@@ -60,7 +59,7 @@ namespace Skree {
                 };
 
                 short result = server.save_event(
-                   &e_ctx,
+                   e_ctx,
                    0, // TODO: should wait for synchronous replication
                    nullptr,
                    nullptr,
@@ -69,7 +68,7 @@ namespace Skree {
 
                 if(result == SAVE_EVENT_RESULT_K) {
                     // event has been lost, but just enqueued, again and will be re-replicated
-                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
+                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
                     auto& db = *(eit->second->queue->kv);
 
@@ -78,26 +77,21 @@ namespace Skree {
 
                 } else {
                     // can't re-save event, try again
-                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
+                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
                 }
 
             } else {
                 // event state is not terminal
-                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
+                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
             }
         }
 
-        Skree::Base::PendingWrite::QueueItem* C::out_init(
+        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> C::out_init(
             Utils::known_event_t& event, const uint64_t rid_net,
             const uint32_t rin_len, const char* rin
         ) {
             const uint32_t rin_len_net = htonl(rin_len); // TODO?
-            auto out = new Skree::Base::PendingWrite::QueueItem((
-                sizeof(uint32_t) /*sizeof(event.id_len)*/
-                + event.id_len
-                + sizeof(rid_net)
-                + sizeof(rin_len_net)
-            ), opcode());
+            auto out = std::make_shared<Skree::Base::PendingWrite::QueueItem>(opcode());
 
             out->copy_concat(sizeof(uint32_t) /*sizeof(event.id_len)*/, &event.id_len_net);
             out->concat(event.id_len + 1, event.id);

@@ -23,7 +23,7 @@ namespace Skree {
                 uint64_t len; // TODO: 64 or 32?
             };
 
-            static Processor::QueueItem* parse_queue_item(
+            static std::shared_ptr<Processor::QueueItem> parse_queue_item(
                 Utils::known_event_t& event,
                 const uint64_t item_len,
                 const char* item

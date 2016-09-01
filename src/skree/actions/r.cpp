@@ -4,7 +4,7 @@ namespace Skree {
     namespace Actions {
         void R::in(
             const uint64_t in_len, const char* in_data,
-            Skree::Base::PendingWrite::QueueItem*& out
+            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
         ) {
             // Utils::cluck(1, "R::in begin");
             uint64_t in_pos = 0;
@@ -28,7 +28,7 @@ namespace Skree {
 
             if(it == server.known_events.end()) {
                 Utils::cluck(2, "[R::in] Got unknown event: %s\n", event_name);
-                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
+                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
                 return;
             }
 
@@ -38,29 +38,29 @@ namespace Skree {
             in_pos += sizeof(cnt);
 
             const uint32_t events_count = cnt;
-            in_packet_r_ctx_event* events [events_count];
+            auto events = std::make_shared<std::vector<std::shared_ptr<in_packet_r_ctx_event>>>(events_count);
 
             while(cnt > 0) {
                 --cnt;
 
-                events[cnt] = new in_packet_r_ctx_event {
+                (*events.get())[cnt].reset(new in_packet_r_ctx_event {
                     .id_net = *(uint64_t*)(in_data + in_pos),
                     .id = (char*)malloc(21),
                     .len = ntohl(*(uint32_t*)(in_data + in_pos + sizeof(uint64_t))),
                     .data = (in_data + in_pos + sizeof(uint64_t) + sizeof(uint32_t))
-                };
+                });
 
-                sprintf(events[cnt]->id, "%llu", ntohll(events[cnt]->id_net)); // TODO: is this really necessary?
+                sprintf((*events.get())[cnt]->id, "%llu", ntohll((*events.get())[cnt]->id_net)); // TODO: is this really necessary?
                 // Utils::cluck(2, "repl got id: %lu\n", ntohll(events[cnt]->id_net));
 
-                in_pos += sizeof(uint64_t) + sizeof(uint32_t) + events[cnt]->len;
+                in_pos += sizeof(uint64_t) + sizeof(uint32_t) + (*events.get())[cnt]->len;
             }
 
             cnt = ntohl(*(uint32_t*)(in_data + in_pos));
             in_pos += sizeof(cnt);
 
             const uint32_t peers_count = cnt;
-            packet_r_ctx_peer* peers [peers_count];
+            auto peers = std::make_shared<std::vector<std::shared_ptr<packet_r_ctx_peer>>>(peers_count);
 
             while(cnt > 0) {
                 --cnt;
@@ -68,11 +68,11 @@ namespace Skree {
                 const uint32_t len (ntohl(*(uint32_t*)(in_data + in_pos)));
                 in_pos += sizeof(len);
 
-                peers[cnt] = new packet_r_ctx_peer {
+                (*peers.get())[cnt].reset(new packet_r_ctx_peer {
                     .hostname_len = len,
                     .hostname = in_data + in_pos,
                     .port = ntohl(*(uint32_t*)(in_data + in_pos + len + 1))
-                };
+                });
 
                 in_pos += len + 1 + sizeof(uint32_t);
             }
@@ -89,13 +89,13 @@ namespace Skree {
                 .peers = peers
             };
 
-            short result = server.repl_save(&ctx, client, *queue);
+            short result = server.repl_save(ctx, client, *queue);
 
             if(result == REPL_SAVE_RESULT_F) {
-                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
+                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
 
             } else if(result == REPL_SAVE_RESULT_K) {
-                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
+                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
             } else {
                 Utils::cluck(2, "Unexpected repl_save() result: %d\n", result);
@@ -104,19 +104,12 @@ namespace Skree {
             // Utils::cluck(1, "R::in end");
         }
 
-        Skree::Base::PendingWrite::QueueItem* R::out_init(
+        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> R::out_init(
             const Server& server, const uint32_t event_name_len,
             const char* event_name, const uint32_t cnt
         ) {
             uint32_t _cnt = htonl(cnt);
-            auto out = new Skree::Base::PendingWrite::QueueItem((
-                sizeof(server.my_hostname_len)
-                + server.my_hostname_len
-                + sizeof(server.my_port)
-                + sizeof(event_name_len)
-                + event_name_len
-                + sizeof(_cnt)
-            ), opcode());
+            auto out = std::make_shared<Skree::Base::PendingWrite::QueueItem>(opcode());
 
             uint32_t _hostname_len = htonl(server.my_hostname_len);
             out->copy_concat(sizeof(_hostname_len), &_hostname_len);
@@ -136,8 +129,8 @@ namespace Skree {
             return out;
         }
 
-        Skree::Base::PendingWrite::QueueItem* R::out_add_event(
-            Skree::Base::PendingWrite::QueueItem* r_req,
+        void R::out_add_event(
+            std::shared_ptr<Skree::Base::PendingWrite::QueueItem> r_req,
             const uint64_t id, const uint32_t len, const char* data
         ) {
             uint64_t _id = htonll(id);
@@ -147,8 +140,6 @@ namespace Skree {
             r_req->copy_concat(sizeof(_event_len), &_event_len);
 
             r_req->concat(len, data);
-
-            return r_req;
         }
     }
 }

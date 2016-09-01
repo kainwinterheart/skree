@@ -51,13 +51,13 @@ namespace Skree {
 
     typedef Utils::AtomicHashMap<uint64_t, uint64_t> wip_t;
     typedef Utils::AtomicHashMap<
-        char*, Utils::RoundRobinVector<Client*>,
+        const char*, Utils::RoundRobinVector<Client*>,
         Utils::char_pointer_hasher,
         Utils::char_pointer_comparator
     > known_peers_t;
 
     typedef Utils::AtomicHashMap<
-        char*, bool,
+        const char*, bool,
         Utils::char_pointer_hasher,
         Utils::char_pointer_comparator
     > me_t;
@@ -67,8 +67,16 @@ namespace Skree {
         uint32_t port;
     };
 
-    typedef Utils::AtomicHashMap<char*, peer_to_discover_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> peers_to_discover_t;
-    typedef std::pair<Workers::Client::Args*, Workers::Client*> ClientWorkerPair;
+    typedef Utils::AtomicHashMap<
+        const char*, const peer_to_discover_t*,
+        Utils::char_pointer_hasher,
+        Utils::char_pointer_comparator
+    > peers_to_discover_t;
+
+    typedef std::pair<
+        std::shared_ptr<Workers::Client::Args>,
+        std::shared_ptr<Workers::Client>
+    > ClientWorkerPair;
 
     template<>
     inline ClientWorkerPair Utils::RoundRobinVector<ClientWorkerPair>::next() {
@@ -118,7 +126,7 @@ namespace Skree {
         virtual ~Server();
 
         short save_event(
-            in_packet_e_ctx* ctx,
+            in_packet_e_ctx& ctx,
             uint32_t replication_factor,
             Client* client,
             uint64_t* task_ids,
@@ -126,7 +134,7 @@ namespace Skree {
         );
 
         short repl_save(
-            in_packet_r_ctx* ctx,
+            in_packet_r_ctx& ctx,
             Client& client,
             QueueDb& queue
         );
@@ -137,9 +145,9 @@ namespace Skree {
             Utils::known_event_t& event
         );
 
-        void begin_replication(out_packet_r_ctx*& r_ctx);
+        void begin_replication(std::shared_ptr<out_packet_r_ctx> r_ctx);
         void save_peers_to_discover();
-        void replication_exec(out_packet_i_ctx* ctx);
+        void replication_exec(out_packet_i_ctx& ctx);
 
         short get_event_state(
             uint64_t id,
@@ -151,6 +159,6 @@ namespace Skree {
             return max_parallel_connections;
         }
 
-        void push_new_client(new_client_t* new_client);
+        void push_new_client(std::shared_ptr<new_client_t> new_client);
     };
 }

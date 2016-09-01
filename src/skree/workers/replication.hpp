@@ -34,7 +34,7 @@ namespace Skree {
                 char* failover_key;
             };
 
-            static Replication::QueueItem* parse_queue_item(
+            static std::shared_ptr<Replication::QueueItem> parse_queue_item(
                 Utils::known_event_t& event,
                 const char* item
             );

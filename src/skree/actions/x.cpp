@@ -4,7 +4,7 @@ namespace Skree {
     namespace Actions {
         void X::in(
             const uint64_t in_len, const char* in_data,
-            Skree::Base::PendingWrite::QueueItem*& out
+            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
         ) {
             uint64_t in_pos = 0;
 
@@ -44,18 +44,12 @@ namespace Skree {
             event.unfailover(suffix);
         }
 
-        Skree::Base::PendingWrite::QueueItem* X::out_init(
-            Utils::muh_str_t*& peer_id,
+        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> X::out_init(
+            std::shared_ptr<Utils::muh_str_t> peer_id,
             Utils::known_event_t& event,
             const uint64_t& rid
         ) {
-            auto out = new Skree::Base::PendingWrite::QueueItem((
-                sizeof(peer_id->len)
-                + peer_id->len
-                + sizeof(uint32_t) /*sizeof(event.id_len)*/
-                + event.id_len
-                + sizeof(rid)
-            ), opcode());
+            auto out = std::make_shared<Skree::Base::PendingWrite::QueueItem>(opcode());
 
             uint32_t peer_id_len_net = htonl(peer_id->len);
             out->copy_concat(sizeof(peer_id_len_net), &peer_id_len_net);

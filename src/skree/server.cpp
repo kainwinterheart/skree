@@ -74,16 +74,8 @@ namespace Skree {
         synchronization.start();
 
         for(int i = 0; i < max_client_threads; ++i) {
-            auto* args = new Skree::Workers::Client::Args {
-                .loop = ev_loop_new(EVBACKEND_KQUEUE | EVBACKEND_EPOLL | EVFLAG_NOSIGMASK),
-                .watcher = new Skree::Workers::Client::bound_ev_async,
-                .queue = new std::queue<new_client_t*>,
-                .mutex = new pthread_mutex_t
-            };
-
-            pthread_mutex_init(args->mutex, NULL);
-
-            auto* client = new Skree::Workers::Client(*this, args);
+            auto args = std::make_shared<Skree::Workers::Client::Args>();
+            auto client = std::make_shared<Skree::Workers::Client>(*this, args.get());
 
             threads.push_back(std::make_pair(args, client));
 
@@ -144,31 +136,21 @@ namespace Skree {
     }
 
     Server::~Server() {
-        while(!threads.empty()) {
-            auto thread = threads.back();
-            threads.pop_back();
-            delete thread.first->loop;
-            delete thread.first->watcher;
-            delete thread.first->queue;
-            delete thread.first->mutex;
-            delete thread.first;
-            delete thread.second; // TODO?
-        }
     }
 
     short Server::repl_save(
-        in_packet_r_ctx* ctx,
+        in_packet_r_ctx& ctx,
         Client& client,
         QueueDb& queue
     ) {
-        const uint32_t _peers_cnt = htonl(ctx->peers_count);
-        auto* serialized_peers = new Skree::Utils::StringSequence (
+        const uint32_t _peers_cnt = htonl(ctx.peers_count);
+        auto serialized_peers = std::make_shared<Skree::Utils::StringSequence>(
             sizeof(_peers_cnt),
             (const char*)&_peers_cnt
         );
         decltype(serialized_peers) serialized_peers_last = serialized_peers;
 
-        packet_r_ctx_peer* peer;
+        std::shared_ptr<packet_r_ctx_peer> peer;
         char* _peer_id;
         // bool keep_peer_id;
         // uint64_t _peer_id_len;
@@ -176,8 +158,8 @@ namespace Skree {
         peers_to_discover_t::iterator peers_to_discover_end;
         bool _save_peers_to_discover = false;
 
-        for(uint32_t i = 0; i < ctx->peers_count; ++i) {
-            peer = ctx->peers[i];
+        for(uint32_t i = 0; i < ctx.peers_count; ++i) {
+            peer = (*ctx.peers.get())[i];
             _peer_id = Utils::make_peer_id(peer->hostname_len, peer->hostname, peer->port);
 
             // keep_peer_id = false;
@@ -198,7 +180,7 @@ namespace Skree {
 
             peers_to_discover.unlock();
 
-            auto* next = new Skree::Utils::StringSequence (
+            auto next = std::make_shared<Skree::Utils::StringSequence>(
                 strlen(_peer_id) + 1,
                 _peer_id
             );
@@ -212,7 +194,7 @@ namespace Skree {
             //     free(peer->hostname);
             // }
 
-            delete peer;
+            // delete peer; // TODO?
         }
 
         if(_save_peers_to_discover)
@@ -220,11 +202,11 @@ namespace Skree {
 
         uint64_t now = htonll(std::time(nullptr));
         size_t now_len = sizeof(now);
-        in_packet_r_ctx_event* event;
+        std::shared_ptr<in_packet_r_ctx_event> event;
         uint32_t event_len;
-        uint32_t _hostname_len = htonl(ctx->hostname_len);
-        uint32_t _port = htonl(ctx->port);
-        auto peer_id = Utils::make_peer_id(ctx->hostname_len, ctx->hostname, ctx->port);
+        uint32_t _hostname_len = htonl(ctx.hostname_len);
+        uint32_t _port = htonl(ctx.port);
+        auto peer_id = Utils::make_peer_id(ctx.hostname_len, ctx.hostname, ctx.port);
 
         char failover_key [
             strlen(peer_id)
@@ -236,8 +218,8 @@ namespace Skree {
         auto& db = *(queue.kv);
         uint32_t processed = 0;
 
-        for(uint32_t i = 0; i < ctx->events_count; ++i) {
-            event = ctx->events[i];
+        for(uint32_t i = 0; i < ctx.events_count; ++i) {
+            event = (*ctx.events.get())[i];
             event_len = htonl(event->len);
 
             // TODO: ntohll(event->id_net) -> event->id
@@ -251,7 +233,7 @@ namespace Skree {
                 stream->write(now_len, &now);
                 stream->write(sizeof(event->id_net), &(event->id_net)); // == rid
                 stream->write(sizeof(_hostname_len), &_hostname_len);
-                stream->write(ctx->hostname_len, ctx->hostname);
+                stream->write(ctx.hostname_len, ctx.hostname);
                 stream->write(sizeof(_port), &_port);
                 stream->write(serialized_peers);
 
@@ -266,18 +248,18 @@ namespace Skree {
             }
 
             // free(event->data); // TODO
-            delete event;
+            // delete event; // TODO?
         }
 
-        delete serialized_peers;
-        // free(ctx->hostname); // TODO
+        // delete serialized_peers;
+        // free(ctx.hostname); // TODO
 
-        return ((processed == ctx->events_count) ? REPL_SAVE_RESULT_K : REPL_SAVE_RESULT_F);
+        return ((processed == ctx.events_count) ? REPL_SAVE_RESULT_K : REPL_SAVE_RESULT_F);
     }
 
     // TODO: get rid of ctx
     short Server::save_event(
-        in_packet_e_ctx* ctx,
+        in_packet_e_ctx& ctx,
         uint32_t replication_factor,
         Client* client,
         uint64_t* task_ids,
@@ -286,18 +268,18 @@ namespace Skree {
         if(replication_factor > max_replication_factor)
             replication_factor = max_replication_factor;
 
-        const char* _event_name = ctx->event_name;
+        const char* _event_name = ctx.event_name;
         auto r_req = Actions::R::out_init(
             *this,
-            ctx->event_name_len,
+            ctx.event_name_len,
             _event_name,
-            ctx->cnt
+            ctx.cnt
         );
 
         short result = SAVE_EVENT_RESULT_F;
         bool replication_began = false;
         auto& db = *(queue.kv);
-        int64_t max_id = db.increment("inseq", 5, ctx->cnt, 0);
+        int64_t max_id = db.increment("inseq", 5, ctx.cnt, 0);
 
         if(max_id == kyotocabinet::INT64MIN) {
             Utils::cluck(2, "Increment failed: %s\n", db.error().name());
@@ -306,12 +288,12 @@ namespace Skree {
             uint32_t _cnt = 0;
             uint32_t num_inserted = 0;
             const char* _event_data;
-            max_id -= ctx->cnt;
+            max_id -= ctx.cnt;
             uint64_t _max_id;
 
-            while(_cnt < ctx->cnt) {
+            while(_cnt < ctx.cnt) {
                 ++max_id;
-                in_packet_e_ctx_event* event = ctx->events[_cnt];
+                auto event = (*ctx.events.get())[_cnt];
                 ++_cnt;
 
                 // TODO: is this really necessary?
@@ -334,7 +316,7 @@ namespace Skree {
                     ++stat_num_inserts;
 
                     _event_data = event->data; // TODO
-                    r_req = Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
+                    Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
 
                     // {
                     //     size_t sz;
@@ -353,13 +335,13 @@ namespace Skree {
 
             r_req->finish();
 
-            if(num_inserted == ctx->cnt) {
+            if(num_inserted == ctx.cnt) {
                 /*****************************/
-                std::vector<char*>* candidate_peer_ids = new std::vector<char*>();
-                auto accepted_peers = new std::list<packet_r_ctx_peer*>();
+                auto candidate_peer_ids = std::make_shared<std::vector<const char*>>();
+                auto accepted_peers = std::make_shared<std::list<std::shared_ptr<packet_r_ctx_peer>>>();
 
                 known_peers.lock();
-// Utils::cluck(2, "REPLICATION ATTEMPT: %lu\n", known_peers.size());
+    // Utils::cluck(2, "REPLICATION ATTEMPT: %lu\n", known_peers.size());
                 for(auto& it : known_peers) {
                     candidate_peer_ids->push_back(it.first);
                 }
@@ -372,7 +354,8 @@ namespace Skree {
                     candidate_peer_ids->end()
                 );
 
-                auto r_ctx = new out_packet_r_ctx {
+                std::shared_ptr<out_packet_r_ctx> r_ctx;
+                r_ctx.reset(new out_packet_r_ctx {
                     .sync = (replication_factor > 0),
                     .replication_factor = replication_factor,
                     .pending = 0,
@@ -380,7 +363,7 @@ namespace Skree {
                     .candidate_peer_ids = candidate_peer_ids,
                     .accepted_peers = accepted_peers,
                     .r_req = r_req
-                };
+                });
                 /*****************************/
 
                 if(r_ctx->sync) {
@@ -392,7 +375,7 @@ namespace Skree {
 
                     } else {
                         result = SAVE_EVENT_RESULT_A;
-                        delete r_ctx;
+                        // delete r_ctx;
                     }
 
                 } else {
@@ -402,8 +385,8 @@ namespace Skree {
                         begin_replication(r_ctx);
                         replication_began = true;
 
-                    } else {
-                        delete r_ctx;
+                    // } else {
+                    //     delete r_ctx;
                     }
                 }
 
@@ -412,7 +395,7 @@ namespace Skree {
             }
         }
 
-        if(!replication_began) delete r_req;
+        // if(!replication_began) delete r_req;
 
         return result;
     }
@@ -429,11 +412,11 @@ namespace Skree {
         }
     }
 
-    void Server::begin_replication(out_packet_r_ctx*& r_ctx) {
+    void Server::begin_replication(std::shared_ptr<out_packet_r_ctx> r_ctx) {
         Client* peer = nullptr;
 
         while((peer == nullptr) && (r_ctx->candidate_peer_ids->size() > 0)) {
-            char* peer_id = r_ctx->candidate_peer_ids->back();
+            const char* peer_id = r_ctx->candidate_peer_ids->back();
             r_ctx->candidate_peer_ids->pop_back();
 
             auto known_peers_end = known_peers.lock();
@@ -452,8 +435,8 @@ namespace Skree {
 
                 if(accepted_peers_count >= r_ctx->replication_factor) {
                     if(r_ctx->client != nullptr) {
-                        r_ctx->client->push_write_queue(new Skree::Base::PendingWrite::QueueItem(
-                            0, SKREE_META_OPCODE_K
+                        r_ctx->client->push_write_queue(std::make_shared<Skree::Base::PendingWrite::QueueItem>(
+                            SKREE_META_OPCODE_K
                         ));
                     }
 
@@ -461,8 +444,8 @@ namespace Skree {
 
                 } else if(r_ctx->pending == 0) {
                     if(r_ctx->client != nullptr) {
-                        r_ctx->client->push_write_queue(new Skree::Base::PendingWrite::QueueItem(
-                            0, SKREE_META_OPCODE_A
+                        r_ctx->client->push_write_queue(std::make_shared<Skree::Base::PendingWrite::QueueItem>(
+                            SKREE_META_OPCODE_A
                         ));
                     }
 
@@ -481,8 +464,8 @@ namespace Skree {
                 && (accepted_peers_count >= r_ctx->replication_factor)
             ) {
                 if(r_ctx->client != nullptr) {
-                    r_ctx->client->push_write_queue(new Skree::Base::PendingWrite::QueueItem(
-                        0, SKREE_META_OPCODE_K
+                    r_ctx->client->push_write_queue(std::make_shared<Skree::Base::PendingWrite::QueueItem>(
+                        SKREE_META_OPCODE_K
                     ));
                 }
 
@@ -493,54 +476,46 @@ namespace Skree {
                 done = true;
 
             } else {
-                auto out = new Skree::Base::PendingWrite::QueueItem(
-                    r_ctx->r_req, sizeof(accepted_peers_count)
-                );
+                auto out = std::make_shared<Skree::Base::PendingWrite::QueueItem>(r_ctx->r_req);
 
                 uint32_t _accepted_peers_count = htonl(accepted_peers_count);
                 out->copy_concat(sizeof(_accepted_peers_count), &_accepted_peers_count);
 
-                for(
-                    std::list<packet_r_ctx_peer*>::const_iterator it =
-                        r_ctx->accepted_peers->cbegin();
-                    it != r_ctx->accepted_peers->cend();
-                    ++it
-                ) {
-                    packet_r_ctx_peer* peer = *it;
-
+                for(const auto& peer : *r_ctx->accepted_peers) {
                     // out->grow(sizeof(peer->hostname_len) + peer->hostname_len + sizeof(peer->port));
 
                     uint32_t _len = htonl(peer->hostname_len);
                     out->copy_concat(sizeof(_len), &_len);
 
                     out->concat(peer->hostname_len + 1, peer->hostname);
-                    out->copy_concat(sizeof(peer->port), &(peer->port));
+                    out->copy_concat(sizeof(peer->port), &peer->port);
                 }
 
                 ++(r_ctx->pending);
 
-                out->set_cb(new Skree::Base::PendingRead::QueueItem {
-                    .cb = new Skree::PendingReads::Callbacks::Replication(*this),
-                    .ctx = (void*)r_ctx
-                });
+                std::shared_ptr<void> _r_ctx (r_ctx, (void*)r_ctx.get());
+
+                out->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
+                    _r_ctx, std::make_shared<Skree::PendingReads::Callbacks::Replication>(*this)
+                ));
 
                 out->finish();
                 peer->push_write_queue(out);
             }
         }
 
-        if(done) {
-            while(!r_ctx->accepted_peers->empty()) {
-                packet_r_ctx_peer* peer = r_ctx->accepted_peers->back();
-                r_ctx->accepted_peers->pop_back();
-                free(peer);
-            }
+        // if(done) {
+            // while(!r_ctx->accepted_peers->empty()) {
+            //     packet_r_ctx_peer* peer = r_ctx->accepted_peers->back();
+            //     r_ctx->accepted_peers->pop_back();
+            //     free(peer);
+            // }
 
-            free(r_ctx->accepted_peers);
-            free(r_ctx->candidate_peer_ids);
-            delete r_ctx->r_req;
-            free(r_ctx);
-        }
+            // free(r_ctx->accepted_peers);
+            // free(r_ctx->candidate_peer_ids);
+            // delete r_ctx->r_req;
+            // free(r_ctx);
+        // }
     }
 
     void Server::save_peers_to_discover() {
@@ -553,16 +528,11 @@ namespace Skree {
         memcpy(dump + dump_len, &cnt, sizeof(cnt));
         dump_len += sizeof(cnt);
 
-        peer_to_discover_t* peer;
-        size_t len;
-        uint32_t port;
-        size_t _len;
-
         for(auto it : peers_to_discover) {
-            peer = it.second;
+            const auto* peer = it.second;
 
-            len = strlen(peer->host);
-            port = htonl(peer->port);
+            uint32_t len = strlen(peer->host);
+            uint32_t port = htonl(peer->port);
 
             dump = (char*)realloc(dump,
                 dump_len
@@ -571,7 +541,7 @@ namespace Skree {
                 + sizeof(port)
             );
 
-            _len = htonll(len);
+            uint32_t _len = htonl(len);
             memcpy(dump + dump_len, &_len, sizeof(_len));
             dump_len += sizeof(_len);
 
@@ -664,7 +634,8 @@ namespace Skree {
             return;
         }
 
-        server->push_new_client(new new_client_t {
+        std::shared_ptr<new_client_t> new_client;
+        new_client.reset(new new_client_t {
             .fh = fh,
             .cb = [](Client& client){ // TODO: also in Discovery::on_new_client
                 client.push_write_queue(Skree::Actions::N::out_init(), true);
@@ -672,84 +643,64 @@ namespace Skree {
             .s_in = addr,
             .s_in_len = len
         });
+
+        server->push_new_client(new_client);
     }
 
-    void Server::push_new_client(new_client_t* new_client) {
+    void Server::push_new_client(std::shared_ptr<new_client_t> new_client) {
         auto thread = threads.next();
 
-        pthread_mutex_lock(thread.first->mutex);
+        pthread_mutex_lock(thread.first->mutex.get());
         thread.first->queue->push(new_client);
-        pthread_mutex_unlock(thread.first->mutex);
+        pthread_mutex_unlock(thread.first->mutex.get());
 
-        ev_async_send(thread.first->loop, (ev_async*)thread.first->watcher);
+        ev_async_send(thread.first->loop, (ev_async*)thread.first->watcher.get());
     }
 
-    void Server::replication_exec(out_packet_i_ctx* ctx) {
-        // Utils::cluck(2, "Replication exec for task %lu\n", ctx->rid);
+    void Server::replication_exec(out_packet_i_ctx& ctx) {
+        // Utils::cluck(2, "Replication exec for task %lu\n", ctx.rid);
 
-        if(*(ctx->acceptances) == *(ctx->count_replicas)) {
-            in_packet_e_ctx_event event {
-                .len = ctx->data->len,
-                .data = ctx->data->data,
+        if(*(ctx.acceptances) == *(ctx.count_replicas)) {
+            auto events = std::make_shared<std::vector<std::shared_ptr<in_packet_e_ctx_event>>>(1);
+
+            (*events.get())[0].reset(new in_packet_e_ctx_event {
+                .len = ctx.data->len,
+                .data = ctx.data->data,
                 .id = nullptr
-            };
-
-            in_packet_e_ctx_event* events [1];
-            events[0] = &event;
+            });
 
             in_packet_e_ctx e_ctx {
                 .cnt = 1,
-                .event_name_len = ctx->event->id_len,
-                .event_name = ctx->event->id,
+                .event_name_len = ctx.event->id_len,
+                .event_name = ctx.event->id,
                 .events = events
             };
 
             uint64_t task_ids[1];
-            save_event(&e_ctx, 0, nullptr, task_ids, *(ctx->event->queue));
+            save_event(e_ctx, 0, nullptr, task_ids, *(ctx.event->queue));
 
-            // TODO: remove?
-            // {
-            //     in_packet_e_ctx* ctx = (in_packet_e_ctx*)_ctx;
-            //
-            //     for(
-            //         std::list<in_packet_e_ctx_event*>::const_iterator it = ctx->events->cbegin();
-            //         it != ctx->events->cend();
-            //         ++it
-            //     ) {
-            //         in_packet_e_ctx_event* event = *it;
-            //
-            //         free(event->data);
-            //         if(event->id != nullptr) free(event->id);
-            //         free(event);
-            //     }
-            //
-            //     free(ctx->event_name);
-            //     free(ctx->events);
-            //     free(ctx);
-            // }
-
-            auto& failover = ctx->event->failover;
+            auto& failover = ctx.event->failover;
             failover.lock();
-            failover[ctx->failover_key] = task_ids[0];
+            failover[ctx.failover_key] = task_ids[0];
             failover.unlock();
 
             // TODO: this should probably make 'i' packet return 'f' // TODO: why? // oh, okay
             repl_clean(
-                ctx->failover_key_len,
-                ctx->failover_key,
-                *(ctx->event)
+                ctx.failover_key_len,
+                ctx.failover_key,
+                *(ctx.event)
             );
 
-            if(ctx->rpr != nullptr) {
+            if(ctx.rpr != nullptr) {
                 // const muh_str_t*& peer_id, const known_event_t*& event,
                 // const uint64_t& rid
-                auto x_req = Skree::Actions::X::out_init(ctx->peer_id, *(ctx->event), ctx->rid);
+                auto x_req = Skree::Actions::X::out_init(ctx.peer_id, *(ctx.event), ctx.rid);
                 size_t offset = 0;
                 bool written = false;
 
-                while(ctx->peers_cnt > 0) {
-                    size_t peer_id_len = strlen(ctx->rpr + offset);
-                    char* peer_id = ctx->rpr + offset;
+                while(ctx.peers_cnt > 0) {
+                    size_t peer_id_len = strlen(ctx.rpr + offset);
+                    char* peer_id = ctx.rpr + offset;
                     offset += peer_id_len + 1;
 
                     auto known_peers_end = known_peers.lock();
@@ -761,34 +712,34 @@ namespace Skree {
                         written = true;
                     }
 
-                    --(ctx->peers_cnt);
+                    --(ctx.peers_cnt);
                 }
 
-                if(!written)
-                    delete x_req;
+                // if(!written)
+                //     delete x_req;
             }
 
         } else {
             // TODO: think about repl_clean()
             repl_clean(
-                ctx->failover_key_len,
-                ctx->failover_key,
-                *(ctx->event)
+                ctx.failover_key_len,
+                ctx.failover_key,
+                *(ctx.event)
             );
 
-            ctx->event->unfailover(ctx->failover_key);
+            ctx.event->unfailover(ctx.failover_key);
 
-            // free(ctx->data->data);
-            delete ctx->data;
+            // free(ctx.data->data);
+            // delete ctx.data;
         }
 
-        pthread_mutex_destroy(ctx->mutex);
+        pthread_mutex_destroy(ctx.mutex.get());
 
-        free(ctx->mutex);
-        free(ctx->acceptances);
-        free(ctx->pending);
-        free(ctx->count_replicas);
-        free(ctx);
+        // free(ctx.mutex);
+        free(ctx.acceptances);
+        free(ctx.pending);
+        free(ctx.count_replicas);
+        // free(ctx);
     }
 
     short Server::get_event_state(

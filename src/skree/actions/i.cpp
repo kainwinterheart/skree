@@ -4,7 +4,7 @@ namespace Skree {
     namespace Actions {
         void I::in(
             const uint64_t in_len, const char* in_data,
-            Skree::Base::PendingWrite::QueueItem*& out
+            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
         ) {
             uint64_t in_pos = 0;
 
@@ -28,7 +28,7 @@ namespace Skree {
             if(eit == server.known_events.end()) {
                 Utils::cluck(2, "[I::in] Got unknown event: %s\n", event_id);
                 // current instance does not known such event, so it won't do it itself
-                out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
+                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
                 return;
             }
 
@@ -53,7 +53,7 @@ namespace Skree {
 
                 if(size == 1) {
                     // this instance has not tried to failover the event yet
-                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
+                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
                     auto& no_failover = event.no_failover;
                     no_failover.lock();
@@ -62,7 +62,7 @@ namespace Skree {
 
                 } else {
                     // this instance has already processed the event
-                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
+                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
                 }
 
             } else {
@@ -70,7 +70,7 @@ namespace Skree {
 
                 if(id == 0) {
                     // this instance is currently in the process of failovering the event
-                    out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
+                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
 
                 } else {
                     auto now = std::time(nullptr);
@@ -79,11 +79,11 @@ namespace Skree {
                     if(state == SKREE_META_EVENTSTATE_LOST) {
                         // TODO: event is processed twice here: by local node and by remote node
                         // this instance had lost the event
-                        out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_K);
+                        out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
                     } else {
                         // event is or will be processed, everything is fine
-                        out = new Skree::Base::PendingWrite::QueueItem (0, SKREE_META_OPCODE_F);
+                        out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
                     }
                 }
             }
@@ -91,18 +91,12 @@ namespace Skree {
             failover.unlock(); // TODO: transaction is too long
         }
 
-        Skree::Base::PendingWrite::QueueItem* I::out_init(
-            Utils::muh_str_t*& peer_id,
+        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> I::out_init(
+            std::shared_ptr<Utils::muh_str_t> peer_id,
             Utils::known_event_t& event,
             const uint64_t& rid_net
         ) {
-            auto out = new Skree::Base::PendingWrite::QueueItem((
-                sizeof(peer_id->len)
-                + peer_id->len
-                + sizeof(uint32_t) /* sizeof(event.id_len) */
-                + event.id_len
-                + sizeof(rid_net)
-            ), opcode());
+            auto out = std::make_shared<Skree::Base::PendingWrite::QueueItem>(opcode());
 
             uint32_t peer_id_len_net = htonl(peer_id->len);
             out->copy_concat(sizeof(peer_id_len_net), &peer_id_len_net);

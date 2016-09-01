@@ -4,13 +4,9 @@ namespace Skree {
     namespace Actions {
         void W::in(
             const uint64_t in_len, const char* in_data,
-            Skree::Base::PendingWrite::QueueItem*& out
+            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
         ) {
-            out = new Skree::Base::PendingWrite::QueueItem ((
-                sizeof(server.my_hostname_len)
-                + server.my_hostname_len
-                + sizeof(uint32_t)
-            ), SKREE_META_OPCODE_K);
+            out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
             uint32_t _hostname_len = htonl(server.my_hostname_len);
             out->copy_concat(sizeof(_hostname_len), &_hostname_len);
@@ -21,8 +17,8 @@ namespace Skree {
             // Utils::cluck(1, "W::in done\n");
         }
 
-        Skree::Base::PendingWrite::QueueItem* W::out_init() {
-            return new Skree::Base::PendingWrite::QueueItem(0, opcode());
+        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> W::out_init() {
+            return std::make_shared<Skree::Base::PendingWrite::QueueItem>(opcode());
         }
     }
 }

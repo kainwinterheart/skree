@@ -3,13 +3,12 @@
 namespace Skree {
     namespace PendingReads {
         namespace Callbacks {
-            Skree::Base::PendingWrite::QueueItem* ReplicationPingTask::run(
+            std::shared_ptr<Skree::Base::PendingWrite::QueueItem> ReplicationPingTask::run(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
                 Skree::Base::PendingRead::Callback::Args& args
             ) {
-                // TODO: free(ctx)
-                out_data_c_ctx* ctx = (out_data_c_ctx*)(item.ctx);
+                std::shared_ptr<out_data_c_ctx> ctx (item.ctx, (out_data_c_ctx*)item.ctx.get());
 
                 if(args.opcode == SKREE_META_OPCODE_K) {
                     // Utils::cluck(2, "[ReplicationPingTask] %s: c -> k\n", ctx->failover_key);
@@ -23,7 +22,7 @@ namespace Skree {
                     error(client, item); // calls event.unfailover() by itself
                 }
 
-                return nullptr;
+                return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
             }
 
             void ReplicationPingTask::error(

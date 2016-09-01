@@ -19,17 +19,30 @@ namespace Skree {
 
             struct Args {
                 struct ev_loop* loop;
-                bound_ev_async* watcher;
-                std::queue<new_client_t*>* queue;
-                pthread_mutex_t* mutex;
+                std::shared_ptr<bound_ev_async> watcher;
+                std::shared_ptr<std::queue<std::shared_ptr<new_client_t>>> queue;
+                std::shared_ptr<pthread_mutex_t> mutex;
+
+                Args()
+                    : loop(ev_loop_new(EVBACKEND_KQUEUE | EVBACKEND_EPOLL | EVFLAG_NOSIGMASK))
+                    , watcher(std::make_shared<bound_ev_async>())
+                    , queue(std::make_shared<std::queue<std::shared_ptr<new_client_t>>>())
+                    , mutex(std::make_shared<pthread_mutex_t>())
+                {
+                    pthread_mutex_init(mutex.get(), NULL);
+                }
+
+                ~Args() {
+                    pthread_mutex_destroy(mutex.get());
+                }
             };
 
             Client(Skree::Server& _server, const void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args)
             {
                 ((Args*)args)->watcher->worker = this;
-                ev_async_init((ev_async*)(((Args*)args)->watcher), async_cb);
-                ev_async_start(((Args*)args)->loop, (ev_async*)(((Args*)args)->watcher));
+                ev_async_init((ev_async*)(((Args*)args)->watcher.get()), async_cb);
+                ev_async_start(((Args*)args)->loop, (ev_async*)(((Args*)args)->watcher.get()));
             }
 
             virtual void run() override;

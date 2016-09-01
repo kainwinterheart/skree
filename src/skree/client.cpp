@@ -21,7 +21,7 @@ namespace Skree {
 #ifdef SKREE_NET_DEBUG
             Utils::cluck(2, "Got opcode: 0x%.2X, pending_reads not empty", message.opcode);
 #endif
-            auto* item = pending_reads.front();
+            auto item = pending_reads.front();
 
             if(
                 (message.opcode == SKREE_META_OPCODE_K)
@@ -34,13 +34,13 @@ namespace Skree {
 #ifdef SKREE_NET_DEBUG
                 Utils::cluck(2, "About to run original callback with a packet of size %lu bytes", message.get_len());
 #endif
-                auto* new_item = item->cb->run(*this, *item, message);
+                auto new_item = item->cb->run(*this, *item, message);
 
                 if(message.stop) {
                     drop();
                     return false;
 
-                } else if(new_item != nullptr) {
+                } else if(new_item) {
                     push_write_queue(new_item);
                 }
                 // ***
@@ -95,7 +95,6 @@ namespace Skree {
 
     Client::Client(int _fh, struct ev_loop* _loop, sockaddr_in* _s_in, socklen_t _s_in_len, Server& _server)
         : fh(_fh), loop(_loop), s_in(_s_in), s_in_len(_s_in_len), server(_server) {
-        active_read = nullptr;
         peer_name = nullptr;
         peer_id = nullptr;
         conn_name = nullptr;
@@ -124,8 +123,7 @@ namespace Skree {
 
     template<typename T>
     void Client::add_action_handler() {
-        T* handler = new T(server, *this);
-        handlers[handler->opcode()] = handler;
+        handlers[T::opcode()].reset(new T (server, *this));
     }
 
     Client::~Client() {
@@ -205,46 +203,44 @@ namespace Skree {
         known_peers.unlock();
 
         while(!pending_reads.empty()) {
-            auto* item = pending_reads.front();
-            auto* _cb = item->cb;
+            auto item = pending_reads.front();
+            auto _cb = item->cb;
 
             if(_cb != nullptr)
                 _cb->error(*this, *item);
 
             pending_reads.pop_front();
-            delete item;
+            // delete item; //TODO?
         }
 
         pthread_mutex_lock(&write_queue_mutex);
 
         while(!write_queue.empty()) {
-            auto* item = write_queue.front();
-            auto* __cb = item->get_cb();
+            auto item = write_queue.front();
+            auto __cb = item->get_cb();
 
-            if(__cb != nullptr) {
-                auto* _cb = __cb->cb;
+            if(__cb) {
+                auto _cb = __cb->cb;
 
                 if(_cb != nullptr)
                     _cb->error(*this, *__cb);
             }
 
             write_queue.pop_front();
-            delete item;
+            // delete item; // TODO?
         }
 
         pthread_mutex_unlock(&write_queue_mutex);
         pthread_mutex_destroy(&write_queue_mutex);
 
-        if(active_read != nullptr) {
-            delete active_read;
-            active_read = nullptr;
-        }
+        if(active_read)
+            active_read.reset();
 
         if(peer_name != nullptr) free(peer_name);
         if(conn_name != nullptr) free(conn_name);
     }
 
-    Skree::Base::PendingWrite::QueueItem* Client::get_pending_write() {
+    std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Client::get_pending_write() {
         pthread_mutex_lock(&write_queue_mutex);
 
         while(!write_queue.empty()) {
@@ -256,18 +252,18 @@ namespace Skree {
             }
 
             write_queue.pop_front();
-            delete item;
+            // delete item; // TODO?
         }
 
         ev_io_set(&watcher.watcher, fh, EV_READ);
 
         pthread_mutex_unlock(&write_queue_mutex);
 
-        return nullptr;
+        return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
     }
 
     void Client::push_write_queue(
-        Skree::Base::PendingWrite::QueueItem* item, bool front
+        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> item, bool front
     ) {
         item->finish();
 
@@ -285,7 +281,7 @@ namespace Skree {
     }
 
     void Client::push_pending_reads_queue(
-        const Skree::Base::PendingRead::QueueItem* item, bool front
+        std::shared_ptr<const Skree::Base::PendingRead::QueueItem> item, bool front
     ) {
         // if(item->len == 0) {
         //     Utils::cluck(1, "Client::push_pending_reads_queue() got zero-length pending read, ignoring it\n");
@@ -313,10 +309,10 @@ namespace Skree {
         }
 
         if(events & EV_READ) {
-            if(client->active_read == nullptr)
-                client->active_read = new Skree::Base::PendingRead::Callback::Args;
+            if(!client->active_read)
+                client->active_read.reset(new Skree::Base::PendingRead::Callback::Args);
 
-            auto* active_read = client->active_read;
+            auto active_read = client->active_read;
 
             int read = recv(_watcher->fd, active_read->end(), active_read->rest(), 0);
 
@@ -349,10 +345,8 @@ namespace Skree {
 #ifdef SKREE_NET_DEBUG
                         Utils::cluck(1, "[client_cb] data already began, run");
 #endif
-                        if(client->read_cb(*active_read)) {
-                            // delete active_read; // TODO
-                            client->active_read = nullptr;
-                        }
+                        if(client->read_cb(*active_read))
+                            active_read.reset(); //TODO
                     }
                 }
 

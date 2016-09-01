@@ -569,7 +569,7 @@ namespace Skree {
         total_len += len;
     }
 
-    void QueueDb::WriteStream::write(Skree::Utils::StringSequence* sequence) {
+    void QueueDb::WriteStream::write(std::shared_ptr<Skree::Utils::StringSequence> sequence) {
         decltype(sequence) next = sequence;
 
         while(next != nullptr) {

@@ -3,35 +3,35 @@
 namespace Skree {
     namespace PendingReads {
         namespace Callbacks {
-            Skree::Base::PendingWrite::QueueItem* Replication::run(
+            std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Replication::run(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
                 Skree::Base::PendingRead::Callback::Args& args
             ) {
-                out_packet_r_ctx* ctx = (out_packet_r_ctx*)(item.ctx);
+                std::shared_ptr<out_packet_r_ctx> ctx (item.ctx, (out_packet_r_ctx*)item.ctx.get());
                 --(ctx->pending);
 
                 if(args.opcode == SKREE_META_OPCODE_K) {
-                    packet_r_ctx_peer* peer =
-                        (packet_r_ctx_peer*)malloc(sizeof(*peer));
-
-                    peer->hostname_len = client.get_peer_name_len();
-                    peer->hostname = (char*)(client.get_peer_name());
-                    peer->port = htonl(client.get_peer_port());
+                    std::shared_ptr<packet_r_ctx_peer> peer;
+                    peer.reset(new packet_r_ctx_peer {
+                        .hostname_len = client.get_peer_name_len(),
+                        .hostname = client.get_peer_name(),
+                        .port = htonl(client.get_peer_port())
+                    });
 
                     ctx->accepted_peers->push_back(peer);
                 }
 
                 server.begin_replication(ctx);
 
-                return nullptr;
+                return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
             }
 
             void Replication::error(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item
             ) {
-                out_packet_r_ctx* ctx = (out_packet_r_ctx*)(item.ctx);
+                std::shared_ptr<out_packet_r_ctx> ctx (item.ctx, (out_packet_r_ctx*)item.ctx.get());
                 --(ctx->pending);
 
                 server.begin_replication(ctx);

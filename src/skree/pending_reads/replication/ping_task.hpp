@@ -7,8 +7,8 @@
 namespace Skree {
     struct out_data_c_ctx {
         Utils::known_event_t* event;
-        Utils::muh_str_t* rin;
-        Utils::muh_str_t* rpr;
+        std::shared_ptr<Utils::muh_str_t> rin;
+        std::shared_ptr<Utils::muh_str_t> rpr;
         uint64_t rid;
         uint64_t failover_key_len;
         char* failover_key;
@@ -21,7 +21,7 @@ namespace Skree {
                 ReplicationPingTask(Skree::Server& _server)
                     : Skree::Base::PendingRead::Callback(_server) {};
 
-                virtual Skree::Base::PendingWrite::QueueItem* run(
+                virtual std::shared_ptr<Skree::Base::PendingWrite::QueueItem> run(
                     Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
                     Skree::Base::PendingRead::Callback::Args& args

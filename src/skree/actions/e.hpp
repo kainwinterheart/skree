@@ -20,7 +20,7 @@ namespace Skree {
         uint32_t cnt;
         uint32_t event_name_len;
         const char* event_name;
-        in_packet_e_ctx_event** events;
+        std::shared_ptr<std::vector<std::shared_ptr<in_packet_e_ctx_event>>> events;
     };
 
     namespace Actions {
@@ -35,7 +35,7 @@ namespace Skree {
 
             virtual void in(
                 const uint64_t in_len, const char* in_data,
-                Skree::Base::PendingWrite::QueueItem*& out
+                std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
             ) override;
         };
     }

@@ -18,6 +18,7 @@ namespace Skree {
 #include <string.h>
 #include <cstdint>
 #include <stdio.h>
+#include <memory>
 
 namespace Skree {
     namespace Base {
@@ -35,7 +36,7 @@ namespace Skree {
 
             virtual void in(
                 const uint64_t in_len, const char* in_data,
-                Skree::Base::PendingWrite::QueueItem*& out
+                std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
             ) = 0;
         };
     }

@@ -11,10 +11,10 @@ namespace Skree {
         }
 
         void Client::accept() {
-            pthread_mutex_lock((((Args*)args)->mutex));
+            pthread_mutex_lock(((Args*)args)->mutex.get());
 
             while(!((Args*)args)->queue->empty()) {
-                new_client_t* new_client = ((Args*)args)->queue->front();
+                auto new_client = ((Args*)args)->queue->front();
                 ((Args*)args)->queue->pop();
 
                 Skree::Client* client = new Skree::Client(
@@ -27,10 +27,10 @@ namespace Skree {
 
                 new_client->cb(*client);
 
-                delete new_client;
+                // delete new_client; // TODO: seems to be unnecessary since it's std::shared_ptr
             }
 
-            pthread_mutex_unlock((((Args*)args)->mutex));
+            pthread_mutex_unlock(((Args*)args)->mutex.get());
         }
     }
 }

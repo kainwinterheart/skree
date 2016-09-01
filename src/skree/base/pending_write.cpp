@@ -14,7 +14,6 @@ namespace Skree {
                 , data_last(_prev.data_last) // TODO: this is NOT thread-safe
                 , pos(0)
                 , done(true)
-                , cb(nullptr)
                 , prev(_prev.prev)
                 , backtrace(_prev.backtrace)
                 , real_len(_prev.real_len)
@@ -24,7 +23,7 @@ namespace Skree {
                 if(!_prev.done)
                     Throw("Attempt to copy read-write write queue item");
 
-                if(_prev.cb != nullptr)
+                if(_prev.cb)
                     Throw("Attempt to copy write queue item with callback");
 
                 // if(_prev.prev != nullptr)
@@ -35,7 +34,7 @@ namespace Skree {
                 if(!done)
                     Throw("calc_body_len() called on read-write write queue item");
 
-                if(prev == nullptr)
+                if(!prev)
                     return (real_len - 5);
 
                 return (prev->calc_body_len() + real_len - 5);
@@ -46,7 +45,11 @@ namespace Skree {
                     Throw("There is nothing to write");
 
                 if(pos == 0) {
-                    if(prev == nullptr) {
+                    if(prev) {
+                        pos += 1 + sizeof(real_len);
+                        data_last = data_second->get_next().get();
+
+                    } else {
                         char* str = (char*)malloc(sizeof(uint32_t));
                         *(uint32_t*)str = htonl(total_len);
                         stash.push(str);
@@ -54,10 +57,6 @@ namespace Skree {
                         // original length is overwritten here
                         // TODO: this is NOT thread-safe
                         data_second->reset(sizeof(uint32_t), str);
-
-                    } else {
-                        pos += 1 + sizeof(real_len);
-                        data_last = data_second->get_next();
                     }
                 }
 
@@ -66,7 +65,7 @@ namespace Skree {
                     return;
                 }
 #ifdef SKREE_NET_DEBUG
-                Utils::cluck(6, "about to write %u bytes, real_len: %u, pos: %u, data: 0x%llx, fd: %d", (real_len - pos), real_len, pos, (uintptr_t)data, fd);
+                Utils::cluck(6, "about to write %u bytes, real_len: %u, pos: %u, fd: %d", (real_len - pos), real_len, pos, fd);
 #endif
 
                 Utils::StringSequence* next = nullptr;
@@ -112,7 +111,7 @@ namespace Skree {
                 } else {
 #ifdef SKREE_NET_DEBUG
                     for(int i = 0; i < written; ++i)
-                        if((i == 0) && (prev == nullptr))
+                        if((i == 0) && !prev)
                             fprintf(stderr, "written to %s/%s [%d]: %c (opcode; 0x%.2X)\n", client.get_peer_id(),client.get_conn_id(),i,str[0], (unsigned char)str[0]);
                         else
                             fprintf(stderr, "written to %s/%s [%d]: 0x%.2X\n", client.get_peer_id(),client.get_conn_id(),i,((unsigned char*)str)[i]);
@@ -125,9 +124,9 @@ namespace Skree {
                     pos += written;
                     data_pos += written;
 
-                    if((pos >= real_len) && (cb != nullptr)) {
+                    if((pos >= real_len) && cb) {
                         client.push_pending_reads_queue(cb);
-                        cb = nullptr;
+                        cb.reset();
                     }
                 }
             }

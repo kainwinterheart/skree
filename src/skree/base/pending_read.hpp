@@ -21,8 +21,14 @@ namespace Skree {
     namespace Base {
         namespace PendingRead {
             struct QueueItem {
-                Callback* cb;
-                void* ctx;
+                std::shared_ptr<void> ctx;
+                std::shared_ptr<Callback> cb;
+
+                QueueItem(std::shared_ptr<void> _ctx, std::shared_ptr<Callback> _cb)
+                    : ctx(_ctx)
+                    , cb(_cb)
+                {
+                }
             };
 
             class Callback {
@@ -39,7 +45,7 @@ namespace Skree {
                     char* data;
                     bool stop;
                     char opcode;
-                    Skree::Base::PendingWrite::QueueItem* out;
+                    std::shared_ptr<Skree::Base::PendingWrite::QueueItem> out;
 
                     uint32_t get_len() {
                         return len;
@@ -48,7 +54,6 @@ namespace Skree {
                     Args()
                         : stop(false)
                         , pos(0)
-                        , out(nullptr)
                         , data(nullptr)
                         , opcode('\0')
                         , len(5)
@@ -91,7 +96,7 @@ namespace Skree {
 
                 Callback(Skree::Server& _server) : server(_server) {}
 
-                virtual Skree::Base::PendingWrite::QueueItem* run(
+                virtual std::shared_ptr<Skree::Base::PendingWrite::QueueItem> run(
                     Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
                     Args& args
