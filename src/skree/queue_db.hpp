@@ -188,7 +188,7 @@ namespace Skree {
             WriteStream(QueueDb& _db);
             ~WriteStream();
             void write(uint64_t len, const void* data);
-            void write(std::shared_ptr<Skree::Utils::StringSequence> sequence);
+            void write(const Skree::Utils::StringSequence& sequence);
         };
 
         friend class QueueDb::WriteStream;

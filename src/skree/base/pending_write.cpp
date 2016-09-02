@@ -9,9 +9,8 @@ namespace Skree {
     namespace Base {
         namespace PendingWrite {
             QueueItem::QueueItem(const QueueItem& _prev)
-                : data_first(_prev.data_first) // TODO: this is NOT thread-safe
-                , data_second(_prev.data_second) // TODO: this is NOT thread-safe
-                , data_last(_prev.data_last) // TODO: this is NOT thread-safe
+                : data_last(_prev.data_last) // TODO: this is NOT thread-safe
+                , length_ptr(_prev.length_ptr) // TODO: this is NOT thread-safe
                 , pos(0)
                 , done(true)
                 , prev(_prev.prev)
@@ -19,6 +18,8 @@ namespace Skree {
                 , real_len(_prev.real_len)
                 , opcode('\0')
                 , data_pos(0)
+                , data(_prev.data)
+                , orig(_prev.orig)
             {
                 if(!_prev.done)
                     Throw("Attempt to copy read-write write queue item");
@@ -41,22 +42,15 @@ namespace Skree {
             }
 
             void QueueItem::write(Skree::Client& client, int fd, uint32_t total_len) {
-                if(data_last == nullptr)
-                    Throw("There is nothing to write");
-
                 if(pos == 0) {
                     if(prev) {
                         pos += 1 + sizeof(real_len);
-                        data_last = data_second->get_next().get();
+                        data_last = 2;
 
                     } else {
-                        char* str = (char*)malloc(sizeof(uint32_t));
-                        *(uint32_t*)str = htonl(total_len);
-                        stash.push(str);
-
                         // original length is overwritten here
                         // TODO: this is NOT thread-safe
-                        data_second->reset(sizeof(uint32_t), str);
+                        *length_ptr = htonl(total_len);
                     }
                 }
 
@@ -68,9 +62,9 @@ namespace Skree {
                 Utils::cluck(6, "about to write %u bytes, real_len: %u, pos: %u, fd: %d", (real_len - pos), real_len, pos, fd);
 #endif
 
-                Utils::StringSequence* next = nullptr;
+                size_t next = 0;
                 uint32_t len = 0;
-                const char* str = data_last->read(data_pos, &len, &next);
+                const char* str = data->read(data_last, data_pos, &len, &next);
                 int written = ::write(fd, str, len);
 
 #ifdef SKREE_NET_DEBUG

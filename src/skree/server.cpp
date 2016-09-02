@@ -144,11 +144,9 @@ namespace Skree {
         QueueDb& queue
     ) {
         const uint32_t _peers_cnt = htonl(ctx.peers_count);
-        auto serialized_peers = std::make_shared<Skree::Utils::StringSequence>(
-            sizeof(_peers_cnt),
-            (const char*)&_peers_cnt
+        Skree::Utils::StringSequence serialized_peers (
+            sizeof(_peers_cnt), (const char*)&_peers_cnt
         );
-        decltype(serialized_peers) serialized_peers_last = serialized_peers;
 
         std::shared_ptr<packet_r_ctx_peer> peer;
         char* _peer_id;
@@ -180,13 +178,7 @@ namespace Skree {
 
             peers_to_discover.unlock();
 
-            auto next = std::make_shared<Skree::Utils::StringSequence>(
-                strlen(_peer_id) + 1,
-                _peer_id
-            );
-
-            serialized_peers_last->concat(next);
-            serialized_peers_last = next;
+            serialized_peers.concat((strlen(_peer_id) + 1), _peer_id);
 
             // TODO
             // if(!keep_peer_id) {
@@ -251,7 +243,6 @@ namespace Skree {
             // delete event; // TODO?
         }
 
-        // delete serialized_peers;
         // free(ctx.hostname); // TODO
 
         return ((processed == ctx.events_count) ? REPL_SAVE_RESULT_K : REPL_SAVE_RESULT_F);

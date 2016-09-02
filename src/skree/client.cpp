@@ -137,7 +137,7 @@ namespace Skree {
             return;
 
         // if((peer_id != nullptr) || (conn_id != nullptr))
-        //     Utils::cluck(3, "DROP(%s/%s)", peer_id, conn_id);
+            // Utils::cluck(3, "DROP(%s/%s)", peer_id, conn_id);
 
         auto& known_peers = server.known_peers;
         auto known_peers_end = known_peers.lock();
@@ -233,9 +233,6 @@ namespace Skree {
         pthread_mutex_unlock(&write_queue_mutex);
         pthread_mutex_destroy(&write_queue_mutex);
 
-        if(active_read)
-            active_read.reset();
-
         if(peer_name != nullptr) free(peer_name);
         if(conn_name != nullptr) free(conn_name);
     }
@@ -314,6 +311,9 @@ namespace Skree {
 
             auto active_read = client->active_read;
 
+            if(active_read->rest() == 0)
+                throw std::logic_error ("Zero-length active_read");
+
             int read = recv(_watcher->fd, active_read->end(), active_read->rest(), 0);
 
             if(read > 0) {
@@ -335,10 +335,8 @@ namespace Skree {
 #ifdef SKREE_NET_DEBUG
                             Utils::cluck(1, "[client_cb] data is empty, run");
 #endif
-                            if(client->read_cb(*active_read)) {
-                                // delete active_read; // TODO
-                                client->active_read = nullptr;
-                            }
+                            if(client->read_cb(*active_read))
+                                client->active_read.reset();
                         }
 
                     } else {
@@ -346,7 +344,7 @@ namespace Skree {
                         Utils::cluck(1, "[client_cb] data already began, run");
 #endif
                         if(client->read_cb(*active_read))
-                            active_read.reset(); //TODO
+                            client->active_read.reset();
                     }
                 }
 

@@ -33,10 +33,11 @@ namespace Skree {
                 bool raw;
                 std::shared_ptr<const Skree::Base::PendingRead::QueueItem> cb;
                 std::shared_ptr<QueueItem> prev;
+                std::shared_ptr<const QueueItem> orig;
                 std::string backtrace; // TODO: capturing backtrace in production could be slow
-                std::shared_ptr<Utils::StringSequence> data_first;
-                std::shared_ptr<Utils::StringSequence> data_second;
-                Utils::StringSequence* data_last;
+                std::shared_ptr<Utils::StringSequence> data;
+                size_t data_last;
+                uint32_t* length_ptr;
                 std::stack<char*> stash;
                 char opcode;
 
@@ -63,17 +64,25 @@ namespace Skree {
                     , raw(false)
                     , opcode(_opcode)
                     , data_pos(0)
+                    , data_last(0)
                 {
-                    char* str = (char*)malloc(1);
-                    str[0] = _opcode;
-                    data_first.reset(new Utils::StringSequence (1, str));
-                    stash.push(str);
+                    data.reset(new Utils::StringSequence);
 
-                    // See QueueItem::write
-                    data_second.reset(new Utils::StringSequence (4, nullptr));
-                    data_last = data_second.get();
+                    {
+                        char* str = (char*)malloc(1);
+                        str[0] = _opcode;
 
-                    data_first->concat(data_second);
+                        data->concat(1, str);
+                        stash.push(str);
+                    }
+
+                    {
+                        length_ptr = (uint32_t*)malloc(4);
+                        *length_ptr = 0;
+
+                        data->concat(4, (const char*)length_ptr);
+                        stash.push((char*)length_ptr);
+                    }
 
                     // Utils::cluck(3, "ctor: 0x%llx, data: 0x%llx, len: 0x%llx", (uintptr_t)this, data, len);
                 }
@@ -82,17 +91,14 @@ namespace Skree {
                     : QueueItem('\0')
                 {
                     prev.reset(new QueueItem(*_prev));
+                    orig = _prev;
                 }
 
                 inline void concat(uint32_t _len, const char* _data) {
                     if(done)
                         Throw("push() called on read-only write queue item");
 
-                    auto node = std::make_shared<Utils::StringSequence>(_len, _data);
-
-                    data_last->concat(node);
-                    data_last = node.get();
-
+                    data->concat(_len, _data);
                     real_len += _len;
                 }
 
@@ -110,9 +116,12 @@ namespace Skree {
                 }
 
                 ~QueueItem() {
-                    // TODO
-                    // if(!raw)
-                    //     free(data);
+                    while(!stash.empty()) {
+                        auto* ptr = stash.top();
+                        stash.pop();
+
+                        free(ptr);
+                    }
                 }
 
                 inline void set_cb(std::shared_ptr<const Skree::Base::PendingRead::QueueItem> _cb) {
@@ -128,7 +137,6 @@ namespace Skree {
                         // Throw("finish() called on read-only write queue item");
 
                     done = true;
-                    data_last = data_first.get();
                 }
 
                 inline void write(Skree::Client& client, int fd) {

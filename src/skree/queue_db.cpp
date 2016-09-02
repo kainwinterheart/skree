@@ -569,14 +569,14 @@ namespace Skree {
         total_len += len;
     }
 
-    void QueueDb::WriteStream::write(std::shared_ptr<Skree::Utils::StringSequence> sequence) {
-        decltype(sequence) next = sequence;
+    void QueueDb::WriteStream::write(const Skree::Utils::StringSequence& sequence) {
+        size_t next = 0;
 
-        while(next != nullptr) {
+        while(!sequence.is_last(next)) {
             uint64_t len;
-            const char* str = next->read(0, &len);
+            const char* str = sequence.read(next, 0, &len);
             write(len, str);
-            next = next->get_next();
+            ++next;
         }
     }
 
