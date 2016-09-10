@@ -6,34 +6,31 @@
 
 namespace Skree {
     namespace Actions {
-        void C::in(
-            const uint64_t in_len, const char* in_data,
-            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
-        ) {
+        void C::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
             // Utils::cluck(1, "CHECK");
             uint64_t in_pos = 0;
 
-            const uint32_t event_name_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t event_name_len (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(event_name_len);
 
-            const char* event_name = in_data + in_pos;
+            const char* event_name = args->data + in_pos;
             in_pos += event_name_len + 1;
 
             auto eit = server.known_events.find(event_name);
 
             if(eit == server.known_events.end()) {
                 Utils::cluck(2, "[C::in] Got unknown event: %s\n", event_name);
-                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
+                args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
                 return;
             }
 
-            const uint64_t rid_net (ntohll(*(uint64_t*)(in_data + in_pos)));
+            const uint64_t rid_net (ntohll(*(uint64_t*)(args->data + in_pos)));
             in_pos += sizeof(rid_net);
 
-            const uint32_t rin_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t rin_len (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(rin_len);
 
-            const char* rin (in_data + in_pos);
+            const char* rin (args->data + in_pos);
             in_pos += rin_len;
 
             uint64_t now = std::time(nullptr);
@@ -41,7 +38,7 @@ namespace Skree {
 
             if(state == SKREE_META_EVENTSTATE_PROCESSED) {
                 // event is processed, everything is fine
-                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
+                args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
             } else if(state == SKREE_META_EVENTSTATE_LOST) {
                 auto events = std::make_shared<std::vector<std::shared_ptr<in_packet_e_ctx_event>>>(1);
@@ -63,12 +60,13 @@ namespace Skree {
                    0, // TODO: should wait for synchronous replication
                    nullptr,
                    nullptr,
-                   *(eit->second->queue)
+                   *(eit->second->queue),
+                   args
                 );
 
                 if(result == SAVE_EVENT_RESULT_K) {
                     // event has been lost, but just enqueued, again and will be re-replicated
-                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
+                    args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
                     auto& db = *(eit->second->queue->kv);
 
@@ -77,12 +75,12 @@ namespace Skree {
 
                 } else {
                     // can't re-save event, try again
-                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
+                    args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
                 }
 
             } else {
                 // event state is not terminal
-                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
+                args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
             }
         }
 

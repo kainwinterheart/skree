@@ -64,8 +64,8 @@ namespace Skree {
                     ~Args() {
                         free(buf);
 
-                        // if(data != nullptr)
-                            // free(data); // TODO
+                        if(data != nullptr)
+                            free(data);
                     }
 
                     void begin_data() {
@@ -99,7 +99,7 @@ namespace Skree {
                 virtual std::shared_ptr<Skree::Base::PendingWrite::QueueItem> run(
                     Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
-                    Args& args
+                    std::shared_ptr<Args> args
                 ) = 0;
 
                 virtual void error(

@@ -6,14 +6,14 @@ namespace Skree {
             std::shared_ptr<Skree::Base::PendingWrite::QueueItem> ReplicationProposeSelf::run(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                Skree::Base::PendingRead::Callback::Args& args
+                std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
             ) {
                 std::shared_ptr<out_packet_i_ctx> ctx (item.ctx, (out_packet_i_ctx*)item.ctx.get());
 
                 pthread_mutex_lock(ctx->mutex.get());
                 --(*(ctx->pending));
 
-                if(args.opcode == SKREE_META_OPCODE_K)
+                if(args->opcode == SKREE_META_OPCODE_K)
                     ++(*(ctx->acceptances));
 
                 continue_replication_exec(*ctx);

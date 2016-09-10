@@ -3,40 +3,40 @@
 // #include "base/pending_read.hpp"
 
 namespace Skree {
-    void Client::ordinary_packet_cb(Base::PendingRead::Callback::Args& message) {
-        if(handlers[message.opcode] == nullptr) {
-            Utils::cluck(2, "Unknown packet header: 0x%.2X", message.opcode);
+    void Client::ordinary_packet_cb(std::shared_ptr<Base::PendingRead::Callback::Args> message) {
+        if(handlers[message->opcode] == nullptr) {
+            Utils::cluck(2, "Unknown packet header: 0x%.2X", message->opcode);
 
         } else {
-            handlers[message.opcode]->in(message.get_len(), message.data, message.out);
-            ++(server.stat_num_requests_detailed[message.opcode]);
+            handlers[message->opcode]->in(message);
+            ++(server.stat_num_requests_detailed[message->opcode]);
         }
     }
 
-    bool Client::read_cb(Base::PendingRead::Callback::Args& message) {
+    bool Client::read_cb(std::shared_ptr<Base::PendingRead::Callback::Args> message) {
         if(!pending_reads.empty()) {
             // Pending reads queue is a top priority callback
             // If there is a pending read - incoming data should
             // be passed to such a callback
 #ifdef SKREE_NET_DEBUG
-            Utils::cluck(2, "Got opcode: 0x%.2X, pending_reads not empty", message.opcode);
+            Utils::cluck(2, "Got opcode: 0x%.2X, pending_reads not empty", message->opcode);
 #endif
             auto item = pending_reads.front();
 
             if(
-                (message.opcode == SKREE_META_OPCODE_K)
-                || (message.opcode == SKREE_META_OPCODE_F)
-                || (message.opcode == SKREE_META_OPCODE_A)
+                (message->opcode == SKREE_META_OPCODE_K)
+                || (message->opcode == SKREE_META_OPCODE_F)
+                || (message->opcode == SKREE_META_OPCODE_A)
             ) {
                 pending_reads.pop_front();
 
                 // ***
 #ifdef SKREE_NET_DEBUG
-                Utils::cluck(2, "About to run original callback with a packet of size %lu bytes", message.get_len());
+                Utils::cluck(2, "About to run original callback with a packet of size %lu bytes", message->get_len());
 #endif
                 auto new_item = item->cb->run(*this, *item, message);
 
-                if(message.stop) {
+                if(message->stop) {
                     drop();
                     return false;
 
@@ -47,7 +47,7 @@ namespace Skree {
 
             } else if(
                 (protocol_version > 0)
-                || (message.opcode == Skree::Actions::N::opcode()) // TODO: crutch?
+                || (message->opcode == Skree::Actions::N::opcode()) // TODO: crutch?
             ) {
                 // If pending read waits for opcode, and it is not
                 // the reply opcode we've got here - process data as
@@ -55,26 +55,26 @@ namespace Skree {
 
                 // Utils::cluck(1, "ordinary_packet_cb 1\n");
 #ifdef SKREE_NET_DEBUG
-                Utils::cluck(2, "Got opcode: 0x%.2X, pending_reads is empty, but queue item is not suitable", message.opcode);
+                Utils::cluck(2, "Got opcode: 0x%.2X, pending_reads is empty, but queue item is not suitable", message->opcode);
 #endif
                 ordinary_packet_cb(message);
 
             } else {
-                Utils::cluck(3, "invalid pending read, opcode: %c (0x%.2X)", message.opcode, message.opcode);
+                Utils::cluck(3, "invalid pending read, opcode: %c (0x%.2X)", message->opcode, message->opcode);
                 drop();
                 return false;
             }
 
         } else if(
             (protocol_version > 0)
-            || (message.opcode == Skree::Actions::N::opcode()) // TODO: crutch?
+            || (message->opcode == Skree::Actions::N::opcode()) // TODO: crutch?
         ) {
             // There is no pending reads, so data should be processed
             // as ordinary inbound packet
 
             // Utils::cluck(1, "ordinary_packet_cb 2\n");
 #ifdef SKREE_NET_DEBUG
-            Utils::cluck(2, "Got opcode: 0x%.2X, pending_reads is empty", message.opcode);
+            Utils::cluck(2, "Got opcode: 0x%.2X, pending_reads is empty", message->opcode);
 #endif
             ordinary_packet_cb(message);
 
@@ -84,10 +84,10 @@ namespace Skree {
             return false;
         }
 
-        if(message.out != nullptr) {
-            message.out->finish();
-            ++(server.stat_num_responses_detailed[message.out->get_opcode()]);
-            push_write_queue(message.out);
+        if(message->out != nullptr) {
+            message->out->finish();
+            ++(server.stat_num_responses_detailed[message->out->get_opcode()]);
+            push_write_queue(message->out);
         }
 
         return true;
@@ -335,7 +335,7 @@ namespace Skree {
 #ifdef SKREE_NET_DEBUG
                             Utils::cluck(1, "[client_cb] data is empty, run");
 #endif
-                            if(client->read_cb(*active_read))
+                            if(client->read_cb(active_read))
                                 client->active_read.reset();
                         }
 
@@ -343,7 +343,7 @@ namespace Skree {
 #ifdef SKREE_NET_DEBUG
                         Utils::cluck(1, "[client_cb] data already began, run");
 #endif
-                        if(client->read_cb(*active_read))
+                        if(client->read_cb(active_read))
                             client->active_read.reset();
                     }
                 }

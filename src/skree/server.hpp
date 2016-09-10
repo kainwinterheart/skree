@@ -130,7 +130,8 @@ namespace Skree {
             uint32_t replication_factor,
             Client* client,
             uint64_t* task_ids,
-            QueueDb& queue
+            QueueDb& queue,
+            std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
         );
 
         short repl_save(

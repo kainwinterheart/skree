@@ -2,29 +2,26 @@
 
 namespace Skree {
     namespace Actions {
-        void E::in(
-            const uint64_t in_len, const char* in_data,
-            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
-        ) {
+        void E::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
             uint64_t in_pos = 0;
 
-            const uint32_t event_name_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t event_name_len (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(event_name_len);
 
-            const char* event_name = in_data + in_pos;
+            const char* event_name = args->data + in_pos;
             in_pos += event_name_len + 1;
 
             auto it = server.known_events.find(event_name);
 
             if(it == server.known_events.end()) {
                 Utils::cluck(2, "[E::in] Got unknown event: %s\n", event_name);
-                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
+                args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
                 return;
             }
 
             auto queue = it->second->queue;
 
-            uint32_t cnt (ntohl(*(uint32_t*)(in_data + in_pos)));
+            uint32_t cnt (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(cnt);
 
             const uint32_t events_count = cnt;
@@ -34,15 +31,15 @@ namespace Skree {
                 --cnt;
 
                 (*events.get())[cnt].reset(new in_packet_e_ctx_event {
-                    .len = ntohl(*(uint32_t*)(in_data + in_pos)),
-                    .data = (const char*)(in_data + in_pos + sizeof(uint32_t)),
+                    .len = ntohl(*(uint32_t*)(args->data + in_pos)),
+                    .data = (const char*)(args->data + in_pos + sizeof(uint32_t)),
                     .id = nullptr // TODO: why is it nullptr?
                 });
 
                 in_pos += sizeof(uint32_t) + (*events.get())[cnt]->len;
             }
 
-            const uint32_t replication_factor (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t replication_factor (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(replication_factor);
 
             in_packet_e_ctx ctx {
@@ -52,19 +49,26 @@ namespace Skree {
                 .events = events
             };
 
-            short result = server.save_event(ctx, replication_factor, &client, nullptr, *queue);
+            short result = server.save_event(
+                ctx,
+                replication_factor,
+                &client,
+                nullptr,
+                *queue,
+                args
+            );
 
             switch(result) {
                 case SAVE_EVENT_RESULT_NULL:
                     break;
                 case SAVE_EVENT_RESULT_K:
-                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
+                    args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
                     break;
                 case SAVE_EVENT_RESULT_F:
-                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
+                    args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
                     break;
                 case SAVE_EVENT_RESULT_A:
-                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_A));
+                    args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_A));
                     break;
                 default:
                     Utils::cluck(2, "Unexpected save_event() result: %d\n", result);

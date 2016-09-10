@@ -32,19 +32,19 @@ namespace Skree {
             std::shared_ptr<Skree::Base::PendingWrite::QueueItem> cb2(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                Skree::Base::PendingRead::Callback::Args& args
+                std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
             );
 
             std::shared_ptr<Skree::Base::PendingWrite::QueueItem> cb5(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                Skree::Base::PendingRead::Callback::Args& args
+                std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
             );
 
             std::shared_ptr<Skree::Base::PendingWrite::QueueItem> cb6(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                Skree::Base::PendingRead::Callback::Args& args
+                std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
             );
 
             void on_new_client(Skree::Client& client);

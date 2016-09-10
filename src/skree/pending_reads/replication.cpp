@@ -6,12 +6,12 @@ namespace Skree {
             std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Replication::run(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                Skree::Base::PendingRead::Callback::Args& args
+                std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
             ) {
                 std::shared_ptr<out_packet_r_ctx> ctx (item.ctx, (out_packet_r_ctx*)item.ctx.get());
                 --(ctx->pending);
 
-                if(args.opcode == SKREE_META_OPCODE_K) {
+                if(args->opcode == SKREE_META_OPCODE_K) {
                     std::shared_ptr<packet_r_ctx_peer> peer;
                     peer.reset(new packet_r_ctx_peer {
                         .hostname_len = client.get_peer_name_len(),

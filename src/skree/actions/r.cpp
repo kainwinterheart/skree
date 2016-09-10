@@ -2,39 +2,36 @@
 
 namespace Skree {
     namespace Actions {
-        void R::in(
-            const uint64_t in_len, const char* in_data,
-            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
-        ) {
+        void R::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
             // Utils::cluck(1, "R::in begin");
             uint64_t in_pos = 0;
 
-            const uint32_t hostname_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t hostname_len (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(hostname_len);
 
-            const char* hostname = in_data + in_pos;
+            const char* hostname = args->data + in_pos;
             in_pos += hostname_len + 1;
 
-            const uint32_t port (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t port (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(port);
 
-            const uint32_t event_name_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t event_name_len (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(event_name_len);
 
-            const char* event_name = in_data + in_pos;
+            const char* event_name = args->data + in_pos;
             in_pos += event_name_len + 1;
 
             auto it = server.known_events.find(event_name);
 
             if(it == server.known_events.end()) {
                 Utils::cluck(2, "[R::in] Got unknown event: %s\n", event_name);
-                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
+                args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
                 return;
             }
 
             auto queue = it->second->r_queue;
 
-            uint32_t cnt (ntohl(*(uint32_t*)(in_data + in_pos)));
+            uint32_t cnt (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(cnt);
 
             const uint32_t events_count = cnt;
@@ -44,10 +41,10 @@ namespace Skree {
                 --cnt;
 
                 (*events.get())[cnt].reset(new in_packet_r_ctx_event {
-                    .id_net = *(uint64_t*)(in_data + in_pos),
+                    .id_net = *(uint64_t*)(args->data + in_pos),
                     .id = (char*)malloc(21),
-                    .len = ntohl(*(uint32_t*)(in_data + in_pos + sizeof(uint64_t))),
-                    .data = (in_data + in_pos + sizeof(uint64_t) + sizeof(uint32_t))
+                    .len = ntohl(*(uint32_t*)(args->data + in_pos + sizeof(uint64_t))),
+                    .data = (args->data + in_pos + sizeof(uint64_t) + sizeof(uint32_t))
                 });
 
                 sprintf((*events.get())[cnt]->id, "%llu", ntohll((*events.get())[cnt]->id_net)); // TODO: is this really necessary?
@@ -56,7 +53,7 @@ namespace Skree {
                 in_pos += sizeof(uint64_t) + sizeof(uint32_t) + (*events.get())[cnt]->len;
             }
 
-            cnt = ntohl(*(uint32_t*)(in_data + in_pos));
+            cnt = ntohl(*(uint32_t*)(args->data + in_pos));
             in_pos += sizeof(cnt);
 
             const uint32_t peers_count = cnt;
@@ -65,13 +62,13 @@ namespace Skree {
             while(cnt > 0) {
                 --cnt;
 
-                const uint32_t len (ntohl(*(uint32_t*)(in_data + in_pos)));
+                const uint32_t len (ntohl(*(uint32_t*)(args->data + in_pos)));
                 in_pos += sizeof(len);
 
                 (*peers.get())[cnt].reset(new packet_r_ctx_peer {
                     .hostname_len = len,
-                    .hostname = in_data + in_pos,
-                    .port = ntohl(*(uint32_t*)(in_data + in_pos + len + 1))
+                    .hostname = args->data + in_pos,
+                    .port = ntohl(*(uint32_t*)(args->data + in_pos + len + 1))
                 });
 
                 in_pos += len + 1 + sizeof(uint32_t);
@@ -92,10 +89,10 @@ namespace Skree {
             short result = server.repl_save(ctx, client, *queue);
 
             if(result == REPL_SAVE_RESULT_F) {
-                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
+                args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
 
             } else if(result == REPL_SAVE_RESULT_K) {
-                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
+                args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
             } else {
                 Utils::cluck(2, "Unexpected repl_save() result: %d\n", result);

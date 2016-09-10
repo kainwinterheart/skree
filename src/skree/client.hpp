@@ -10,7 +10,7 @@ namespace Skree {
 #include "actions/e.hpp"
 #include "actions/r.hpp"
 #include "server.hpp"
-#include "pending_reads/ordinary_packet.hpp"
+// #include "pending_reads/ordinary_packet.hpp"
 #include "actions/w.hpp"
 #include "actions/l.hpp"
 #include "actions/c.hpp"
@@ -52,10 +52,10 @@ namespace Skree {
 
         template<typename T>
         void add_action_handler();
-        bool read_cb(Base::PendingRead::Callback::Args& message);
+        bool read_cb(std::shared_ptr<Base::PendingRead::Callback::Args> message);
 
         static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events);
-        void ordinary_packet_cb(Base::PendingRead::Callback::Args& message);
+        void ordinary_packet_cb(std::shared_ptr<Base::PendingRead::Callback::Args> message);
         std::shared_ptr<Skree::Base::PendingWrite::QueueItem> get_pending_write();
         void destroy();
 

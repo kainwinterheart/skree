@@ -196,7 +196,7 @@ namespace Skree {
             auto _cb = [this](
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                Skree::Base::PendingRead::Callback::Args& args
+                std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
             ) {
                 return cb2(client, item, args);
             };
@@ -216,15 +216,15 @@ namespace Skree {
         std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Discovery::cb6(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
-            Skree::Base::PendingRead::Callback::Args& args
+            std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
         ) {
             // for(int i = 0; i < item.len; ++i)
-            //     fprintf(stderr, "[discovery::cb6] read from %s [%d]: 0x%.2X\n", client.get_peer_id(),i,args.data[i]);
+            //     fprintf(stderr, "[discovery::cb6] read from %s [%d]: 0x%.2X\n", client.get_peer_id(),i,args->data[i]);
 
-            if(args.opcode == SKREE_META_OPCODE_K) {
+            if(args->opcode == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 0;
 
-                uint32_t cnt (ntohl(*(uint32_t*)(args.data + in_pos)));
+                uint32_t cnt (ntohl(*(uint32_t*)(args->data + in_pos)));
                 in_pos += sizeof(cnt);
 
                 uint32_t host_len;
@@ -238,13 +238,13 @@ namespace Skree {
                 while(cnt > 0) {
                     --cnt;
 
-                    host_len = ntohl(*(uint32_t*)(args.data + in_pos));
+                    host_len = ntohl(*(uint32_t*)(args->data + in_pos));
                     in_pos += sizeof(host_len);
 
-                    const char* host = args.data + in_pos;
+                    const char* host = args->data + in_pos;
                     in_pos += host_len + 1;
 
-                    port = ntohl(*(uint32_t*)(args.data + in_pos));
+                    port = ntohl(*(uint32_t*)(args->data + in_pos));
                     in_pos += sizeof(port);
 
                     _peer_id = Utils::make_peer_id(host_len, host, port);
@@ -279,10 +279,10 @@ namespace Skree {
         std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Discovery::cb5(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
-            Skree::Base::PendingRead::Callback::Args& args
+            std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
         ) {
-            // Utils::cluck(2, "DISCOVERY CB5 OPCODE: %c\n", args.opcode);
-            if(args.opcode == SKREE_META_OPCODE_K) {
+            // Utils::cluck(2, "DISCOVERY CB5 OPCODE: %c\n", args->opcode);
+            if(args->opcode == SKREE_META_OPCODE_K) {
                 auto& known_peers = server.known_peers;
                 auto& known_peers_by_conn_id = server.known_peers_by_conn_id;
                 auto known_peers_end = known_peers.lock();
@@ -298,13 +298,13 @@ namespace Skree {
 
                     for(const auto& peer : list) {
                         if(strcmp(conn_id, peer->get_conn_id()) == 0) {
-                            args.stop = true;
+                            args->stop = true;
                             break;
                         }
                     }
                 }
 
-                if(!args.stop) {
+                if(!args->stop) {
                     known_peers[peer_id].push_back(&client);
                     known_peers_by_conn_id[conn_id].push_back(&client);
                 }
@@ -312,7 +312,7 @@ namespace Skree {
                 known_peers_by_conn_id.unlock();
                 known_peers.unlock();
 
-                if(!args.stop) {
+                if(!args->stop) {
                     int max_parallel_connections(client.get_max_parallel_connections() - 1);
 
                     for(int i = 0; i < max_parallel_connections; ++i) {
@@ -348,9 +348,9 @@ namespace Skree {
                                 auto _cb = [this, peer_id_clone](
                                     Skree::Client& client,
                                     const Skree::Base::PendingRead::QueueItem& item,
-                                    Skree::Base::PendingRead::Callback::Args& args
+                                    std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
                                 ) {
-                                    if(args.opcode != SKREE_META_OPCODE_K)
+                                    if(args->opcode != SKREE_META_OPCODE_K)
                                         return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
 
                                     auto& known_peers = server.known_peers;
@@ -391,7 +391,7 @@ namespace Skree {
                     auto _cb = [this](
                         Skree::Client& client,
                         const Skree::Base::PendingRead::QueueItem& item,
-                        Skree::Base::PendingRead::Callback::Args& args
+                        std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
                     ) {
                         return cb6(client, item, args);
                     };
@@ -409,7 +409,7 @@ namespace Skree {
                 }
 
             } else {
-                args.stop = true;
+                args->stop = true;
             }
 
             return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
@@ -418,19 +418,19 @@ namespace Skree {
         std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Discovery::cb2(
             Skree::Client& client,
             const Skree::Base::PendingRead::QueueItem& item,
-            Skree::Base::PendingRead::Callback::Args& args
+            std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
         ) {
-            // Utils::cluck(2, "DISCOVERY CB2 OPCODE: %c\n", args.opcode);
-            if(args.opcode == SKREE_META_OPCODE_K) {
+            // Utils::cluck(2, "DISCOVERY CB2 OPCODE: %c\n", args->opcode);
+            if(args->opcode == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 0;
 
-                const uint32_t len (ntohl(*(uint32_t*)(args.data + in_pos)));
+                const uint32_t len (ntohl(*(uint32_t*)(args->data + in_pos)));
                 in_pos += sizeof(len);
 
-                const char* peer_name = args.data + in_pos;
+                const char* peer_name = args->data + in_pos;
                 in_pos += len + 1;
 
-                uint32_t _tmp (ntohl(*(uint32_t*)(args.data + in_pos)));
+                uint32_t _tmp (ntohl(*(uint32_t*)(args->data + in_pos)));
                 in_pos += sizeof(_tmp);
 
                 client.set_max_parallel_connections(std::min(
@@ -484,7 +484,7 @@ namespace Skree {
                     auto _cb = [this](
                         Skree::Client& client,
                         const Skree::Base::PendingRead::QueueItem& item,
-                        Skree::Base::PendingRead::Callback::Args& args
+                        std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
                     ) {
                         return cb5(client, item, args);
                     };
@@ -501,11 +501,11 @@ namespace Skree {
                     return h_req;
 
                 } else {
-                    args.stop = true;
+                    args->stop = true;
                 }
 
             } else {
-                args.stop = true;
+                args->stop = true;
             }
 
             return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();

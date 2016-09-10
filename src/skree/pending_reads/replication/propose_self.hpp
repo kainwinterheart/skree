@@ -17,7 +17,7 @@ namespace Skree {
                 virtual std::shared_ptr<Skree::Base::PendingWrite::QueueItem> run(
                     Skree::Client& client,
                     const Skree::Base::PendingRead::QueueItem& item,
-                    Skree::Base::PendingRead::Callback::Args& args
+                    std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
                 ) override;
 
                 virtual void error(

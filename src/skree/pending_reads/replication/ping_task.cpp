@@ -6,11 +6,11 @@ namespace Skree {
             std::shared_ptr<Skree::Base::PendingWrite::QueueItem> ReplicationPingTask::run(
                 Skree::Client& client,
                 const Skree::Base::PendingRead::QueueItem& item,
-                Skree::Base::PendingRead::Callback::Args& args
+                std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
             ) {
                 std::shared_ptr<out_data_c_ctx> ctx (item.ctx, (out_data_c_ctx*)item.ctx.get());
 
-                if(args.opcode == SKREE_META_OPCODE_K) {
+                if(args->opcode == SKREE_META_OPCODE_K) {
                     // Utils::cluck(2, "[ReplicationPingTask] %s: c -> k\n", ctx->failover_key);
                     auto& event = *(ctx->event);
 

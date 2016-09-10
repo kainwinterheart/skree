@@ -16,10 +16,7 @@ namespace Skree {
                 Skree::Client& _client
             ) : Skree::Base::Action(_server, _client) {}
 
-            virtual void in(
-                const uint64_t in_len, const char* in_data,
-                std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
-            ) override;
+            virtual void in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) override;
 
             static std::shared_ptr<Skree::Base::PendingWrite::QueueItem> out_init(
                 std::shared_ptr<Utils::muh_str_t> peer_id,

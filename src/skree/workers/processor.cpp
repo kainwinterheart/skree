@@ -70,7 +70,8 @@ namespace Skree {
                0, // TODO: should wait for synchronous replication
                nullptr,
                nullptr,
-               *(event.queue)
+               *(event.queue),
+               std::shared_ptr<Skree::Base::PendingRead::Callback::Args>()
             );
 
             if(result == SAVE_EVENT_RESULT_K) {

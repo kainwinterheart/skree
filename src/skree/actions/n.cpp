@@ -2,11 +2,8 @@
 
 namespace Skree {
     namespace Actions {
-        void N::in(
-            const uint64_t in_len, const char* in_data,
-            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
-        ) {
-            client.set_protocol_version(ntohl(*(uint32_t*)in_data));
+        void N::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
+            client.set_protocol_version(ntohl(*(uint32_t*)args->data));
         }
 
         std::shared_ptr<Skree::Base::PendingWrite::QueueItem> N::out_init() {

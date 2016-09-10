@@ -2,18 +2,15 @@
 
 namespace Skree {
     namespace Actions {
-        void W::in(
-            const uint64_t in_len, const char* in_data,
-            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
-        ) {
-            out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
+        void W::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
+            args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
             uint32_t _hostname_len = htonl(server.my_hostname_len);
-            out->copy_concat(sizeof(_hostname_len), &_hostname_len);
-            out->concat(server.my_hostname_len + 1, server.my_hostname);
+            args->out->copy_concat(sizeof(_hostname_len), &_hostname_len);
+            args->out->concat(server.my_hostname_len + 1, server.my_hostname);
 
             const uint32_t max_parallel_connections (htonl(server.get_max_parallel_connections()));
-            out->copy_concat(sizeof(max_parallel_connections), &max_parallel_connections);
+            args->out->copy_concat(sizeof(max_parallel_connections), &max_parallel_connections);
             // Utils::cluck(1, "W::in done\n");
         }
 

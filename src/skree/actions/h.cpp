@@ -2,19 +2,16 @@
 
 namespace Skree {
     namespace Actions {
-        void H::in(
-            const uint64_t in_len, const char* in_data,
-            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
-        ) {
+        void H::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
             uint64_t in_pos = 0;
 
-            const uint32_t host_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t host_len (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(host_len);
 
-            const char* host = in_data + in_pos;
+            const char* host = args->data + in_pos;
             in_pos += host_len + 1;
 
-            const uint32_t port (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t port (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(port);
 
             // TODO: (char*)(char[len])
@@ -28,7 +25,7 @@ namespace Skree {
             known_peers_by_conn_id.lock();
 
             if(known_peer == end) {
-                out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
+                args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
             } else {
                 bool found = false;
@@ -44,14 +41,14 @@ namespace Skree {
                 if(found) {
                     free(_peer_id);
                     // free(host);
-                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
+                    args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
 
                 } else {
-                    out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
+                    args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
                 }
             }
 
-            if(out->get_opcode() == SKREE_META_OPCODE_K) {
+            if(args->out->get_opcode() == SKREE_META_OPCODE_K) {
                 client.set_peer_name(host_len, strndup(host, host_len));
                 client.set_peer_port(port);
                 client.set_peer_id(_peer_id);

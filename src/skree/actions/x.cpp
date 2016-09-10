@@ -2,22 +2,19 @@
 
 namespace Skree {
     namespace Actions {
-        void X::in(
-            const uint64_t in_len, const char* in_data,
-            std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
-        ) {
+        void X::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
             uint64_t in_pos = 0;
 
-            const uint32_t peer_id_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t peer_id_len (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(peer_id_len);
 
-            const char* peer_id = in_data + in_pos;
+            const char* peer_id = args->data + in_pos;
             in_pos += peer_id_len + 1;
 
-            const uint32_t event_id_len (ntohl(*(uint32_t*)(in_data + in_pos)));
+            const uint32_t event_id_len (ntohl(*(uint32_t*)(args->data + in_pos)));
             in_pos += sizeof(event_id_len);
 
-            const char* event_id = in_data + in_pos;
+            const char* event_id = args->data + in_pos;
             in_pos += event_id_len + 1;
 
             auto eit = server.known_events.find(event_id);
@@ -27,7 +24,7 @@ namespace Skree {
                 return;
             }
 
-            const uint64_t rid (ntohll(*(uint64_t*)(in_data + in_pos)));
+            const uint64_t rid (ntohll(*(uint64_t*)(args->data + in_pos)));
             in_pos += sizeof(rid);
 
             size_t suffix_len =

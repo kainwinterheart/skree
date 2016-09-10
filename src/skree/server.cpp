@@ -254,7 +254,8 @@ namespace Skree {
         uint32_t replication_factor,
         Client* client,
         uint64_t* task_ids,
-        QueueDb& queue
+        QueueDb& queue,
+        std::shared_ptr<Skree::Base::PendingRead::Callback::Args> initialArgs
     ) {
         if(replication_factor > max_replication_factor)
             replication_factor = max_replication_factor;
@@ -353,7 +354,8 @@ namespace Skree {
                     .client = client,
                     .candidate_peer_ids = candidate_peer_ids,
                     .accepted_peers = accepted_peers,
-                    .r_req = r_req
+                    .r_req = r_req,
+                    .InitialArgs = initialArgs
                 });
                 /*****************************/
 
@@ -668,7 +670,14 @@ namespace Skree {
             };
 
             uint64_t task_ids[1];
-            save_event(e_ctx, 0, nullptr, task_ids, *(ctx.event->queue));
+            save_event(
+                e_ctx,
+                0,
+                nullptr,
+                task_ids,
+                *(ctx.event->queue),
+                std::shared_ptr<Skree::Base::PendingRead::Callback::Args>()
+            );
 
             auto& failover = ctx.event->failover;
             failover.lock();

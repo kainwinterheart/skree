@@ -10,6 +10,7 @@ namespace Skree {
     class Client;
 }
 
+#include "pending_read.hpp"
 // #include "../server.hpp"
 // #include "../client.hpp"
 
@@ -34,10 +35,7 @@ namespace Skree {
 
             static const char opcode();
 
-            virtual void in(
-                const uint64_t in_len, const char* in_data,
-                std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
-            ) = 0;
+            virtual void in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) = 0;
         };
     }
 }

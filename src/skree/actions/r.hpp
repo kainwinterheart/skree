@@ -42,6 +42,7 @@ namespace Skree {
         std::shared_ptr<std::vector<const char*>> candidate_peer_ids;
         std::shared_ptr<std::list<std::shared_ptr<packet_r_ctx_peer>>> accepted_peers;
         std::shared_ptr<const Skree::Base::PendingWrite::QueueItem> r_req;
+        std::shared_ptr<Skree::Base::PendingRead::Callback::Args> InitialArgs;
         bool sync;
     };
 
@@ -70,10 +71,7 @@ namespace Skree {
                 Skree::Client& _client
             ) : Skree::Base::Action(_server, _client) {}
 
-            virtual void in(
-                const uint64_t in_len, const char* in_data,
-                std::shared_ptr<Skree::Base::PendingWrite::QueueItem>& out
-            ) override;
+            virtual void in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) override;
 
             static std::shared_ptr<Skree::Base::PendingWrite::QueueItem> out_init(
                 const Server& server, const uint32_t event_name_len,
