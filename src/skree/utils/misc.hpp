@@ -49,6 +49,12 @@ namespace Skree {
         struct muh_str_t {
             char* data;
             uint32_t len;
+            bool own;
+
+            ~muh_str_t() {
+                if(own)
+                    free(data);
+            }
         };
 
         struct char_pointer_comparator : public std::binary_function<char*, char*, bool> {

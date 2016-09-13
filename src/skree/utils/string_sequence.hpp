@@ -73,11 +73,12 @@ namespace Skree {
                 return read(index, offset, _len, _next);
             }
 
-            inline bool is_last(size_t index) const {
-                if(sequence.empty())
-                    return true;
-                else
-                    return (index >= (sequence.size() - 1));
+            inline decltype(sequence)::const_iterator begin() const {
+                return sequence.begin();
+            }
+
+            inline decltype(sequence)::const_iterator end() const {
+                return sequence.end();
             }
         };
     }

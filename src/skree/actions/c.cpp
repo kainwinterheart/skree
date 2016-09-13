@@ -52,7 +52,8 @@ namespace Skree {
                    .cnt = 1,
                    .event_name_len = event_name_len,
                    .event_name = event_name,
-                   .events = events
+                   .events = events,
+                   .origin = std::shared_ptr<void>(args, (void*)args.get())
                 };
 
                 short result = server.save_event(
@@ -60,8 +61,7 @@ namespace Skree {
                    0, // TODO: should wait for synchronous replication
                    nullptr,
                    nullptr,
-                   *(eit->second->queue),
-                   args
+                   *(eit->second->queue)
                 );
 
                 if(result == SAVE_EVENT_RESULT_K) {

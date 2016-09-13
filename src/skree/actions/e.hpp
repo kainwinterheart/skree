@@ -21,6 +21,7 @@ namespace Skree {
         uint32_t event_name_len;
         const char* event_name;
         std::shared_ptr<std::vector<std::shared_ptr<in_packet_e_ctx_event>>> events;
+        std::shared_ptr<void> origin;
     };
 
     namespace Actions {

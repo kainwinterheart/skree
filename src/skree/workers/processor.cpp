@@ -32,15 +32,15 @@ namespace Skree {
 
         std::shared_ptr<Processor::QueueItem> Processor::parse_queue_item(
             Utils::known_event_t& event,
-            const uint64_t item_len,
-            const char* item
+            std::shared_ptr<Utils::muh_str_t> item
         ) {
             std::shared_ptr<Processor::QueueItem> _item;
             _item.reset(new Processor::QueueItem {
-                .id_net = *(uint64_t*)item,
-                .id = ntohll(*(uint64_t*)item),
-                .data = item + sizeof(uint64_t),
-                .len = item_len - sizeof(uint64_t)
+                .id_net = *(uint64_t*)item->data,
+                .id = ntohll(*(uint64_t*)item->data),
+                .data = item->data + sizeof(uint64_t),
+                .len = item->len - sizeof(uint64_t),
+                .origin = item
             });
 
             return _item;
@@ -62,7 +62,8 @@ namespace Skree {
                .cnt = 1,
                .event_name_len = event.id_len,
                .event_name = event.id,
-               .events = events
+               .events = events,
+               .origin = std::shared_ptr<void>(item.origin, (void*)item.origin.get())
             };
 
             short result = server.save_event(
@@ -70,8 +71,7 @@ namespace Skree {
                0, // TODO: should wait for synchronous replication
                nullptr,
                nullptr,
-               *(event.queue),
-               std::shared_ptr<Skree::Base::PendingRead::Callback::Args>()
+               *(event.queue)
             );
 
             if(result == SAVE_EVENT_RESULT_K) {
@@ -87,19 +87,18 @@ namespace Skree {
 
         bool Processor::failover(const uint64_t& now, Utils::known_event_t& event) {
             auto& queue_r2 = *(event.queue2);
-            uint64_t item_len;
-            auto _item = queue_r2.read(&item_len);
+            auto _item = queue_r2.read();
 
-            if(_item == nullptr) {
+            if(!_item) {
                 // Utils::cluck(1, "processor: empty queue\n");
                 return false;
             }
 
-            auto item = parse_queue_item(event, item_len, _item);
-            auto cleanup = [&item, &_item](){
-                // delete item;
-                free(_item);
-            };
+            auto item = parse_queue_item(event, _item);
+            // auto cleanup = [&item, &_item](){
+            //     // delete item;
+            //     free(_item);
+            // };
 
             auto state = server.get_event_state(item->id, event, now);
             bool repeat = false;
@@ -125,7 +124,7 @@ namespace Skree {
             if(repeat) {
                 Utils::cluck(3, "[processor::failover] releat: %llu, state: %u\n", item->id, state);
                 queue_r2.sync_read_offset(false);
-                cleanup();
+                // cleanup();
                 return false;
             }
 
@@ -145,7 +144,7 @@ namespace Skree {
             // }
 
             queue_r2.sync_read_offset(key_removed);
-            cleanup();
+            // cleanup();
             return key_removed;
         }
 
@@ -153,26 +152,25 @@ namespace Skree {
             Skree::Client* peer;
             // Utils::cluck(1, "processor: before read\n");
             auto& queue = *(event.queue);
-            uint64_t item_len;
-            auto _item = queue.read(&item_len);
+            auto _item = queue.read();
 
-            if(_item == nullptr) {
+            if(!_item) {
                 // Utils::cluck(1, "processor: empty queue\n");
                 return false;
             }
 
             // TODO: batch event processing
 
-            auto item = parse_queue_item(event, item_len, _item);
-            auto cleanup = [&item, &_item](){
-                // delete item;
-                free(_item);
-            };
+            auto item = parse_queue_item(event, _item);
+            // auto cleanup = [&item, &_item](){
+            //     // delete item;
+            //     free(_item);
+            // };
 
             if(server.get_event_state(item->id, event, now) == SKREE_META_EVENTSTATE_PROCESSING) {
                 // TODO: what should really happen here?
                 // Utils::cluck(1, "skip repl: no_failover flag is set\n");
-                cleanup();
+                // cleanup();
                 queue.sync_read_offset(false);
                 return false;
             }
@@ -186,7 +184,7 @@ namespace Skree {
             auto& kv = *(queue.kv);
 
             if(kv.cas((char*)&(item->id_net), sizeof(item->id_net), "0", 1, "1", 1)) {
-                event.queue2->write(item_len, _item);
+                event.queue2->write(_item->len, _item->data);
 
                 // TODO: process event here
 

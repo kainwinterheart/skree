@@ -32,11 +32,12 @@ namespace Skree {
                 uint32_t failover_key_len;
                 char* peer_id;
                 char* failover_key;
+                std::shared_ptr<Utils::muh_str_t> origin;
             };
 
             static std::shared_ptr<Replication::QueueItem> parse_queue_item(
                 Utils::known_event_t& event,
-                const char* item
+                std::shared_ptr<Utils::muh_str_t> item
             );
 
             bool failover(const uint64_t& now, Utils::known_event_t& event);

@@ -1,6 +1,6 @@
 CXX = clang++
 
-CXXFLAGS = -I /usr/local/Cellar/libev/4.20/include/ -I /usr/local/include/ -I contrib-build/usr/local/include -I contrib-build/usr/lib -std=c++11 -fstack-protector-strong
+CXXFLAGS = -I /usr/local/Cellar/libev/4.20/include/ -I /usr/local/include/ -I contrib-build/usr/local/include -I contrib-build/usr/lib -std=c++11 -fstack-protector-all
 LDFLAGS = -L /usr/local/Cellar/libev/4.20/lib/ -L /usr/local/lib -fsanitize=address -L contrib-build/usr/local/lib -L contrib-build/usr/lib
 # LDFLAGS = -L /usr/local/Cellar/libev/4.20/lib/ -L /usr/local/lib -L contrib-build/usr/local/lib -L contrib-build/usr/lib
 

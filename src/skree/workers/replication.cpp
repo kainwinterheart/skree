@@ -31,40 +31,40 @@ namespace Skree {
 
         std::shared_ptr<Replication::QueueItem> Replication::parse_queue_item(
             Utils::known_event_t& event,
-            const char* item
+            std::shared_ptr<Utils::muh_str_t> item
         ) {
             size_t item_pos = 0;
             std::shared_ptr<Replication::QueueItem> out;
             out.reset(new Replication::QueueItem {
-                .rin = (item + item_pos + sizeof(uint32_t))
+                .rin = (item->data + item_pos + sizeof(uint32_t))
             });
 
-            out->rin_len = ntohl(*(uint32_t*)(item + item_pos));
+            out->rin_len = ntohl(*(uint32_t*)(item->data + item_pos));
             item_pos += sizeof(out->rin_len);
 
             item_pos += out->rin_len;
 
-            out->rts = ntohll(*(uint64_t*)(item + item_pos));
+            out->rts = ntohll(*(uint64_t*)(item->data + item_pos));
             item_pos += sizeof(out->rts);
 
-            out->rid_net = *(uint64_t*)(item + item_pos);
+            out->rid_net = *(uint64_t*)(item->data + item_pos);
             item_pos += sizeof(out->rid_net);
 
             out->rid = ntohll(out->rid_net);
 
-            out->hostname_len = ntohl(*(uint32_t*)(item + item_pos));
+            out->hostname_len = ntohl(*(uint32_t*)(item->data + item_pos));
             item_pos += sizeof(out->hostname_len);
 
-            out->hostname = (char*)(item + item_pos); // TODO?
+            out->hostname = (char*)(item->data + item_pos); // TODO?
             item_pos += out->hostname_len;
 
-            out->port = htonl(*(uint32_t*)(item + item_pos));
+            out->port = htonl(*(uint32_t*)(item->data + item_pos));
             item_pos += sizeof(out->port);
 
-            out->peers_cnt = ntohl(*(uint32_t*)(item + item_pos));
+            out->peers_cnt = ntohl(*(uint32_t*)(item->data + item_pos));
             item_pos += sizeof(out->peers_cnt);
 
-            out->rpr = (char*)(item + item_pos); // TODO?
+            out->rpr = (char*)(item->data + item_pos); // TODO?
 
             out->peer_id = Utils::make_peer_id(out->hostname_len, out->hostname, out->port);
             out->peer_id_len = strlen(out->peer_id);
@@ -79,6 +79,7 @@ namespace Skree {
             // Utils::cluck(2, "repl thread: %s\n", suffix);
 
             out->failover_key_len = strlen(out->failover_key);
+            out->origin = item;
 
             return out;
         }
@@ -160,10 +161,9 @@ namespace Skree {
 
         bool Replication::failover(const uint64_t& now, Utils::known_event_t& event) {
             auto& queue_r2 = *(event.r2_queue);
-            uint64_t item_len;
-            auto _item = queue_r2.read(&item_len);
+            auto _item = queue_r2.read();
 
-            if(_item == nullptr) {
+            if(!_item) {
                 // Utils::cluck(1, "replication: empty queue\n");
                 return false;
             }
@@ -177,12 +177,12 @@ namespace Skree {
                 auto it = failover.find(item->failover_key);
                 failover.unlock();
 
-                if((it == failover_end) && !do_failover(item_len, _item, *item, event)) {
+                if((it == failover_end) && !do_failover(_item->len, _item->data, *item, event)) {
                     commit = false;
                 }
             }
 
-            if(check_no_failover(now, *item, event) || !do_failover(item_len, _item, *item, event)) {
+            if(check_no_failover(now, *item, event) || !do_failover(_item->len, _item->data, *item, event)) {
                 commit = false;
             }
 
@@ -191,7 +191,7 @@ namespace Skree {
             free(item->peer_id);
             free(item->failover_key);
             // delete item;
-            free(_item);
+            // free(_item);
 
             return commit;
         }
@@ -199,20 +199,19 @@ namespace Skree {
         bool Replication::replication(const uint64_t& now, Utils::known_event_t& event) {
             // Utils::cluck(1, "replication: before read\n");
             auto& queue = *(event.r_queue);
-            uint64_t item_len;
-            auto _item = queue.read(&item_len);
+            auto _item = queue.read();
 
-            if(_item == nullptr) {
+            if(!_item) {
                 // Utils::cluck(1, "replication: empty queue\n");
                 return false;
             }
 
             auto item = parse_queue_item(event, _item);
-            auto cleanup = [&item, &_item](){
+            auto cleanup = [&item](){
                 free(item->peer_id);
                 free(item->failover_key);
                 // delete item;
-                free(_item);
+                // free(_item);
             };
 
             // Utils::cluck(2, "repl thread: %s\n", event.id);
@@ -263,7 +262,7 @@ namespace Skree {
             bool commit = true;
 
             if(queue.kv->cas(item->failover_key, item->failover_key_len, "0", 1, "1", 1)) {
-                event.r2_queue->write(item_len, _item);
+                event.r2_queue->write(_item->len, _item->data);
                 // Utils::cluck(3,
                 //     "Key %s for event %s has been added to r2_queue\n",
                 //     item->failover_key,
@@ -277,7 +276,7 @@ namespace Skree {
                     queue.kv->error().name()
                 );
                 commit = false;
-                do_failover(item_len, _item, *item, event);
+                do_failover(_item->len, _item->data, *item, event);
             }
 
             queue.sync_read_offset(commit);
@@ -302,25 +301,23 @@ namespace Skree {
                 size_t offset = 0;
                 bool have_rpr = false;
 
-                uint32_t* count_replicas = (uint32_t*)malloc(sizeof(*count_replicas));
-                uint32_t* acceptances = (uint32_t*)malloc(sizeof(*acceptances));
-                uint32_t* pending = (uint32_t*)malloc(sizeof(*pending));
-
-                *count_replicas = 0;
-                *acceptances = 0;
-                *pending = 0;
+                auto count_replicas = std::make_shared<uint32_t>(0);
+                auto acceptances = std::make_shared<uint32_t>(0);
+                auto pending = std::make_shared<uint32_t>(0);
 
                 auto mutex = std::make_shared<pthread_mutex_t>();
                 pthread_mutex_init(mutex.get(), nullptr);
 
                 std::shared_ptr<Utils::muh_str_t> data_str;
                 data_str.reset(new Utils::muh_str_t {
+                    .own = false,
                     .len = item->rin_len,
                     .data = (char*)(item->rin) // TODO
                 });
 
                 std::shared_ptr<Utils::muh_str_t> __peer_id;
                 __peer_id.reset(new Utils::muh_str_t {
+                    .own = false,
                     .len = item->peer_id_len,
                     .data = item->peer_id
                 });
@@ -328,13 +325,13 @@ namespace Skree {
                 if(item->peers_cnt > 0) {
                     *count_replicas = item->peers_cnt;
 
-                    size_t peer_id_len;
-                    char* peer_id;
                     auto _peers_cnt = item->peers_cnt; // TODO
-
+                    // Utils::cluck(2, "asd: %u, %lu, %lu", item->peers_cnt, item->rid, offset);
                     while(item->peers_cnt > 0) {
-                        peer_id_len = strlen(item->rpr + offset); // TODO: get rid of this shit
-                        peer_id = item->rpr + offset;
+                        // Utils::cluck(2, "qwe: %u", item->peers_cnt);
+                        size_t peer_id_len = strlen(item->rpr + offset); // TODO: get rid of this shit
+                        // Utils::cluck(2, "eqw: %u", item->peers_cnt);
+                        const char* peer_id = item->rpr + offset;
                         offset += peer_id_len + 1;
 
                         known_peers_end = known_peers.lock();
@@ -365,7 +362,8 @@ namespace Skree {
                                 .failover_key_len = item->failover_key_len,
                                 .rpr = item->rpr,
                                 .peers_cnt = _peers_cnt, // TODO
-                                .rid = item->rid
+                                .rid = item->rid,
+                                .origin = _item
                             });
 
                             auto i_req = Skree::Actions::I::out_init(__peer_id, event, item->rid_net);
@@ -380,6 +378,7 @@ namespace Skree {
 
                         --(item->peers_cnt);
                     }
+                    // Utils::cluck(2, "zxc: %u", item->peers_cnt);
                 }
 
                 if(!have_rpr) {
@@ -395,7 +394,8 @@ namespace Skree {
                         .failover_key_len = item->failover_key_len,
                         .rpr = item->rpr, // TODO: why is it not nullptr here?
                         .peers_cnt = 0,
-                        .rid = item->rid
+                        .rid = item->rid,
+                        .origin = _item
                     };
 
                     server.replication_exec(ctx);
@@ -405,6 +405,7 @@ namespace Skree {
                 // TODO: rin_str's type
                 std::shared_ptr<Utils::muh_str_t> rin_str;
                 rin_str.reset(new Utils::muh_str_t {
+                    .own = false,
                     .len = item->rin_len,
                     .data = (char*)(item->rin) // TODO?
                 });
@@ -413,8 +414,9 @@ namespace Skree {
 
                 if(item->peers_cnt > 0) {
                     rpr_str.reset(new Utils::muh_str_t {
+                        .own = false,
                         // .len = (uint32_t)strlen(item->rpr), // TODO: it is incorrect
-                        .len = (uint32_t)(item_len - (item->rpr - _item)), // TODO: unreliable crutch
+                        .len = (uint32_t)(_item->len - (item->rpr - _item->data)), // TODO: unreliable crutch
                         .data = item->rpr
                     });
                 }
@@ -426,7 +428,8 @@ namespace Skree {
                     .rpr = rpr_str, // TODO?
                     .rid = item->rid,
                     .failover_key = item->failover_key,
-                    .failover_key_len = item->failover_key_len
+                    .failover_key_len = item->failover_key_len,
+                    .origin = _item
                 });
 
                 auto c_req = Skree::Actions::C::out_init(event, item->rid_net, item->rin_len, item->rin);

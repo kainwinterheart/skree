@@ -12,6 +12,7 @@ namespace Skree {
         uint64_t rid;
         uint64_t failover_key_len;
         char* failover_key;
+        std::shared_ptr<Utils::muh_str_t> origin;
     };
 
     namespace PendingReads {

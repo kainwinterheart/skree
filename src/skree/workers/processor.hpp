@@ -21,12 +21,12 @@ namespace Skree {
                 uint64_t id_net;
                 const char* data;
                 uint64_t len; // TODO: 64 or 32?
+                std::shared_ptr<Utils::muh_str_t> origin;
             };
 
             static std::shared_ptr<Processor::QueueItem> parse_queue_item(
                 Utils::known_event_t& event,
-                const uint64_t item_len,
-                const char* item
+                std::shared_ptr<Utils::muh_str_t> item
             );
 
             bool failover(const uint64_t& now, Utils::known_event_t& event);

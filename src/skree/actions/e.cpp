@@ -46,7 +46,8 @@ namespace Skree {
                 .cnt = events_count,
                 .event_name_len = event_name_len,
                 .event_name = event_name,
-                .events = events
+                .events = events,
+                .origin = std::shared_ptr<void>(args, (void*)args.get())
             };
 
             short result = server.save_event(
@@ -54,8 +55,7 @@ namespace Skree {
                 replication_factor,
                 &client,
                 nullptr,
-                *queue,
-                args
+                *queue
             );
 
             switch(result) {

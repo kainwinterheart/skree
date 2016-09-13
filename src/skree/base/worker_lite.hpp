@@ -9,40 +9,39 @@ namespace Skree {
         class WorkerLite {
         protected:
             const void* args;
+
         public:
             WorkerLite(const void* _args = nullptr) : args(_args) {
             }
 
             virtual void start() {
-                thread = (pthread_t*)malloc(sizeof(*thread));
+                thread = std::make_shared<pthread_t>();
+                run_args = std::make_shared<run_args_t>();
 
-                run_args* args = new run_args {
-                    .cb = [this](){
-                        run();
-                    }
+                run_args->cb = [this](){
+                    run();
                 };
 
-                pthread_create(thread, nullptr, __run, (void*)args);
+                pthread_create(thread.get(), nullptr, __run, (void*)run_args.get());
             }
 
             virtual ~WorkerLite() {
-                if(thread != nullptr) {
+                if(thread) {
                     pthread_join(*thread, nullptr);
-                    free(thread);
                 }
             }
 
             virtual void run() = 0;
+
         private:
-            pthread_t* thread;
-            struct run_args {
+            std::shared_ptr<pthread_t> thread;
+            struct run_args_t {
                 std::function<void()> cb;
             };
+            std::shared_ptr<run_args_t> run_args;
 
             static void* __run(void* _args) {
-                run_args* args = ((run_args*)_args);
-                args->cb();
-                delete args;
+                ((run_args_t*)_args)->cb();
                 return nullptr;
             }
         };

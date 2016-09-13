@@ -42,7 +42,7 @@ namespace Skree {
         std::shared_ptr<std::vector<const char*>> candidate_peer_ids;
         std::shared_ptr<std::list<std::shared_ptr<packet_r_ctx_peer>>> accepted_peers;
         std::shared_ptr<const Skree::Base::PendingWrite::QueueItem> r_req;
-        std::shared_ptr<Skree::Base::PendingRead::Callback::Args> InitialArgs;
+        std::shared_ptr<void> origin;
         bool sync;
     };
 
@@ -53,12 +53,13 @@ namespace Skree {
         std::shared_ptr<Utils::muh_str_t> peer_id;
         char* failover_key;
         uint64_t failover_key_len;
-        uint32_t* count_replicas;
-        uint32_t* pending;
-        uint32_t* acceptances;
+        std::shared_ptr<uint32_t> count_replicas;
+        std::shared_ptr<uint32_t> pending;
+        std::shared_ptr<uint32_t> acceptances;
         char* rpr; // TODO?
         uint64_t rid;
         uint32_t peers_cnt;
+        std::shared_ptr<Utils::muh_str_t> origin;
     };
 
     namespace Actions {

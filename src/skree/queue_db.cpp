@@ -494,7 +494,7 @@ namespace Skree {
         }
     }
 
-    char* QueueDb::read(uint64_t* _len) {
+    std::shared_ptr<Utils::muh_str_t> QueueDb::read() {
         if(!read_rollbacks.empty()) {
             throw std::logic_error ("You haven't committed previous read, why are you trying to read more?");
         }
@@ -507,14 +507,14 @@ namespace Skree {
         ) {
             write_page->unlock();
             // TODO: read rollbacks may not be needed after this
-            return nullptr;
+            return std::shared_ptr<Utils::muh_str_t>();
         }
 
         write_page->unlock();
         read_page->open_page(true);
 
-        char* out = nullptr;
-        uint64_t len;
+        std::shared_ptr<Utils::muh_str_t> out;
+        uint64_t len; // TODO: uint32_t
 
         // pthread_mutex_lock(&read_page_mutex);
 
@@ -527,16 +527,17 @@ namespace Skree {
             throw std::logic_error ("QueueDb: got zero-length item, rollback");
 
         } else {
-            out = (char*)malloc(len);
-            auto rollback2 = read_page->_read(len, (unsigned char*)out);
+            out.reset(new Utils::muh_str_t {
+                .own = true,
+                .len = (uint32_t)len, // TODO
+                .data = (char*)malloc(len)
+            });
+
+            auto rollback2 = read_page->_read(len, (unsigned char*)out->data);
             // _free_read_rollback(rollback2);
             // _free_read_rollback(rollback1);
             read_rollbacks.push(rollback1);
             read_rollbacks.push(rollback2);
-        }
-
-        if(_len != nullptr) {
-            *_len = len;
         }
 
         // pthread_mutex_unlock(&read_page_mutex);
@@ -570,13 +571,8 @@ namespace Skree {
     }
 
     void QueueDb::WriteStream::write(const Skree::Utils::StringSequence& sequence) {
-        size_t next = 0;
-
-        while(!sequence.is_last(next)) {
-            uint64_t len;
-            const char* str = sequence.read(next, 0, &len);
-            write(len, str);
-            ++next;
+        for(const auto& item : sequence) {
+            write(item.len, item.data);
         }
     }
 

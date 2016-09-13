@@ -254,8 +254,7 @@ namespace Skree {
         uint32_t replication_factor,
         Client* client,
         uint64_t* task_ids,
-        QueueDb& queue,
-        std::shared_ptr<Skree::Base::PendingRead::Callback::Args> initialArgs
+        QueueDb& queue
     ) {
         if(replication_factor > max_replication_factor)
             replication_factor = max_replication_factor;
@@ -286,7 +285,6 @@ namespace Skree {
             while(_cnt < ctx.cnt) {
                 ++max_id;
                 auto event = (*ctx.events.get())[_cnt];
-                ++_cnt;
 
                 // TODO: is this really necessary?
                 // event->id = (char*)malloc(21);
@@ -301,8 +299,10 @@ namespace Skree {
                     stream->write(event->len, event->data);
                     delete stream;
 
-                    if(task_ids != nullptr)
+                    if(task_ids != nullptr) {
+                        // Utils::cluck(2, "add task_id: %u, %llu", _cnt, max_id);
                         task_ids[_cnt] = max_id;
+                    }
 
                     ++num_inserted;
                     ++stat_num_inserts;
@@ -323,6 +323,8 @@ namespace Skree {
                     Utils::cluck(3, "[save_event] db.add(%llu) failed: %s\n", max_id, db.error().name());
                     break;
                 }
+
+                ++_cnt;
             }
 
             r_req->finish();
@@ -355,7 +357,7 @@ namespace Skree {
                     .candidate_peer_ids = candidate_peer_ids,
                     .accepted_peers = accepted_peers,
                     .r_req = r_req,
-                    .InitialArgs = initialArgs
+                    .origin = ctx.origin
                 });
                 /*****************************/
 
@@ -553,6 +555,7 @@ namespace Skree {
         // TODO
         // if(!db.set(key, key_len, dump, dump_len))
         //     Utils::cluck(2, "Failed to save peers list: %s\n", db.error().name());
+        free(dump);
     }
 
     void Server::load_peers_to_discover() {
@@ -666,7 +669,8 @@ namespace Skree {
                 .cnt = 1,
                 .event_name_len = ctx.event->id_len,
                 .event_name = ctx.event->id,
-                .events = events
+                .events = events,
+                .origin = std::shared_ptr<void>(ctx.origin, (void*)ctx.origin.get())
             };
 
             uint64_t task_ids[1];
@@ -675,8 +679,7 @@ namespace Skree {
                 0,
                 nullptr,
                 task_ids,
-                *(ctx.event->queue),
-                std::shared_ptr<Skree::Base::PendingRead::Callback::Args>()
+                *(ctx.event->queue)
             );
 
             auto& failover = ctx.event->failover;
@@ -692,6 +695,7 @@ namespace Skree {
             );
 
             if(ctx.rpr != nullptr) {
+                // Utils::cluck(2, "asd: %u", ctx.peers_cnt);
                 // const muh_str_t*& peer_id, const known_event_t*& event,
                 // const uint64_t& rid
                 auto x_req = Skree::Actions::X::out_init(ctx.peer_id, *(ctx.event), ctx.rid);
@@ -699,8 +703,9 @@ namespace Skree {
                 bool written = false;
 
                 while(ctx.peers_cnt > 0) {
+                    // Utils::cluck(2, "zxc: %u", ctx.peers_cnt);
                     size_t peer_id_len = strlen(ctx.rpr + offset);
-                    char* peer_id = ctx.rpr + offset;
+                    const char* peer_id = ctx.rpr + offset;
                     offset += peer_id_len + 1;
 
                     auto known_peers_end = known_peers.lock();
@@ -708,12 +713,13 @@ namespace Skree {
                     known_peers.unlock();
 
                     if(it != known_peers_end) {
-                        it->second.next()->push_write_queue(x_req); // TODO: it will be freed after FIRST successfull write
+                        it->second.next()->push_write_queue(x_req);
                         written = true;
                     }
 
                     --(ctx.peers_cnt);
                 }
+                // Utils::cluck(1, "qwe");
 
                 // if(!written)
                 //     delete x_req;
@@ -734,11 +740,12 @@ namespace Skree {
         }
 
         pthread_mutex_destroy(ctx.mutex.get());
+        // Utils::cluck(1, "woot");
 
         // free(ctx.mutex);
-        free(ctx.acceptances);
-        free(ctx.pending);
-        free(ctx.count_replicas);
+        // free(ctx.acceptances);
+        // free(ctx.pending);
+        // free(ctx.count_replicas);
         // free(ctx);
     }
 

@@ -171,7 +171,7 @@ namespace Skree {
         explicit QueueDb(const char* _path, size_t _file_size);
         ~QueueDb();
 
-        char* read(uint64_t* len = nullptr);
+        std::shared_ptr<Utils::muh_str_t> read();
         void sync_read_offset(bool commit = true);
 
         inline uint64_t get_first_used_page_num() const {
