@@ -57,29 +57,62 @@ namespace Skree {
             }
         };
 
-        struct char_pointer_comparator : public std::binary_function<char*, char*, bool> {
-            bool operator()(const char* a, const char* b) const {
+        struct TCharPointerComparator : public std::function<bool(
+            const char*, const char*
+        )> {
+            inline bool operator()(const char* a, const char* b) const {
                 return (strcmp(a, b) == 0);
             }
         };
 
-        struct char_pointer_hasher {
-            //BKDR hash algorithm
-            int operator()(const char* key) const {
-                const int seed = 131; //31 131 1313 13131131313 etc//
-                int hash = 0;
-                const size_t len = strlen(key);
-
-                for(size_t i = 0; i < len; ++i) {
-                    hash = ((hash * seed) + key[i]);
-                }
-
-                return (hash & 0x7FFFFFFF);
+        struct TMuhStrPointerComparator : public std::function<bool(
+            std::shared_ptr<muh_str_t>, std::shared_ptr<muh_str_t>
+        )> {
+            inline bool operator()(
+                const std::shared_ptr<muh_str_t>& a,
+                const std::shared_ptr<muh_str_t>& b
+            ) const {
+                return (strcmp(a->data, b->data) == 0);
             }
         };
 
-        typedef AtomicHashMap<char*, uint64_t, char_pointer_hasher, char_pointer_comparator> failover_t;
-        typedef AtomicHashMap<char*, uint64_t, char_pointer_hasher, char_pointer_comparator> no_failover_t;
+        //BKDR hash algorithm
+        static inline int CharPointerHash(size_t len, const char* key) {
+            const int seed = 131; //31 131 1313 13131131313 etc//
+            int hash = 0;
+
+            for(size_t i = 0; i < len; ++i) {
+                hash = ((hash * seed) + key[i]);
+            }
+
+            return (hash & 0x7FFFFFFF);
+        }
+
+        struct TCharPointerHasher {
+            inline int operator()(const char* key) const {
+                return CharPointerHash(strlen(key), key);
+            }
+        };
+
+        struct TMuhStrPointerHasher {
+            inline int operator()(const std::shared_ptr<muh_str_t>& key) const {
+                return CharPointerHash(key->len, key->data);
+            }
+        };
+
+        typedef AtomicHashMap<
+            std::shared_ptr<muh_str_t>,
+            uint64_t,
+            Utils::TMuhStrPointerHasher,
+            Utils::TMuhStrPointerComparator
+        > failover_t;
+
+        typedef AtomicHashMap<
+            std::shared_ptr<muh_str_t>,
+            uint64_t,
+            Utils::TMuhStrPointerHasher,
+            Utils::TMuhStrPointerComparator
+        > no_failover_t;
 
         struct skree_module_t {
             size_t path_len;
@@ -108,7 +141,7 @@ namespace Skree {
             failover_t failover;
             no_failover_t no_failover;
 
-            void unfailover(char* failover_key) {
+            void unfailover(const std::shared_ptr<muh_str_t>& failover_key) {
                 {
                     auto failover_end = failover.lock();
                     auto it = failover.find(failover_key);
@@ -131,56 +164,81 @@ namespace Skree {
             }
         };
 
-        typedef std::unordered_map<const char*, skree_module_t*, char_pointer_hasher, char_pointer_comparator> skree_modules_t;
-        typedef std::unordered_map<const char*, event_group_t*, char_pointer_hasher, char_pointer_comparator> event_groups_t;
-        typedef std::unordered_map<const char*, known_event_t*, char_pointer_hasher, char_pointer_comparator> known_events_t;
+        typedef std::unordered_map<
+            const char*,
+            skree_module_t*,
+            TCharPointerHasher,
+            TCharPointerComparator
+        > skree_modules_t;
 
-        static inline char* make_peer_id(
-            const size_t& peer_name_len,
-            char*& peer_name,
-            const uint16_t& peer_port
+        typedef std::unordered_map<
+            const char*,
+            event_group_t*,
+            TCharPointerHasher,
+            TCharPointerComparator
+        > event_groups_t;
+
+        typedef std::unordered_map<
+            const char*,
+            known_event_t*,
+            TCharPointerHasher,
+            TCharPointerComparator
+        > known_events_t;
+
+        static inline std::shared_ptr<muh_str_t> NewStr(uint32_t len) {
+            auto out = std::shared_ptr<muh_str_t>();
+            out.reset(new muh_str_t {
+                .own = true,
+                .len = len,
+                .data = (char*)malloc(len)
+            });
+
+            return out;
+        }
+
+        static inline std::shared_ptr<muh_str_t> make_peer_id(
+            const size_t peer_name_len,
+            const char* peer_name,
+            const uint16_t peer_port
         ) {
-            char peer_id [
+            auto out = NewStr(
                 peer_name_len
                 + 1 // :
                 + 5 // port string
                 + 1 // \0
-            ];
+            );
 
-            memcpy(peer_id, peer_name, peer_name_len);
-            sprintf(peer_id + peer_name_len, ":%u", peer_port);
+            memcpy(out->data, peer_name, peer_name_len);
+            sprintf(out->data + peer_name_len, ":%u", peer_port);
 
-            return strndup(peer_id, peer_name_len + 1 + 5);
+            return out;
         }
 
-        static inline char* make_peer_id(
-            const size_t& peer_name_len,
-            const char*& peer_name,
-            const uint16_t& peer_port
+        static inline std::shared_ptr<muh_str_t> get_host_from_sockaddr_in(
+            const std::shared_ptr<sockaddr_in>& s_in
         ) {
-            char* _peer_name = (char*)peer_name;
-            return make_peer_id(peer_name_len, _peer_name, peer_port);
-        }
-
-        static inline char* get_host_from_sockaddr_in(const sockaddr_in* s_in) {
             if(s_in->sin_family == AF_INET) {
-                char conn_name [INET_ADDRSTRLEN];
-                inet_ntop(AF_INET, &(s_in->sin_addr), conn_name, INET_ADDRSTRLEN);
-                return strndup(conn_name, INET_ADDRSTRLEN-1);
+                auto out = NewStr(INET_ADDRSTRLEN);
+                inet_ntop(AF_INET, &(s_in->sin_addr), out->data, INET_ADDRSTRLEN);
+                out->len = strlen(out->data);
+                return out;
 
             } else {
-                char conn_name [INET6_ADDRSTRLEN];
-                inet_ntop(AF_INET6, &(((sockaddr_in6*)s_in)->sin6_addr), conn_name, INET6_ADDRSTRLEN);
-                return strndup(conn_name, INET6_ADDRSTRLEN-1);
+                auto out = NewStr(INET6_ADDRSTRLEN);
+                inet_ntop(AF_INET6, &(((sockaddr_in6*)s_in.get())->sin6_addr), out->data, INET6_ADDRSTRLEN);
+                out->len = strlen(out->data);
+                return out;
             }
         }
 
-        static inline uint16_t get_port_from_sockaddr_in(const sockaddr_in* s_in) {
+        static inline uint16_t get_port_from_sockaddr_in(
+            const std::shared_ptr<sockaddr_in>& s_in
+        ) {
             if(s_in->sin_family == AF_INET) {
                 return ntohs(s_in->sin_port);
 
             } else {
-                return ntohs(((sockaddr_in6*)s_in)->sin6_port);
+                return ntohs(((sockaddr_in6*)s_in.get())->sin6_port);
             }
         }
 

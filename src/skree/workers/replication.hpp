@@ -28,10 +28,8 @@ namespace Skree {
                 uint32_t port;
                 uint32_t peers_cnt;
                 char* rpr;
-                uint32_t peer_id_len;
-                uint32_t failover_key_len;
-                char* peer_id;
-                char* failover_key;
+                std::shared_ptr<Utils::muh_str_t> peer_id;
+                std::shared_ptr<Utils::muh_str_t> failover_key;
                 std::shared_ptr<Utils::muh_str_t> origin;
             };
 

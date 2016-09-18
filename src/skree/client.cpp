@@ -93,12 +93,19 @@ namespace Skree {
         return true;
     }
 
-    Client::Client(int _fh, struct ev_loop* _loop, sockaddr_in* _s_in, socklen_t _s_in_len, Server& _server)
-        : fh(_fh), loop(_loop), s_in(_s_in), s_in_len(_s_in_len), server(_server) {
-        peer_name = nullptr;
-        peer_id = nullptr;
-        conn_name = nullptr;
-        conn_id = nullptr;
+    Client::Client(
+        int _fh,
+        struct ev_loop* _loop,
+        std::shared_ptr<sockaddr_in> _s_in,
+        // socklen_t _s_in_len,
+        Server& _server
+    )
+        : fh(_fh)
+        , loop(_loop)
+        , s_in(_s_in)
+        // , s_in_len(_s_in_len)
+        , server(_server)
+    {
         conn_port = 0;
         protocol_version = 0;
         destroyed = false;
@@ -145,7 +152,7 @@ namespace Skree {
         ev_io_stop(loop, &watcher.watcher);
         shutdown(fh, SHUT_RDWR);
         close(fh);
-        free(s_in);
+        // free(s_in);
 
         if(peer_id != nullptr) {
             auto known_peer = known_peers.find(peer_id);
@@ -233,8 +240,8 @@ namespace Skree {
         pthread_mutex_unlock(&write_queue_mutex);
         pthread_mutex_destroy(&write_queue_mutex);
 
-        if(peer_name != nullptr) free(peer_name);
-        if(conn_name != nullptr) free(conn_name);
+        // if(peer_name != nullptr) free(peer_name);
+        // if(conn_name != nullptr) free(conn_name);
     }
 
     std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Client::get_pending_write() {
@@ -353,23 +360,23 @@ namespace Skree {
                     std::string str ("recv(");
 
                     {
-                        const char* peer_id = client->get_peer_id();
+                        const auto& peer_id = client->get_peer_id();
 
-                        if(peer_id == nullptr)
-                            str += "(null)";
+                        if(peer_id)
+                            str += peer_id->data;
                         else
-                            str += peer_id;
+                            str += "(null)";
                     }
 
                     str += '/';
 
                     {
-                        const char* conn_id = client->get_conn_id();
+                        const auto& conn_id = client->get_conn_id();
 
                         if(conn_id == nullptr)
-                            str += "(null)";
+                            str += conn_id->data;
                         else
-                            str += conn_id;
+                            str += "(null)";
                     }
 
                     str += ')';

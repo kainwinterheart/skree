@@ -42,12 +42,12 @@ namespace Skree {
 
                 (*events.get())[cnt].reset(new in_packet_r_ctx_event {
                     .id_net = *(uint64_t*)(args->data + in_pos),
-                    .id = (char*)malloc(21),
+                    // .id = (char*)malloc(21),
                     .len = ntohl(*(uint32_t*)(args->data + in_pos + sizeof(uint64_t))),
                     .data = (args->data + in_pos + sizeof(uint64_t) + sizeof(uint32_t))
                 });
 
-                sprintf((*events.get())[cnt]->id, "%llu", ntohll((*events.get())[cnt]->id_net)); // TODO: is this really necessary?
+                // sprintf((*events.get())[cnt]->id, "%llu", ntohll((*events.get())[cnt]->id_net)); // TODO: is this really necessary?
                 // Utils::cluck(2, "repl got id: %lu\n", ntohll(events[cnt]->id_net));
 
                 in_pos += sizeof(uint64_t) + sizeof(uint32_t) + (*events.get())[cnt]->len;
@@ -65,9 +65,15 @@ namespace Skree {
                 const uint32_t len (ntohl(*(uint32_t*)(args->data + in_pos)));
                 in_pos += sizeof(len);
 
+                std::shared_ptr<Utils::muh_str_t> hostname;
+                hostname.reset(new Utils::muh_str_t {
+                    .own = true,
+                    .len = len,
+                    .data = strndup(args->data + in_pos, len)
+                });
+
                 (*peers.get())[cnt].reset(new packet_r_ctx_peer {
-                    .hostname_len = len,
-                    .hostname = args->data + in_pos,
+                    .hostname = hostname,
                     .port = ntohl(*(uint32_t*)(args->data + in_pos + len + 1))
                 });
 

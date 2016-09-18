@@ -15,7 +15,7 @@ namespace Skree {
             in_pos += sizeof(port);
 
             // TODO: (char*)(char[len])
-            char* _peer_id = Utils::make_peer_id(host_len, host, port);
+            auto _peer_id = Utils::make_peer_id(host_len, host, port);
             const auto conn_id = client.get_conn_id();
 
             auto& known_peers = server.known_peers;
@@ -32,14 +32,14 @@ namespace Skree {
                 const auto& list = known_peers[_peer_id];
 
                 for(const auto& client : list) {
-                    if(strcmp(conn_id, client->get_conn_id()) == 0) {
+                    if(strcmp(conn_id->data, client->get_conn_id()->data) == 0) {
                         found = true;
                         break;
                     }
                 }
 
                 if(found) {
-                    free(_peer_id);
+                    // free(_peer_id);
                     // free(host);
                     args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
 
@@ -49,7 +49,14 @@ namespace Skree {
             }
 
             if(args->out->get_opcode() == SKREE_META_OPCODE_K) {
-                client.set_peer_name(host_len, strndup(host, host_len));
+                std::shared_ptr<Utils::muh_str_t> _peer_name;
+                _peer_name.reset(new Utils::muh_str_t {
+                    .own = true,
+                    .len = host_len,
+                    .data = strndup(host, host_len)
+                });
+
+                client.set_peer_name(_peer_name);
                 client.set_peer_port(port);
                 client.set_peer_id(_peer_id);
 

@@ -15,19 +15,24 @@ namespace Skree {
                 for(auto& it : peers_to_discover_copy) {
                     auto peer_to_discover = it.second;
 
-                    sockaddr_in* addr;
+                    std::shared_ptr<sockaddr_in> addr;
                     socklen_t addr_len;
                     int fh;
 
-                    if(!do_connect(peer_to_discover->host, peer_to_discover->port, addr, addr_len, fh)) {
+                    if(!do_connect(
+                        peer_to_discover->host->data,
+                        peer_to_discover->port,
+                        addr,
+                        addr_len,
+                    fh)) {
                         continue;
                     }
 
-                    char* conn_name = Utils::get_host_from_sockaddr_in(addr);
+                    auto conn_name = Utils::get_host_from_sockaddr_in(addr);
                     uint32_t conn_port = Utils::get_port_from_sockaddr_in(addr);
-                    char* conn_id = Utils::make_peer_id(strlen(conn_name), conn_name, conn_port);
+                    auto conn_id = Utils::make_peer_id(conn_name->len, conn_name->data, conn_port);
 
-                    free(conn_name);
+                    // free(conn_name);
                     bool found = false;
 
                     {
@@ -66,12 +71,12 @@ namespace Skree {
                         //     Utils::cluck(2, "no %s in me", conn_id);
                     }
 
-                    free(conn_id);
+                    // free(conn_id);
 
                     if(found) {
                         shutdown(fh, SHUT_RDWR);
                         close(fh);
-                        free(addr);
+                        // free(addr);
                         continue;
                     }
 
@@ -82,8 +87,7 @@ namespace Skree {
                             on_new_client(client);
                             cb1(client);
                         },
-                        .s_in = addr,
-                        .s_in_len = addr_len
+                        .s_in = addr
                     });
 
                     server.push_new_client(new_client);
@@ -96,7 +100,7 @@ namespace Skree {
         bool Discovery::do_connect(
             const char* host,
             uint32_t peer_port,
-            sockaddr_in*& addr,
+            std::shared_ptr<sockaddr_in>& addr,
             socklen_t& addr_len,
             int& fh
         ) {
@@ -118,7 +122,7 @@ namespace Skree {
             }
 
             int yes = 1;
-            addr = (sockaddr_in*)malloc(sizeof(*addr));
+            addr.reset(new sockaddr_in);
             bool connected = false;
 
             for(addrinfo* ai_it = service_info; ai_it != nullptr; ai_it = ai_it->ai_next) {
@@ -182,10 +186,10 @@ namespace Skree {
 
             freeaddrinfo(service_info);
 
-            if(connected && (getpeername(fh, (sockaddr*)addr, &addr_len) == -1)) {
+            if(connected && (getpeername(fh, (sockaddr*)addr.get(), &addr_len) == -1)) {
                 perror("getpeername");
                 close(fh);
-                free(addr);
+                // free(addr);
                 connected = false;
             }
 
@@ -227,42 +231,44 @@ namespace Skree {
                 uint32_t cnt (ntohl(*(uint32_t*)(args->data + in_pos)));
                 in_pos += sizeof(cnt);
 
-                uint32_t host_len;
-                uint32_t port;
-                char* _peer_id;
                 bool got_new_peers = false;
-                peers_to_discover_t::iterator prev_item;
-                peers_to_discover_t::iterator peers_to_discover_end;
                 auto& peers_to_discover = server.peers_to_discover;
 
                 while(cnt > 0) {
                     --cnt;
 
-                    host_len = ntohl(*(uint32_t*)(args->data + in_pos));
+                    uint32_t host_len = ntohl(*(uint32_t*)(args->data + in_pos));
                     in_pos += sizeof(host_len);
 
                     const char* host = args->data + in_pos;
                     in_pos += host_len + 1;
 
-                    port = ntohl(*(uint32_t*)(args->data + in_pos));
+                    uint32_t port = ntohl(*(uint32_t*)(args->data + in_pos));
                     in_pos += sizeof(port);
 
-                    _peer_id = Utils::make_peer_id(host_len, host, port);
+                    auto _peer_id = Utils::make_peer_id(host_len, host, port);
 
-                    peers_to_discover_end = peers_to_discover.lock();
-                    prev_item = peers_to_discover.find(_peer_id);
+                    auto peers_to_discover_end = peers_to_discover.lock();
+                    auto prev_item = peers_to_discover.find(_peer_id);
 
                     if(prev_item == peers_to_discover_end) {
                         // Utils::cluck("[discovery] fill peers_to_discover: %s:%u\n", host, port);
-                        peers_to_discover[_peer_id] = new peer_to_discover_t {
-                            .host = strndup(host, host_len),
+                        std::shared_ptr<Utils::muh_str_t> _host;
+                        _host.reset(new Utils::muh_str_t {
+                            .own = true,
+                            .len = host_len,
+                            .data = strndup(host, host_len)
+                        });
+
+                        peers_to_discover[_peer_id].reset(new peer_to_discover_t {
+                            .host = _host,
                             .port = port
-                        };
+                        });
 
                         got_new_peers = true;
 
-                    } else {
-                        free(_peer_id);
+                    // } else {
+                    //     free(_peer_id);
                         // free(host);
                     }
 
@@ -297,7 +303,7 @@ namespace Skree {
                     auto& list = known_peer->second;
 
                     for(const auto& peer : list) {
-                        if(strcmp(conn_id, peer->get_conn_id()) == 0) {
+                        if(strcmp(conn_id->data, peer->get_conn_id()->data) == 0) {
                             args->stop = true;
                             break;
                         }
@@ -318,34 +324,35 @@ namespace Skree {
                     for(int i = 0; i < max_parallel_connections; ++i) {
                         const auto& peer_name = client.get_peer_name();
                         const auto& peer_port = client.get_peer_port();
-                        sockaddr_in* addr;
+                        std::shared_ptr<sockaddr_in> addr;
                         socklen_t addr_len;
                         int fh;
 
-                        if(!do_connect(peer_name, peer_port, addr, addr_len, fh)) {
+                        if(!do_connect(
+                            peer_name->data,
+                            peer_port,
+                            addr,
+                            addr_len,
+                            fh
+                        )) {
                             break;
                         }
-
-                        const auto& peer_id_clone = strdup(peer_id);
-                        const auto& peer_name_clone = strdup(peer_name);
-                        const auto& peer_name_len = client.get_peer_name_len();
 
                         std::shared_ptr<new_client_t> new_client;
                         new_client.reset(new new_client_t {
                             .fh = fh,
                             .cb = [
                                 this,
-                                peer_name_clone,
+                                peer_name,
                                 peer_port,
-                                peer_id_clone,
-                                peer_name_len
+                                peer_id
                             ](Skree::Client& client) {
                                 on_new_client(client);
-                                client.set_peer_name(peer_name_len, peer_name_clone);
+                                client.set_peer_name(peer_name);
                                 client.set_peer_port(peer_port);
-                                client.set_peer_id(peer_id_clone);
+                                client.set_peer_id(peer_id);
 
-                                auto _cb = [this, peer_id_clone](
+                                auto _cb = [this, peer_id](
                                     Skree::Client& client,
                                     const Skree::Base::PendingRead::QueueItem& item,
                                     std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args
@@ -359,9 +366,9 @@ namespace Skree {
                                     auto known_peers_end = known_peers.lock();
                                     known_peers_by_conn_id.lock();
 
-                                    auto* conn_id = client.get_conn_id();
+                                    auto conn_id = client.get_conn_id();
 
-                                    known_peers[peer_id_clone].push_back(&client);
+                                    known_peers[peer_id].push_back(&client);
                                     known_peers_by_conn_id[conn_id].push_back(&client);
 
                                     known_peers_by_conn_id.unlock();
@@ -381,8 +388,7 @@ namespace Skree {
 
                                 client.push_write_queue(h_req);
                             },
-                            .s_in = addr,
-                            .s_in_len = addr_len
+                            .s_in = addr
                         });
 
                         server.push_new_client(new_client);
@@ -439,7 +445,7 @@ namespace Skree {
                 ));
 
                 _tmp = client.get_conn_port();
-                char* _peer_id = Utils::make_peer_id(len, peer_name, _tmp);
+                auto _peer_id = Utils::make_peer_id(len, peer_name, _tmp);
                 bool accepted = false;
 
                 auto& known_peers = server.known_peers;
@@ -448,19 +454,17 @@ namespace Skree {
                 known_peers.unlock();
 
                 if(known_peer == known_peers_end) {
-                    if(strcmp(_peer_id, server.my_peer_id) == 0) {
+                    if(strcmp(_peer_id->data, server.my_peer_id->data) == 0) {
                         auto& me = server.me;
                         auto me_end = me.lock();
                         auto it = me.find(_peer_id);
 
                         if(it == me_end) {
-                            char* _conn_peer_id = client.get_conn_id();
-
                             server.me[_peer_id] = true;
-                            server.me[strdup(_conn_peer_id)] = true;
+                            server.me[client.get_conn_id()] = true;
 
-                        } else {
-                            free(_peer_id);
+                        // } else {
+                        //     free(_peer_id);
                         }
 
                         me.unlock();
@@ -468,15 +472,22 @@ namespace Skree {
                         // free(peer_name);
 
                     } else {
-                        client.set_peer_name(len, strndup(peer_name, len));
+                        std::shared_ptr<Utils::muh_str_t> _peer_name;
+                        _peer_name.reset(new Utils::muh_str_t {
+                            .own = true,
+                            .len = len,
+                            .data = strndup(peer_name, len)
+                        });
+
+                        client.set_peer_name(_peer_name);
                         client.set_peer_port(_tmp);
                         client.set_peer_id(_peer_id);
 
                         accepted = true;
                     }
 
-                } else {
-                    free(_peer_id);
+                // } else {
+                //     free(_peer_id);
                     // free(peer_name);
                 }
 

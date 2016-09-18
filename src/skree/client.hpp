@@ -31,18 +31,16 @@ namespace Skree {
         int fh;
         struct ev_loop* loop;
         pthread_mutex_t write_queue_mutex;
-        char* peer_name;
-        size_t peer_name_len;
+        std::shared_ptr<Utils::muh_str_t> peer_name;
         uint16_t peer_port;
-        char* conn_name;
-        size_t conn_name_len;
+        std::shared_ptr<Utils::muh_str_t> conn_name;
         uint16_t conn_port;
-        char* peer_id;
-        char* conn_id;
+        std::shared_ptr<Utils::muh_str_t> peer_id;
+        std::shared_ptr<Utils::muh_str_t> conn_id;
         std::deque<std::shared_ptr<Base::PendingWrite::QueueItem>> write_queue;
         std::deque<std::shared_ptr<const Base::PendingRead::QueueItem>> pending_reads;
-        sockaddr_in* s_in;
-        socklen_t s_in_len;
+        std::shared_ptr<sockaddr_in> s_in;
+        // socklen_t s_in_len;
         Server& server;
         uint32_t protocol_version;
         uint32_t max_parallel_connections = 1;
@@ -62,15 +60,20 @@ namespace Skree {
     public:
         std::shared_ptr<Base::PendingRead::Callback::Args> active_read;
 
-        Client(int _fh, struct ev_loop* _loop, sockaddr_in* _s_in, socklen_t _s_in_len, Server& _server);
+        Client(
+            int _fh,
+            struct ev_loop* _loop,
+            std::shared_ptr<sockaddr_in> _s_in,
+            // socklen_t _s_in_len,
+            Server& _server
+        );
+
         virtual ~Client();
 
-        const char* get_peer_name() const { return peer_name; }
-        const uint32_t get_peer_name_len() const { return peer_name_len; }
-        const uint16_t get_peer_port() const { return peer_port; }
+        std::shared_ptr<Utils::muh_str_t> get_peer_name() const { return peer_name; }
+        uint16_t get_peer_port() const { return peer_port; }
 
-        void set_peer_name(uint32_t _peer_name_len, char* _peer_name) {
-            peer_name_len = _peer_name_len;
+        void set_peer_name(const std::shared_ptr<Utils::muh_str_t>& _peer_name) {
             peer_name = _peer_name;
         }
 
@@ -78,7 +81,7 @@ namespace Skree {
             peer_port = _peer_port;
         }
 
-        void set_peer_id(char* _peer_id) {
+        void set_peer_id(const std::shared_ptr<Utils::muh_str_t>& _peer_id) {
             peer_id = _peer_id;
         }
 
@@ -88,29 +91,23 @@ namespace Skree {
             return conn_port;
         }
 
-        char* get_conn_name() {
-            if(conn_name != nullptr) return conn_name;
+        std::shared_ptr<Utils::muh_str_t> get_conn_name() {
+            if(conn_name) return conn_name;
             conn_name = Utils::get_host_from_sockaddr_in(s_in);
-            conn_name_len = strlen(conn_name);
             return conn_name;
         }
 
-        uint32_t get_conn_name_len() {
-            if(conn_name == nullptr) get_conn_name();
-            return conn_name_len;
-        }
-
-        char* get_peer_id() {
-            if(peer_id != nullptr) return peer_id;
-            if(peer_name == nullptr) return nullptr;
-            peer_id = Utils::make_peer_id(peer_name_len, peer_name, peer_port);
+        std::shared_ptr<Utils::muh_str_t> get_peer_id() {
+            if(peer_id) return peer_id;
+            if(!peer_name) return std::shared_ptr<Utils::muh_str_t>();
+            peer_id = Utils::make_peer_id(peer_name->len, peer_name->data, peer_port);
             return peer_id;
         }
 
-        char* get_conn_id() {
+        std::shared_ptr<Utils::muh_str_t> get_conn_id() {
             if(conn_id != nullptr) return conn_id;
-            char* _conn_name = get_conn_name();
-            conn_id = Utils::make_peer_id(conn_name_len, _conn_name, get_conn_port());
+            const auto& _conn_name = get_conn_name();
+            conn_id = Utils::make_peer_id(_conn_name->len, _conn_name->data, get_conn_port());
             return conn_id;
         }
 
@@ -128,7 +125,7 @@ namespace Skree {
             if(_protocol_version == 0) {
                 Utils::cluck(3,
                     "Client %s sent invalid protocol version: %u\n",
-                    get_conn_id(),
+                    get_conn_id()->data,
                     _protocol_version
                 );
             }

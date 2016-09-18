@@ -8,7 +8,7 @@
 // #include <string>
 
 namespace Skree {
-    typedef std::unordered_map<char*, Utils::muh_str_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> get_keys_result_t;
+    // typedef std::unordered_map<char*, Utils::muh_str_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> get_keys_result_t;
 
     class DbWrapper : public kyotocabinet::HashDB {
     public:

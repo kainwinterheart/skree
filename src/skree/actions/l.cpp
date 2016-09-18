@@ -6,11 +6,6 @@ namespace Skree {
             uint32_t _known_peers_len;
             args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
-            Client* peer;
-            uint32_t peer_name_len;
-            uint32_t _peer_name_len;
-            uint32_t _peer_port;
-
             auto& known_peers = server.known_peers;
             known_peers.lock();
 
@@ -19,16 +14,16 @@ namespace Skree {
 
             for(auto& it : known_peers) {
                 if(it.second.empty()) continue;
-                peer = it.second[0];
+                auto peer = it.second[0];
 
-                peer_name_len = peer->get_peer_name_len();
-                _peer_name_len = htonl(peer_name_len);
-                _peer_port = htonl(peer->get_peer_port());
+                const auto& peer_name = peer->get_peer_name();
+                uint32_t _peer_name_len = htonl(peer_name->len);
+                uint32_t _peer_port = htonl(peer->get_peer_port());
 
                 // out->grow(sizeof(_peer_name_len) + peer_name_len + sizeof(_peer_port));
 
                 args->out->copy_concat(sizeof(_peer_name_len), &_peer_name_len);
-                args->out->concat(peer_name_len + 1, peer->get_peer_name());
+                args->out->concat(peer_name->len + 1, peer_name->data);
                 args->out->copy_concat(sizeof(_peer_port), &_peer_port);
             }
 

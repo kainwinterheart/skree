@@ -75,23 +75,23 @@ namespace Skree {
                         std::string str ("write(");
 
                         {
-                            const char* peer_id = client.get_peer_id();
+                            const auto& peer_id = client.get_peer_id();
 
-                            if(peer_id == nullptr)
-                                str += "(null)";
+                            if(peer_id)
+                                str += peer_id->data;
                             else
-                                str += peer_id;
+                                str += "(null)";
                         }
 
                         str += '/';
 
                         {
-                            const char* conn_id = client.get_conn_id();
+                            const auto& conn_id = client.get_conn_id();
 
-                            if(conn_id == nullptr)
-                                str += "(null)";
+                            if(conn_id)
+                                str += conn_id->data;
                             else
-                                str += conn_id;
+                                str += "(null)";
                         }
 
                         str += ')';

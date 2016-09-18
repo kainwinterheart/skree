@@ -27,17 +27,18 @@ namespace Skree {
             const uint64_t rid (ntohll(*(uint64_t*)(args->data + in_pos)));
             in_pos += sizeof(rid);
 
-            size_t suffix_len =
+            auto suffix = Utils::NewStr(
                 peer_id_len
                 + 1 // :
                 + 20 // rid
-            ;
-            char suffix [suffix_len + 1];
-            sprintf(suffix, "%s:%lu", peer_id, rid);
+            );
+
+            sprintf(suffix->data, "%s:%lu", peer_id, rid);
+            suffix->len = strlen(suffix->data);
 
             auto& event = *(eit->second);
 
-            server.repl_clean(suffix_len, suffix, event);
+            server.repl_clean(suffix->len, suffix->data, event);
             event.unfailover(suffix);
         }
 

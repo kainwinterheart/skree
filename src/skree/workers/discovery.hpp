@@ -22,7 +22,7 @@ namespace Skree {
             bool do_connect(
                 const char* host,
                 uint32_t peer_port,
-                sockaddr_in*& addr,
+                std::shared_ptr<sockaddr_in>& addr,
                 socklen_t& addr_len,
                 int& fh
             );

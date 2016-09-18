@@ -45,32 +45,34 @@ namespace Skree {
     struct new_client_t {
         int fh;
         std::function<void(Client&)> cb;
-        sockaddr_in* s_in;
-        socklen_t s_in_len;
+        std::shared_ptr<sockaddr_in> s_in;
     };
 
     typedef Utils::AtomicHashMap<uint64_t, uint64_t> wip_t;
     typedef Utils::AtomicHashMap<
-        const char*, Utils::RoundRobinVector<Client*>,
-        Utils::char_pointer_hasher,
-        Utils::char_pointer_comparator
+        std::shared_ptr<Utils::muh_str_t>,
+        Utils::RoundRobinVector<Client*>,
+        Utils::TMuhStrPointerHasher,
+        Utils::TMuhStrPointerComparator
     > known_peers_t;
 
     typedef Utils::AtomicHashMap<
-        const char*, bool,
-        Utils::char_pointer_hasher,
-        Utils::char_pointer_comparator
+        std::shared_ptr<Utils::muh_str_t>,
+        bool,
+        Utils::TMuhStrPointerHasher,
+        Utils::TMuhStrPointerComparator
     > me_t;
 
     struct peer_to_discover_t {
-        const char* host;
+        std::shared_ptr<Utils::muh_str_t> host;
         uint32_t port;
     };
 
     typedef Utils::AtomicHashMap<
-        const char*, const peer_to_discover_t*,
-        Utils::char_pointer_hasher,
-        Utils::char_pointer_comparator
+        std::shared_ptr<Utils::muh_str_t>,
+        std::shared_ptr<peer_to_discover_t>,
+        Utils::TMuhStrPointerHasher,
+        Utils::TMuhStrPointerComparator
     > peers_to_discover_t;
 
     typedef std::pair<
@@ -106,8 +108,7 @@ namespace Skree {
         char* my_hostname;
         uint32_t my_hostname_len;
         uint32_t my_port;
-        char* my_peer_id;
-        uint32_t my_peer_id_len;
+        std::shared_ptr<Utils::muh_str_t> my_peer_id;
         uint32_t my_peer_id_len_net;
 
         known_peers_t known_peers;

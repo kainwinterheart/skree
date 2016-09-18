@@ -12,15 +12,14 @@
 namespace Skree {
     struct in_packet_r_ctx_event {
         const char* data;
-        char* id;
+        // char* id;
         uint64_t id_net;
         uint32_t len;
     };
 
     struct packet_r_ctx_peer {
-        uint32_t hostname_len;
+        std::shared_ptr<Utils::muh_str_t> hostname;
         uint32_t port;
-        const char* hostname;
     };
 
     struct in_packet_r_ctx {
@@ -39,7 +38,7 @@ namespace Skree {
         uint32_t replication_factor;
         uint32_t pending;
         Client* client;
-        std::shared_ptr<std::vector<const char*>> candidate_peer_ids;
+        std::shared_ptr<std::vector<std::shared_ptr<Utils::muh_str_t>>> candidate_peer_ids;
         std::shared_ptr<std::list<std::shared_ptr<packet_r_ctx_peer>>> accepted_peers;
         std::shared_ptr<const Skree::Base::PendingWrite::QueueItem> r_req;
         std::shared_ptr<void> origin;
@@ -51,8 +50,7 @@ namespace Skree {
         Utils::known_event_t* event;
         std::shared_ptr<Utils::muh_str_t> data;
         std::shared_ptr<Utils::muh_str_t> peer_id;
-        char* failover_key;
-        uint64_t failover_key_len;
+        std::shared_ptr<Utils::muh_str_t> failover_key;
         std::shared_ptr<uint32_t> count_replicas;
         std::shared_ptr<uint32_t> pending;
         std::shared_ptr<uint32_t> acceptances;

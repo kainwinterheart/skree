@@ -14,7 +14,6 @@ namespace Skree {
                 if(args->opcode == SKREE_META_OPCODE_K) {
                     std::shared_ptr<packet_r_ctx_peer> peer;
                     peer.reset(new packet_r_ctx_peer {
-                        .hostname_len = client.get_peer_name_len(),
                         .hostname = client.get_peer_name(),
                         .port = htonl(client.get_peer_port())
                     });

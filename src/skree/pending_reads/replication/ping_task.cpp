@@ -14,7 +14,7 @@ namespace Skree {
                     // Utils::cluck(2, "[ReplicationPingTask] %s: c -> k\n", ctx->failover_key);
                     auto& event = *(ctx->event);
 
-                    server.repl_clean(ctx->failover_key_len, ctx->failover_key, event);
+                    server.repl_clean(ctx->failover_key->len, ctx->failover_key->data, event);
                     event.unfailover(ctx->failover_key);
 
                 } else {

@@ -29,13 +29,14 @@ namespace Skree {
                 return;
             }
 
-            char* suffix = (char*)malloc(
+            auto suffix = Utils::NewStr(
                 peer_id_len
                 + 1 // :
                 + 20 // rid
                 + 1 // \0
             );
-            sprintf(suffix, "%s:%lu", peer_id, rid);
+            sprintf(suffix->data, "%s:%lu", peer_id, rid);
+            suffix->len = strlen(suffix->data);
 
             auto& event = *(eit->second);
             auto& failover = event.failover;
@@ -44,9 +45,8 @@ namespace Skree {
 
             // TODO: following checks could possibly flap
             if(it == failover_end) {
-                auto suffix_len = strlen(suffix);
                 auto& db = *(event.r_queue->kv);
-                auto size = db.check(suffix, suffix_len);
+                auto size = db.check(suffix->data, suffix->len);
 
                 if(size == 1) {
                     // this instance has not tried to failover the event yet

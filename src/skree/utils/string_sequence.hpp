@@ -5,6 +5,8 @@
 
 namespace Skree {
     namespace Utils {
+        struct muh_str_t;
+
         class StringSequence {
         public:
             struct TItem {
@@ -14,6 +16,7 @@ namespace Skree {
 
         private:
             std::deque<TItem> sequence;
+            std::deque<std::shared_ptr<muh_str_t>> memory;
 
         public:
             inline void concat(size_t _len, const char* _data) {
@@ -22,6 +25,8 @@ namespace Skree {
                     .data = _data
                 });
             }
+
+            void concat(const std::shared_ptr<muh_str_t>& data);
 
             inline StringSequence() {
             }

@@ -21,7 +21,6 @@ namespace Skree {
                     new_client->fh,
                     ((Args*)args)->loop,
                     new_client->s_in,
-                    new_client->s_in_len,
                     server
                 );
 
