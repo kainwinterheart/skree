@@ -65,12 +65,12 @@ namespace Skree {
             inline void sync() {
                 if(msync(addr, size, MS_SYNC) == -1) {
                     perror("msync");
-                    abort();
+                    // abort();
                 }
 
                 if(fsync(fh) == -1) {
                     perror("fsync");
-                    abort();
+                    // abort();
                 }
             }
         };

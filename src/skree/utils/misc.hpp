@@ -50,6 +50,7 @@ namespace Skree {
             char* data;
             uint32_t len;
             bool own;
+            std::shared_ptr<muh_str_t> origin; // TODO: this is shit
 
             ~muh_str_t() {
                 if(own)
@@ -210,6 +211,7 @@ namespace Skree {
 
             memcpy(out->data, peer_name, peer_name_len);
             sprintf(out->data + peer_name_len, ":%u", peer_port);
+            out->len = strlen(out->data);
 
             return out;
         }
@@ -322,6 +324,40 @@ namespace Skree {
             fprintf(stderr, "\n");
             fprintf(stderr, "%s", longmess(2).c_str());
             fprintf(stderr, "\n");
+        }
+
+        static inline bool SetTimeout(int fh, time_t timeoutMilliseconds) {
+            timeval tv;
+            tv.tv_sec = (timeoutMilliseconds / 1000);
+            tv.tv_usec = (timeoutMilliseconds % 1000) * 1000;
+
+            if(setsockopt(fh, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1) {
+                perror("setsockopt");
+                return false;
+            }
+
+            if(setsockopt(fh, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == -1) {
+                perror("setsockopt");
+                return false;
+            }
+
+            return true;
+        }
+
+        static inline bool SetupSocket(int fh, time_t timeoutMilliseconds) {
+            int yes = 1;
+
+            if(setsockopt(fh, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes)) == -1) {
+                perror("setsockopt");
+                return false;
+            }
+
+            if(setsockopt(fh, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) == -1) {
+                perror("setsockopt");
+                return false;
+            }
+
+            return Utils::SetTimeout(fh, timeoutMilliseconds);
         }
     }
 }

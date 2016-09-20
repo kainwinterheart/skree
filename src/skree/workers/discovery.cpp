@@ -121,7 +121,6 @@ namespace Skree {
                 return false;
             }
 
-            int yes = 1;
             addr.reset(new sockaddr_in);
             bool connected = false;
 
@@ -131,31 +130,8 @@ namespace Skree {
                     continue;
                 }
 
-                if(setsockopt(fh, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes)) == -1) {
-                    perror("setsockopt");
-                    close(fh);
-                    continue;
-                }
-
-                if(setsockopt(fh, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes)) == -1) {
-                    perror("setsockopt");
-                    close(fh);
-                    continue;
-                }
-
                 // TODO: discovery should be async too
-                timeval tv;
-                tv.tv_sec = (server.discovery_timeout_milliseconds / 1000);
-                tv.tv_usec = ((server.discovery_timeout_milliseconds % 1000) * 1000);
-
-                if(setsockopt(fh, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1) {
-                    perror("setsockopt");
-                    close(fh);
-                    continue;
-                }
-
-                if(setsockopt(fh, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == -1) {
-                    perror("setsockopt");
+                if(!Utils::SetupSocket(fh, server.discovery_timeout_milliseconds)) {
                     close(fh);
                     continue;
                 }

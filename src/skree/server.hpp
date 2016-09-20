@@ -95,7 +95,7 @@ namespace Skree {
     public:
         const size_t read_size = 131072;
         const uint64_t no_failover_time = 10 * 60;
-        const time_t discovery_timeout_milliseconds = 3000;
+        const time_t discovery_timeout_milliseconds = 1000;
         const uint32_t max_replication_factor = 3;
         const uint64_t job_time = 10 * 60;
 
@@ -148,7 +148,7 @@ namespace Skree {
 
         void begin_replication(std::shared_ptr<out_packet_r_ctx> r_ctx);
         void save_peers_to_discover();
-        void replication_exec(out_packet_i_ctx& ctx);
+        void replication_exec(std::shared_ptr<out_packet_i_ctx> ctx);
 
         short get_event_state(
             uint64_t id,

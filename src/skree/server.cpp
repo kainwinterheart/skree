@@ -205,7 +205,15 @@ namespace Skree {
 
             peers_to_discover.unlock();
 
-            serialized_peers.concat(_peer_id);
+            std::shared_ptr<Utils::muh_str_t> __peer_id;
+            __peer_id.reset(new Utils::muh_str_t {
+                .own = false,
+                .len = _peer_id->len + 1,
+                .data = _peer_id->data,
+                .origin = _peer_id
+            });
+
+            serialized_peers.concat(__peer_id);
 
             // TODO
             // if(!keep_peer_id) {
@@ -668,24 +676,24 @@ namespace Skree {
         ev_async_send(thread.first->loop, (ev_async*)thread.first->watcher.get());
     }
 
-    void Server::replication_exec(out_packet_i_ctx& ctx) {
-        // Utils::cluck(2, "Replication exec for task %lu\n", ctx.rid);
+    void Server::replication_exec(std::shared_ptr<out_packet_i_ctx> ctx) {
+        // Utils::cluck(2, "Replication exec for task %lu\n", ctx->rid);
 
-        if(*(ctx.acceptances) == *(ctx.count_replicas)) {
+        if(*(ctx->acceptances) == *(ctx->count_replicas)) {
             auto events = std::make_shared<std::vector<std::shared_ptr<in_packet_e_ctx_event>>>(1);
 
             (*events.get())[0].reset(new in_packet_e_ctx_event {
-                .len = ctx.data->len,
-                .data = ctx.data->data,
+                .len = ctx->data->len,
+                .data = ctx->data->data,
                 .id = nullptr
             });
 
             in_packet_e_ctx e_ctx {
                 .cnt = 1,
-                .event_name_len = ctx.event->id_len,
-                .event_name = ctx.event->id,
+                .event_name_len = ctx->event->id_len,
+                .event_name = ctx->event->id,
                 .events = events,
-                .origin = std::shared_ptr<void>(ctx.origin, (void*)ctx.origin.get())
+                .origin = std::shared_ptr<void>(ctx, (void*)ctx.get())
             };
 
             uint64_t task_ids[1];
@@ -694,28 +702,31 @@ namespace Skree {
                 0,
                 nullptr,
                 task_ids,
-                *(ctx.event->queue)
+                *(ctx->event->queue)
             );
 
-            auto& failover = ctx.event->failover;
+            auto& failover = ctx->event->failover;
             failover.lock();
-            failover[ctx.failover_key] = task_ids[0];
+            failover[ctx->failover_key] = task_ids[0];
             failover.unlock();
 
             // TODO: this should probably make 'i' packet return 'f' // TODO: why? // oh, okay
             repl_clean(
-                ctx.failover_key->len,
-                ctx.failover_key->data,
-                *(ctx.event)
+                ctx->failover_key->len,
+                ctx->failover_key->data,
+                *(ctx->event)
             );
 
-            if(ctx.rpr != nullptr) {
-                // Utils::cluck(2, "asd: %u", ctx.peers_cnt);
+            if(ctx->rpr != nullptr) {
+                // Utils::cluck(2, "asd: %u", ctx->peers_cnt);
                 // const muh_str_t*& peer_id, const known_event_t*& event,
                 // const uint64_t& rid
-                auto x_req = Skree::Actions::X::out_init(ctx.peer_id, *(ctx.event), ctx.rid);
+                auto x_req = Skree::Actions::X::out_init(ctx->peer_id, *(ctx->event), ctx->rid);
                 size_t offset = 0;
                 bool written = false;
+
+                x_req->memorize(e_ctx.origin);
+
                 std::shared_ptr<Utils::muh_str_t> _peer_id;
                 _peer_id.reset(new Utils::muh_str_t {
                     .own = false,
@@ -723,10 +734,10 @@ namespace Skree {
                     .data = nullptr
                 });
 
-                while(ctx.peers_cnt > 0) {
-                    // Utils::cluck(2, "zxc: %u", ctx.peers_cnt);
-                    _peer_id->len = strlen(ctx.rpr + offset);
-                    _peer_id->data = ctx.rpr + offset;
+                while(ctx->peers_cnt > 0) {
+                    // Utils::cluck(2, "zxc: %u", ctx->peers_cnt);
+                    _peer_id->len = strlen(ctx->rpr + offset);
+                    _peer_id->data = ctx->rpr + offset;
                     offset += _peer_id->len + 1;
 
                     auto known_peers_end = known_peers.lock();
@@ -738,7 +749,7 @@ namespace Skree {
                         written = true;
                     }
 
-                    --(ctx.peers_cnt);
+                    --(ctx->peers_cnt);
                 }
                 // Utils::cluck(1, "qwe");
 
@@ -749,24 +760,24 @@ namespace Skree {
         } else {
             // TODO: think about repl_clean()
             repl_clean(
-                ctx.failover_key->len,
-                ctx.failover_key->data,
-                *(ctx.event)
+                ctx->failover_key->len,
+                ctx->failover_key->data,
+                *(ctx->event)
             );
 
-            ctx.event->unfailover(ctx.failover_key);
+            ctx->event->unfailover(ctx->failover_key);
 
-            // free(ctx.data->data);
-            // delete ctx.data;
+            // free(ctx->data->data);
+            // delete ctx->data;
         }
 
-        pthread_mutex_destroy(ctx.mutex.get());
+        pthread_mutex_destroy(ctx->mutex.get());
         // Utils::cluck(1, "woot");
 
-        // free(ctx.mutex);
-        // free(ctx.acceptances);
-        // free(ctx.pending);
-        // free(ctx.count_replicas);
+        // free(ctx->mutex);
+        // free(ctx->acceptances);
+        // free(ctx->pending);
+        // free(ctx->count_replicas);
         // free(ctx);
     }
 

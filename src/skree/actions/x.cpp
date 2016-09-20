@@ -31,6 +31,7 @@ namespace Skree {
                 peer_id_len
                 + 1 // :
                 + 20 // rid
+                + 1 // \0
             );
 
             sprintf(suffix->data, "%s:%lu", peer_id, rid);

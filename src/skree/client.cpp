@@ -111,6 +111,7 @@ namespace Skree {
         destroyed = false;
         pthread_mutex_init(&write_queue_mutex, nullptr);
 
+        Utils::SetupSocket(fh, server.discovery_timeout_milliseconds); // TODO: check return value
         fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
 
         add_action_handler<Actions::W>();
@@ -321,7 +322,14 @@ namespace Skree {
             if(active_read->rest() == 0)
                 throw std::logic_error ("Zero-length active_read");
 
-            int read = recv(_watcher->fd, active_read->end(), active_read->rest(), 0);
+            int read = recvfrom(
+                _watcher->fd,
+                active_read->end(),
+                active_read->rest(),
+                MSG_DONTWAIT,
+                NULL,
+                0
+            );
 
             if(read > 0) {
 #ifdef SKREE_NET_DEBUG

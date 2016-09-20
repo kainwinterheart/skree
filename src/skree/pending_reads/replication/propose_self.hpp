@@ -8,7 +8,7 @@ namespace Skree {
         namespace Callbacks {
             class ReplicationProposeSelf : public Skree::Base::PendingRead::Callback {
             private:
-                void continue_replication_exec(out_packet_i_ctx& ctx);
+                void continue_replication_exec(std::shared_ptr<out_packet_i_ctx> ctx);
 
             public:
                 ReplicationProposeSelf(Skree::Server& _server)

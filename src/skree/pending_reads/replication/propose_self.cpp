@@ -16,7 +16,7 @@ namespace Skree {
                 if(args->opcode == SKREE_META_OPCODE_K)
                     ++(*(ctx->acceptances));
 
-                continue_replication_exec(*ctx);
+                continue_replication_exec(ctx);
 
                 return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
             }
@@ -30,16 +30,18 @@ namespace Skree {
                 pthread_mutex_lock(ctx->mutex.get());
                 --(*(ctx->pending));
 
-                continue_replication_exec(*ctx);
+                continue_replication_exec(ctx);
             }
 
-            void ReplicationProposeSelf::continue_replication_exec(out_packet_i_ctx& ctx) {
-                if(*(ctx.pending) == 0) {
-                    pthread_mutex_unlock(ctx.mutex.get());
+            void ReplicationProposeSelf::continue_replication_exec(
+                std::shared_ptr<out_packet_i_ctx> ctx
+            ) {
+                if(*(ctx->pending) == 0) {
+                    pthread_mutex_unlock(ctx->mutex.get());
                     server.replication_exec(ctx);
 
                 } else {
-                    pthread_mutex_unlock(ctx.mutex.get());
+                    pthread_mutex_unlock(ctx->mutex.get());
                 }
             }
         }

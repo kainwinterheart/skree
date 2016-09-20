@@ -40,6 +40,7 @@ namespace Skree {
                 uint32_t* length_ptr;
                 std::stack<char*> stash;
                 char opcode;
+                std::stack<std::shared_ptr<void>> memory;
 
                 QueueItem(const QueueItem& prev);
                 uint32_t calc_body_len() const;
@@ -92,6 +93,14 @@ namespace Skree {
                 {
                     prev.reset(new QueueItem(*_prev));
                     orig = _prev;
+                }
+
+                inline void concat(std::shared_ptr<Utils::muh_str_t> _data) {
+                    if(done)
+                        Throw("push() called on read-only write queue item");
+
+                    data->concat(_data);
+                    real_len += _data->len;
                 }
 
                 inline void concat(uint32_t _len, const char* _data) {
@@ -159,6 +168,10 @@ namespace Skree {
 
                 inline decltype(cb) get_cb() {
                     return cb;
+                }
+
+                inline void memorize(std::shared_ptr<void> ptr) {
+                    memory.push(ptr);
                 }
             };
         }

@@ -324,11 +324,11 @@ namespace Skree {
                         .data = nullptr
                     });
 
-                    // Utils::cluck(2, "asd: %u, %lu, %lu", item->peers_cnt, item->rid, offset);
+                    Utils::cluck(2, "asd: %u, %lu, %lu", item->peers_cnt, item->rid, offset);
                     while(item->peers_cnt > 0) {
-                        // Utils::cluck(2, "qwe: %u", item->peers_cnt);
+                        Utils::cluck(2, "qwe: %u", item->peers_cnt);
                         _peer_id->len = strlen(item->rpr + offset); // TODO: get rid of this shit
-                        // Utils::cluck(2, "eqw: %u", item->peers_cnt);
+                        Utils::cluck(2, "eqw: %u", item->peers_cnt);
                         _peer_id->data = item->rpr + offset;
                         offset += _peer_id->len + 1;
 
@@ -379,7 +379,8 @@ namespace Skree {
                 }
 
                 if(!have_rpr) {
-                    out_packet_i_ctx ctx {
+                    std::shared_ptr<out_packet_i_ctx> ctx;
+                    ctx.reset(new out_packet_i_ctx {
                         .count_replicas = count_replicas,
                         .pending = pending,
                         .acceptances = acceptances,
@@ -392,7 +393,7 @@ namespace Skree {
                         .peers_cnt = 0,
                         .rid = item->rid,
                         .origin = _item
-                    };
+                    });
 
                     server.replication_exec(ctx);
                 }

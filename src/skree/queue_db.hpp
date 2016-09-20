@@ -74,12 +74,12 @@ namespace Skree {
                     str += ')';
 
                     perror(str.c_str());
-                    abort();
+                    // abort();
                 }
 
                 if(fsync(fh) == -1) {
                     perror("fsync");
-                    abort();
+                    // abort();
                 }
             }
 
