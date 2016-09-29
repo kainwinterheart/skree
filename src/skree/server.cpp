@@ -59,12 +59,15 @@ namespace Skree {
         fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
         listen(fh, 100000);
 
-        Utils::server_bound_ev_io socket_watcher;
-        socket_watcher.server = this;
-        struct ev_loop* loop = ev_loop_new(EVBACKEND_KQUEUE | EVBACKEND_EPOLL | EVFLAG_NOSIGMASK);
+        NMuhEv::TLoop loop;
+        auto list = NMuhEv::MakeEvList(1);
 
-        ev_io_init((ev_io*)&socket_watcher, socket_cb, fh, EV_READ);
-        ev_io_start(loop, (ev_io*)&socket_watcher);
+        loop.AddEvent(NMuhEv::TEvSpec {
+            .Ident = (uintptr_t)fh,
+            .Filter = NMuhEv::MUHEV_FILTER_READ,
+            .Flags = NMuhEv::MUHEV_FLAG_NONE,
+            .Ctx = nullptr
+        }, list);
 
         Skree::Workers::Cleanup cleanup (*this);
         cleanup.start();
@@ -156,7 +159,19 @@ namespace Skree {
         Skree::Workers::Processor processor (*this);
         processor.start();
 
-        ev_run(loop, 0); // TODO
+        while(true) { // TODO
+            int triggeredCount = loop.Wait(list);
+            // Utils::cluck(2, "%d", triggeredCount);
+            if(triggeredCount < 0) {
+                perror("kevent");
+                abort();
+
+            } else if(triggeredCount > 0) {
+                for(int i = 0; i < triggeredCount; ++i) {
+                    socket_cb(NMuhEv::GetEvent(list, i));
+                }
+            }
+        }
     }
 
     Server::~Server() {
@@ -640,13 +655,11 @@ namespace Skree {
         }
     }
 
-    void Server::socket_cb(struct ev_loop* loop, ev_io* _watcher, int events) {
-        struct Utils::server_bound_ev_io* watcher = (struct Utils::server_bound_ev_io*)_watcher;
-        auto* server = watcher->server;
+    void Server::socket_cb(const NMuhEv::TEvSpec& event) {
         auto addr = std::make_shared<sockaddr_in>();
         socklen_t len = sizeof(sockaddr_in);
 
-        int fh = accept(_watcher->fd, (sockaddr*)addr.get(), &len);
+        int fh = accept(event.Ident, (sockaddr*)addr.get(), &len);
 
         if(fh < 0) {
             perror("accept");
@@ -663,7 +676,7 @@ namespace Skree {
             .s_in = addr
         });
 
-        server->push_new_client(new_client);
+        push_new_client(new_client);
     }
 
     void Server::push_new_client(std::shared_ptr<new_client_t> new_client) {

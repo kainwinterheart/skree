@@ -22,6 +22,7 @@ namespace Skree {
 
 #include "utils/atomic_hash_map.hpp"
 #include "utils/round_robin_vector.hpp"
+#include "utils/muhev.hpp"
 #include "client.hpp"
 #include "workers/client.hpp"
 #include "actions/e.hpp"
@@ -91,7 +92,7 @@ namespace Skree {
         const uint32_t max_client_threads;
         const uint32_t max_parallel_connections;
         void load_peers_to_discover();
-        static void socket_cb(struct ev_loop* loop, ev_io* watcher, int events);
+        void socket_cb(const NMuhEv::TEvSpec& event);
     public:
         const size_t read_size = 131072;
         const uint64_t no_failover_time = 10 * 60;

@@ -7,7 +7,7 @@ namespace Skree {
             NMuhEv::TLoop loop;
 
             while(true) {
-                auto list = NMuhEv::MakeEvList(ActiveClients.size() + 1);
+                auto list = NMuhEv::MakeEvList((ActiveClients.size() * 2) + 1);
                 decltype(ActiveClients) newActiveClients;
 
                 for(auto client : ActiveClients) {
@@ -62,19 +62,19 @@ namespace Skree {
 
                                 if(event.Data > 0) {
                                     char* dummy = (char*)malloc(event.Data);
-                                    // int j = 0;
+                                    int j = 0;
 
-                                    // while(j < event.Data) {
+                                    while(j < event.Data) {
                                         // Utils::cluck(3, "%d/%d", j, event.Data);
-                                        /*int rv = */::read(event.Ident, dummy, event.Data/* - j*/);
+                                        int rv = ::read(event.Ident, dummy, event.Data - j);
 
-                                    //     if(rv > 0) {
-                                    //         j += rv;
-                                    //
-                                    //     } else {
-                                    //         break;
-                                    //     }
-                                    // }
+                                        if(rv > 0) {
+                                            j += rv;
+
+                                        } else {
+                                            break;
+                                        }
+                                    }
 
                                     free(dummy);
                                 }

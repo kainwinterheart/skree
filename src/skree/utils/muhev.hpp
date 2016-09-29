@@ -70,8 +70,6 @@ namespace Skree {
         }
 
         static inline TEvList MakeEvList(int count) {
-            count *= 2;
-
             return TEvList {
                 .Count = count,
                 .Pos = 0,

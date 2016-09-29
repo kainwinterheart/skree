@@ -28,7 +28,6 @@ namespace Skree {
 namespace Skree {
     class Client {
     private:
-        struct Utils::client_bound_ev_io watcher;
         int fh;
         // struct ev_loop* loop;
         pthread_mutex_t write_queue_mutex;

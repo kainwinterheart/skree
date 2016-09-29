@@ -6,6 +6,7 @@ Reliable decentralized event processor
 ### Linux
 
 libtclap-dev
+
 libyaml-cpp-dev
-libev-dev
+
 libkyotocabinet-dev

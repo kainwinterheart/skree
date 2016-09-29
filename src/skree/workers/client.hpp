@@ -3,7 +3,6 @@
 #include "../base/worker.hpp"
 #include "../utils/misc.hpp"
 
-#include <ev.h>
 #include <queue>
 #include <deque>
 
@@ -17,21 +16,12 @@ namespace Skree {
     namespace Workers {
         class Client : public Skree::Base::Worker {
         public:
-            // struct bound_ev_io {
-            //     ev_io watcher;
-            //     Client* worker;
-            // };
-
             struct Args {
-                // struct ev_loop* loop;
-                // std::shared_ptr<bound_ev_io> watcher;
                 std::shared_ptr<std::queue<std::shared_ptr<new_client_t>>> queue;
                 std::shared_ptr<pthread_mutex_t> mutex;
                 int fds[2];
 
                 Args()
-                    // : loop(ev_loop_new(EVBACKEND_KQUEUE | EVBACKEND_EPOLL | EVFLAG_NOSIGMASK))
-                    // , watcher(std::make_shared<bound_ev_io>())
                     : queue(std::make_shared<std::queue<std::shared_ptr<new_client_t>>>())
                     , mutex(std::make_shared<pthread_mutex_t>())
                 {
@@ -56,13 +46,9 @@ namespace Skree {
             Client(Skree::Server& _server, const void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args)
             {
-                // ((Args*)args)->watcher->worker = this;
-                // ev_io_init((ev_io*)(((Args*)args)->watcher.get()), async_cb, ((Args*)args)->fds[0], EV_READ);
-                // ev_io_start(((Args*)args)->loop, (ev_io*)(((Args*)args)->watcher.get()));
             }
 
             virtual void run() override;
-            static void async_cb(struct ev_loop* loop, ev_io* _watcher, int events);
             void accept();
 
             virtual ~Client() {

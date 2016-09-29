@@ -1,6 +1,4 @@
 #pragma once
-#include <ev.h>
-
 #include <functional>
 #include <unordered_map>
 
@@ -37,16 +35,6 @@ namespace Skree {
     class QueueDb;
 
     namespace Utils {
-        struct client_bound_ev_io {
-            ev_io watcher;
-            Client* client;
-        };
-
-        struct server_bound_ev_io {
-            ev_io watcher;
-            Server* server;
-        };
-
         struct muh_str_t {
             char* data;
             uint32_t len;

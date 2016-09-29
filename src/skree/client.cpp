@@ -123,10 +123,6 @@ namespace Skree {
         add_action_handler<Actions::X>();
         add_action_handler<Actions::H>();
         add_action_handler<Actions::N>();
-
-        watcher.client = this;
-        // ev_io_init(&watcher.watcher, client_cb, fh, EV_READ | EV_WRITE);
-        // ev_io_start(loop, &watcher.watcher);
     }
 
     template<typename T>
@@ -150,7 +146,6 @@ namespace Skree {
         auto& known_peers = server.known_peers;
         auto known_peers_end = known_peers.lock();
 
-        // ev_io_stop(loop, &watcher.watcher);
         shutdown(fh, SHUT_RDWR);
         close(fh);
         // free(s_in);
