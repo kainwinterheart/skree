@@ -673,7 +673,8 @@ namespace Skree {
         thread.first->queue->push(new_client);
         pthread_mutex_unlock(thread.first->mutex.get());
 
-        ev_async_send(thread.first->loop, (ev_async*)thread.first->watcher.get());
+        // Utils::cluck(1, "push_new_client()");
+        ::write(thread.first->fds[1], "1", 1);
     }
 
     void Server::replication_exec(std::shared_ptr<out_packet_i_ctx> ctx) {

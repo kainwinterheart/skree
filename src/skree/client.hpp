@@ -7,6 +7,7 @@ namespace Skree {
 #include "base/pending_write.hpp"
 #include "base/action.hpp"
 #include "utils/misc.hpp"
+#include "utils/muhev.hpp"
 #include "actions/e.hpp"
 #include "actions/r.hpp"
 #include "server.hpp"
@@ -29,7 +30,7 @@ namespace Skree {
     private:
         struct Utils::client_bound_ev_io watcher;
         int fh;
-        struct ev_loop* loop;
+        // struct ev_loop* loop;
         pthread_mutex_t write_queue_mutex;
         std::shared_ptr<Utils::muh_str_t> peer_name;
         uint16_t peer_port;
@@ -52,17 +53,23 @@ namespace Skree {
         void add_action_handler();
         bool read_cb(std::shared_ptr<Base::PendingRead::Callback::Args> message);
 
-        static void client_cb(struct ev_loop* loop, ev_io* _watcher, int events);
         void ordinary_packet_cb(std::shared_ptr<Base::PendingRead::Callback::Args> message);
         std::shared_ptr<Skree::Base::PendingWrite::QueueItem> get_pending_write();
         void destroy();
 
+        bool ShouldWrite_ = false;
+
     public:
         std::shared_ptr<Base::PendingRead::Callback::Args> active_read;
+        static void client_cb(const NMuhEv::TEvSpec& event);
+
+        bool ShouldWrite() const {
+            return ShouldWrite_;
+        }
 
         Client(
             int _fh,
-            struct ev_loop* _loop,
+            // struct ev_loop* _loop,
             std::shared_ptr<sockaddr_in> _s_in,
             // socklen_t _s_in_len,
             Server& _server
@@ -147,8 +154,12 @@ namespace Skree {
 
         void drop();
 
-        inline bool is_alive() {
+        inline bool is_alive() const {
             return !destroyed.load();
+        }
+
+        inline int GetFH() const {
+            return fh;
         }
     };
 

@@ -95,13 +95,13 @@ namespace Skree {
 
     Client::Client(
         int _fh,
-        struct ev_loop* _loop,
+        // struct ev_loop* _loop,
         std::shared_ptr<sockaddr_in> _s_in,
         // socklen_t _s_in_len,
         Server& _server
     )
         : fh(_fh)
-        , loop(_loop)
+        // , loop(_loop)
         , s_in(_s_in)
         // , s_in_len(_s_in_len)
         , server(_server)
@@ -125,8 +125,8 @@ namespace Skree {
         add_action_handler<Actions::N>();
 
         watcher.client = this;
-        ev_io_init(&watcher.watcher, client_cb, fh, EV_READ | EV_WRITE);
-        ev_io_start(loop, &watcher.watcher);
+        // ev_io_init(&watcher.watcher, client_cb, fh, EV_READ | EV_WRITE);
+        // ev_io_start(loop, &watcher.watcher);
     }
 
     template<typename T>
@@ -150,7 +150,7 @@ namespace Skree {
         auto& known_peers = server.known_peers;
         auto known_peers_end = known_peers.lock();
 
-        ev_io_stop(loop, &watcher.watcher);
+        // ev_io_stop(loop, &watcher.watcher);
         shutdown(fh, SHUT_RDWR);
         close(fh);
         // free(s_in);
@@ -260,7 +260,8 @@ namespace Skree {
             // delete item; // TODO?
         }
 
-        ev_io_set(&watcher.watcher, fh, EV_READ);
+        // ev_io_set(&watcher.watcher, fh, EV_READ);
+        ShouldWrite_ = false;
 
         pthread_mutex_unlock(&write_queue_mutex);
 
@@ -275,7 +276,7 @@ namespace Skree {
         pthread_mutex_lock(&write_queue_mutex);
 
         if(write_queue.empty())
-            ev_io_set(&watcher.watcher, fh, EV_READ | EV_WRITE);
+            ShouldWrite_ = true;//ev_io_set(&watcher.watcher, fh, EV_READ | EV_WRITE);
 
         if(front)
             write_queue.push_front(item);
@@ -303,17 +304,21 @@ namespace Skree {
             pending_reads.push_back(item);
     }
 
-    void Client::client_cb(struct ev_loop* loop, ev_io* _watcher, int events) {
-        struct Utils::client_bound_ev_io* watcher = (struct Utils::client_bound_ev_io*)_watcher;
-        Client*& client = watcher->client;
+    void Client::client_cb(const NMuhEv::TEvSpec& event) {
+        Client* client = (Client*)event.Ctx;
 
-        if(events & EV_ERROR) {
-            Utils::cluck(1, "EV_ERROR!\n");
+        if(event.Flags & NMuhEv::MUHEV_FLAG_ERROR) {
+            Utils::cluck(2, "EV_ERROR: %s\n", strerror(event.Data));
             client->drop();
             return;
         }
 
-        if(events & EV_READ) {
+        if(event.Flags & NMuhEv::MUHEV_FLAG_EOF) {
+            client->drop();
+            return;
+        }
+
+        if(event.Filter == NMuhEv::MUHEV_FILTER_READ) {
             if(!client->active_read)
                 client->active_read.reset(new Skree::Base::PendingRead::Callback::Args);
 
@@ -323,7 +328,7 @@ namespace Skree {
                 throw std::logic_error ("Zero-length active_read");
 
             int read = recvfrom(
-                _watcher->fd,
+                event.Ident,
                 active_read->end(),
                 active_read->rest(),
                 MSG_DONTWAIT,
@@ -403,11 +408,11 @@ namespace Skree {
             }
         }
 
-        if(events & EV_WRITE) {
+        if(event.Filter == NMuhEv::MUHEV_FILTER_WRITE) {
             auto item = client->get_pending_write();
 
             if(item != nullptr)
-                item->write(*client, _watcher->fd);
+                item->write(*client, event.Ident);
         }
     }
 
