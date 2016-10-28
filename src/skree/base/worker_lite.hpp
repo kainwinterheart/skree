@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <functional>
+#include <memory>
 
 namespace Skree {
     namespace Base {

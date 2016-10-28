@@ -32,6 +32,10 @@ static Skree::Utils::skree_modules_t skree_modules;
 static Skree::Utils::event_groups_t event_groups;
 static Skree::Utils::known_events_t known_events;
 
+void signal_handler(int signal) {
+    exit(0);
+}
+
 int main(int argc, char** argv) {
     std::string db_dir_name;
     std::string known_events_file_name;
@@ -245,6 +249,8 @@ int main(int argc, char** argv) {
 
     printf("Running on port: %u\n", my_port);
     signal(SIGPIPE, SIG_IGN);
+    signal(SIGTERM, signal_handler);
+    signal(SIGINT, signal_handler);
 
     Skree::Server server (my_port, max_client_threads, max_parallel_connections, known_events);
 

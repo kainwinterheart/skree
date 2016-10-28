@@ -1,3 +1,6 @@
 [submodule "contrib/yaml-cpp"]
 	path = contrib/yaml-cpp
 	url = https://github.com/jbeder/yaml-cpp.git
+[submodule "contrib/gperftools"]
+	path = contrib/gperftools
+	url = https://github.com/gperftools/gperftools.git

@@ -6,10 +6,6 @@
 #include <queue>
 #include <deque>
 
-#include <sys/types.h>
-#include <sys/event.h>
-// #include <sys/time.h>
-
 namespace Skree {
     struct new_client_t;
 

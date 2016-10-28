@@ -7,7 +7,7 @@ namespace Skree {
             NMuhEv::TLoop loop;
 
             while(true) {
-                auto list = NMuhEv::MakeEvList((ActiveClients.size() * 2) + 1);
+                auto list = NMuhEv::MakeEvList(ActiveClients.size() + 1);
                 decltype(ActiveClients) newActiveClients;
 
                 for(auto client : ActiveClients) {
@@ -17,21 +17,14 @@ namespace Skree {
 
                     newActiveClients.push_back(client);
 
-                    NMuhEv::TEvSpec spec {
+                    loop.AddEvent(NMuhEv::TEvSpec {
                         .Ident = (uintptr_t)client->GetFH(),
-                        .Filter = NMuhEv::MUHEV_FILTER_READ,
+                        .Filter = (NMuhEv::MUHEV_FILTER_READ | (
+                            client->ShouldWrite() ? NMuhEv::MUHEV_FILTER_WRITE : 0
+                        )),
                         .Flags = NMuhEv::MUHEV_FLAG_NONE,
                         .Ctx = client.get()
-                    };
-
-                    loop.AddEvent(spec, list);
-
-                    if(client->ShouldWrite()) {
-                        spec.Filter = NMuhEv::MUHEV_FILTER_WRITE;
-                        spec.Flags = NMuhEv::MUHEV_FLAG_ONESHOT;
-
-                        loop.AddEvent(spec, list);
-                    }
+                    }, list);
                 }
 
                 ActiveClients.swap(newActiveClients);
@@ -56,7 +49,7 @@ namespace Skree {
                         if(event.Ctx == nullptr) {
                             // if(event.Ident == ((Args*)args)->fds[0]) {
                                 // Utils::cluck(2, "pipe: %d", event.Data);
-                                if(event.Flags & EV_EOF) {
+                                if(event.Flags & NMuhEv::MUHEV_FLAG_EOF) {
                                     Utils::cluck(1, "EV_EOF");
                                 }
 

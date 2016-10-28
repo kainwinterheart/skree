@@ -1,7 +1,8 @@
 #pragma once
+
 #include <functional>
 #include <unordered_map>
-
+#include <memory>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -15,6 +16,7 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <cstddef>
+#include <string.h>
 
 #include "atomic_hash_map.hpp"
 

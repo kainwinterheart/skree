@@ -59,8 +59,8 @@ namespace Skree {
             std::atomic<uint8_t> block; // TODO?
             std::atomic<bool> loaded;
 
-            size_t alloc_page(const char* file) const;
-            void async_alloc_page(char* _file);
+            inline size_t alloc_page(const char* file) const;
+            inline void async_alloc_page(char* _file);
 
             inline void sync_data() const {
                 if(!loaded) return;
@@ -90,8 +90,8 @@ namespace Skree {
             explicit Page(Page* prev);
             virtual ~Page();
 
-            void open_page(bool force_sync = false);
-            void close_if_can();
+            inline void open_page(bool force_sync = false);
+            inline void close_if_can();
             inline void _rollback_read(QueueDb::read_rollback_t* rollback);
             inline void _free_read_rollback(QueueDb::read_rollback_t* rollback) const;
             inline void _write(uint64_t len, const unsigned char* src);
@@ -156,7 +156,7 @@ namespace Skree {
         Utils::MappedFile* get_page_num_file(const char* name) const;
         inline void _write(uint64_t len, const unsigned char* src);
         inline QueueDb::read_rollback_t* _read(uint64_t len, unsigned char* dest);
-        void sync_write_offset();
+        inline void sync_write_offset();
     public:
         DbWrapper* kv;
 
