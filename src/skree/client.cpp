@@ -303,17 +303,18 @@ namespace Skree {
         Client* client = (Client*)event.Ctx;
 
         if(event.Flags & NMuhEv::MUHEV_FLAG_ERROR) {
-            Utils::cluck(2, "EV_ERROR: %s\n", strerror(event.Data));
+            Utils::cluck(2, "EV_ERROR: %s", strerror(event.Data));
             client->drop();
             return;
         }
 
         if(event.Flags & NMuhEv::MUHEV_FLAG_EOF) {
+            Utils::cluck(1, "EV_EOF");
             client->drop();
             return;
         }
 
-        if(event.Filter == NMuhEv::MUHEV_FILTER_READ) {
+        if(event.Filter & NMuhEv::MUHEV_FILTER_READ) {
             if(!client->active_read)
                 client->active_read.reset(new Skree::Base::PendingRead::Callback::Args);
 
@@ -333,8 +334,20 @@ namespace Skree {
 
             if(read > 0) {
 #ifdef SKREE_NET_DEBUG
-                for(int i = 0; i < read; ++i)
-                    fprintf(stderr, "read from %s/%s [%d]: 0x%.2X\n", client->get_peer_id(),client->get_conn_id(),i,((unsigned char*)(active_read->end()))[i]);
+                {
+                    const auto& peer_id = client->get_peer_id();
+                    const auto& conn_id = client->get_conn_id();
+
+                    for(int i = 0; i < read; ++i)
+                        fprintf(
+                            stderr,
+                            "read from %s/%s [%d]: 0x%.2X\n",
+                            (peer_id ? peer_id->data : "(null)"),
+                            (conn_id ? conn_id->data : "(null)"),
+                            i,
+                            ((unsigned char*)(active_read->end()))[i]
+                        );
+                }
 #endif
                 active_read->advance(read);
 #ifdef SKREE_NET_DEBUG
@@ -403,7 +416,7 @@ namespace Skree {
             }
         }
 
-        if(event.Filter == NMuhEv::MUHEV_FILTER_WRITE) {
+        if(event.Filter & NMuhEv::MUHEV_FILTER_WRITE) {
             auto item = client->get_pending_write();
 
             if(item != nullptr)

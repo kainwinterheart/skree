@@ -68,7 +68,20 @@ namespace Skree {
                 int written = ::write(fd, str, len);
 
 #ifdef SKREE_NET_DEBUG
-                Utils::cluck(5, "written %d bytes to %s/%s, len: %lu, fd: %d", written, client.get_peer_id(), client.get_conn_id(), real_len, fd);
+                {
+                    const auto& peer_id = client.get_peer_id();
+                    const auto& conn_id = client.get_conn_id();
+
+                    Utils::cluck(
+                        5,
+                        "written %d bytes to %s/%s, len: %lu, fd: %d",
+                        written,
+                        (peer_id ? peer_id->data : "(null)"),
+                        (conn_id ? conn_id->data : "(null)"),
+                        real_len,
+                        fd
+                    );
+                }
 #endif
                 if(written < 0) {
                     if((errno != EAGAIN) && (errno != EINTR)) {
@@ -104,11 +117,32 @@ namespace Skree {
 
                 } else {
 #ifdef SKREE_NET_DEBUG
-                    for(int i = 0; i < written; ++i)
-                        if((i == 0) && !prev)
-                            fprintf(stderr, "written to %s/%s [%d]: %c (opcode; 0x%.2X)\n", client.get_peer_id(),client.get_conn_id(),i,str[0], (unsigned char)str[0]);
-                        else
-                            fprintf(stderr, "written to %s/%s [%d]: 0x%.2X\n", client.get_peer_id(),client.get_conn_id(),i,((unsigned char*)str)[i]);
+                    for(int i = 0; i < written; ++i) {
+                        const auto& peer_id = client.get_peer_id();
+                        const auto& conn_id = client.get_conn_id();
+
+                        if((i == 0) && !prev) {
+                            fprintf(
+                                stderr,
+                                "written to %s/%s [%d]: %c (opcode; 0x%.2X)\n",
+                                (peer_id ? peer_id->data : "(null)"),
+                                (conn_id ? conn_id->data : "(null)"),
+                                i,
+                                str[0],
+                                (unsigned char)str[0]
+                            );
+
+                        } else {
+                            fprintf(
+                                stderr,
+                                "written to %s/%s [%d]: 0x%.2X\n",
+                                (peer_id ? peer_id->data : "(null)"),
+                                (conn_id ? conn_id->data : "(null)"),
+                                i,
+                                ((unsigned char*)str)[i]
+                            );
+                        }
+                    }
 #endif
                     if(next != data_last) {
                         data_last = next;

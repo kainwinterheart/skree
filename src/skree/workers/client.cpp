@@ -53,6 +53,10 @@ namespace Skree {
                                     Utils::cluck(1, "EV_EOF");
                                 }
 
+                                if(event.Flags & NMuhEv::MUHEV_FLAG_ERROR) {
+                                    Utils::cluck(1, "EV_ERROR");
+                                }
+
                                 if(event.Data > 0) {
                                     char* dummy = (char*)malloc(event.Data);
                                     int j = 0;
@@ -72,7 +76,7 @@ namespace Skree {
                                     free(dummy);
                                 }
 
-                                // Utils::cluck(2, "accept(): %lld", event.data);
+                                // Utils::cluck(2, "accept(): %lld", event.Data);
                                 accept();
 
                             // } else {
@@ -92,6 +96,8 @@ namespace Skree {
                             }
                         }
                     }
+                } else {
+                    // Utils::cluck(1, "nothing is here");
                 }
             }
         }

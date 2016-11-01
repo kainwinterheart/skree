@@ -3,10 +3,13 @@
 #include <memory>
 #include <stdlib.h>
 #include <errno.h>
+#include "misc.hpp"
 
 #ifdef __linux__
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
+#include <unordered_map>
+#include <utility>
 #else
 #include <sys/types.h>
 #include <sys/event.h>
@@ -43,6 +46,9 @@ namespace Skree {
             int Pos;
             std::shared_ptr<TInternalEvStruct> Events;
             std::shared_ptr<TInternalEvStruct> Triggered;
+#ifdef __linux__
+            std::unordered_map<void*, uintptr_t> FdMap;
+#endif
         };
 
         static inline TEvSpec GetEvent(const TEvList& list, int index) {
@@ -50,7 +56,7 @@ namespace Skree {
 
             TEvSpec out {
 #ifdef __linux__
-                .Ident = (uintptr_t)event.data.fd,
+                .Ident = list.FdMap.at(event.data.ptr),
                 .Ctx = event.data.ptr,
                 .Data = 0,
 #else
@@ -62,14 +68,20 @@ namespace Skree {
                 .Flags = MUHEV_FLAG_NONE,
             };
 #ifdef __linux__
+            // Utils::cluck(1, "woot");
             if(event.events & EPOLLIN) {
                 int bytesAvailable = 0;
 
-                if(ioctl(out.Ident, FIONREAD, &bytesAvailable) == -1)
+                if(ioctl(out.Ident, FIONREAD, &bytesAvailable) == -1) {
                     perror("ioctl");
+                    out.Flags |= MUHEV_FLAG_ERROR;
+                }
 
                 out.Data = bytesAvailable;
                 out.Filter |= MUHEV_FILTER_READ;
+
+                if(bytesAvailable == 0)
+                    out.Flags |= MUHEV_FLAG_EOF;
             }
 
             if(event.events & EPOLLOUT)
@@ -83,7 +95,7 @@ namespace Skree {
                     out.Filter = MUHEV_FILTER_WRITE;
                     break;
                 default:
-                    throw std::logic_error ("bad filter");
+                    out.Flags |= MUHEV_FLAG_ERROR;
             }
 
             if(event.flags & EV_ERROR) {
@@ -107,7 +119,10 @@ namespace Skree {
         }
 
         static inline TEvList MakeEvList(int count) {
-#ifndef __linux__
+#ifdef __linux__
+            std::unordered_map<void*, uintptr_t> fdMap;
+            fdMap.reserve(count);
+#else
             count *= 2;
 #endif
             return TEvList {
@@ -116,6 +131,7 @@ namespace Skree {
 #ifdef __linux__
                 .Events = std::shared_ptr<TInternalEvStruct>(),
                 .Triggered = MakeIntEvList(count),
+                .FdMap = std::move(fdMap),
 #else
                 .Events = MakeIntEvList(count),
                 .Triggered = MakeIntEvList(count),
@@ -169,7 +185,6 @@ namespace Skree {
                 TInternalEvStruct event = { 0 };
                 event.events = EPOLLONESHOT;
                 event.data.ptr = spec.Ctx;
-                event.data.fd = spec.Ident;
 
                 if(spec.Filter & MUHEV_FILTER_READ)
                     event.events |= EPOLLIN;
@@ -192,6 +207,7 @@ namespace Skree {
                 }
 
                 ++list.Pos;
+                list.FdMap[spec.Ctx] = spec.Ident;
 #else
                 if(spec.Filter & MUHEV_FILTER_READ) {
                     auto& event = (list.Events.get())[list.Pos++];
@@ -214,6 +230,7 @@ namespace Skree {
 
                 while(true) {
 #ifdef __linux__
+                    // Utils::cluck(1, "wait()");
                     triggeredCount = epoll_wait(
                         QueueId,
                         list.Triggered.get(),
