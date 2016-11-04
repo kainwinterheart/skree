@@ -59,16 +59,6 @@ namespace Skree {
         fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
         listen(fh, 100000);
 
-        NMuhEv::TLoop loop;
-        auto list = NMuhEv::MakeEvList(1);
-
-        loop.AddEvent(NMuhEv::TEvSpec {
-            .Ident = (uintptr_t)fh,
-            .Filter = NMuhEv::MUHEV_FILTER_READ,
-            .Flags = NMuhEv::MUHEV_FLAG_NONE,
-            .Ctx = nullptr
-        }, list);
-
         Skree::Workers::Cleanup cleanup (*this);
         cleanup.start();
 
@@ -160,6 +150,16 @@ namespace Skree {
         processor.start();
 
         while(true) { // TODO
+            NMuhEv::TLoop loop;
+            auto list = NMuhEv::MakeEvList(1);
+
+            loop.AddEvent(NMuhEv::TEvSpec {
+                .Ident = (uintptr_t)fh,
+                .Filter = NMuhEv::MUHEV_FILTER_READ,
+                .Flags = NMuhEv::MUHEV_FLAG_NONE,
+                .Ctx = nullptr
+            }, list);
+
             int triggeredCount = loop.Wait(list);
             // Utils::cluck(2, "%d", triggeredCount);
             if(triggeredCount < 0) {

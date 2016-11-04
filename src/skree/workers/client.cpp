@@ -48,7 +48,6 @@ namespace Skree {
 
                         if(event.Ctx == nullptr) {
                             // if(event.Ident == ((Args*)args)->fds[0]) {
-                                // Utils::cluck(2, "pipe: %d", event.Data);
                                 if(event.Flags & NMuhEv::MUHEV_FLAG_EOF) {
                                     Utils::cluck(1, "EV_EOF");
                                 }
@@ -57,26 +56,24 @@ namespace Skree {
                                     Utils::cluck(1, "EV_ERROR");
                                 }
 
-                                if(event.Data > 0) {
-                                    char* dummy = (char*)malloc(event.Data);
-                                    int j = 0;
+                                {
+                                    char dummy[128];
+                                    int rv = recvfrom(
+                                        event.Ident,
+                                        dummy,
+                                        128,
+                                        MSG_DONTWAIT,
+                                        NULL,
+                                        0
+                                    );
 
-                                    while(j < event.Data) {
-                                        // Utils::cluck(3, "%d/%d", j, event.Data);
-                                        int rv = ::read(event.Ident, dummy, event.Data - j);
-
-                                        if(rv > 0) {
-                                            j += rv;
-
-                                        } else {
-                                            break;
-                                        }
+                                    if(rv < 0) {
+                                        perror("recvfrom");
+                                        abort();
                                     }
-
-                                    free(dummy);
                                 }
 
-                                // Utils::cluck(2, "accept(): %lld", event.Data);
+                                // Utils::cluck(1, "accept()");
                                 accept();
 
                             // } else {

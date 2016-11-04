@@ -23,9 +23,9 @@ namespace Skree {
                 {
                     pthread_mutex_init(mutex.get(), NULL);
 
-                    // if(socketpair(PF_LOCAL, SOCK_STREAM, 0, fds) == -1) {
-                    if(pipe(fds) == -1) {
-                        perror("pipe");
+                    if(socketpair(PF_LOCAL, SOCK_STREAM, 0, fds) == -1) {
+                    // if(pipe(fds) == -1) {
+                        perror("socketpair");
                         abort();
                     }
                 }

@@ -34,7 +34,6 @@ namespace Skree {
             int Filter;
             int Flags;
             void* Ctx;
-            intptr_t Data;
         };
 #ifdef __linux__
         using TInternalEvStruct = struct epoll_event;
@@ -47,7 +46,7 @@ namespace Skree {
             std::shared_ptr<TInternalEvStruct> Events;
             std::shared_ptr<TInternalEvStruct> Triggered;
 #ifdef __linux__
-            std::unordered_map<void*, uintptr_t> FdMap;
+            std::unordered_map<uintptr_t, void*> FdMap;
 #endif
         };
 
@@ -56,33 +55,19 @@ namespace Skree {
 
             TEvSpec out {
 #ifdef __linux__
-                .Ident = list.FdMap.at(event.data.ptr),
-                .Ctx = event.data.ptr,
-                .Data = 0,
+                .Ident = (uintptr_t)event.data.fd,
+                .Ctx = list.FdMap.at(event.data.fd),
 #else
                 .Ident = event.ident,
                 .Ctx = event.udata,
-                .Data = event.data,
 #endif
                 .Filter = MUHEV_FILTER_NONE,
                 .Flags = MUHEV_FLAG_NONE,
             };
 #ifdef __linux__
             // Utils::cluck(1, "woot");
-            if(event.events & EPOLLIN) {
-                int bytesAvailable = 0;
-
-                if(ioctl(out.Ident, FIONREAD, &bytesAvailable) == -1) {
-                    perror("ioctl");
-                    out.Flags |= MUHEV_FLAG_ERROR;
-                }
-
-                out.Data = bytesAvailable;
+            if(event.events & EPOLLIN)
                 out.Filter |= MUHEV_FILTER_READ;
-
-                if(bytesAvailable == 0)
-                    out.Flags |= MUHEV_FLAG_EOF;
-            }
 
             if(event.events & EPOLLOUT)
                 out.Filter |= MUHEV_FILTER_WRITE;
@@ -120,7 +105,7 @@ namespace Skree {
 
         static inline TEvList MakeEvList(int count) {
 #ifdef __linux__
-            std::unordered_map<void*, uintptr_t> fdMap;
+            std::unordered_map<uintptr_t, void*> fdMap;
             fdMap.reserve(count);
 #else
             count *= 2;
@@ -184,7 +169,7 @@ namespace Skree {
 #ifdef __linux__
                 TInternalEvStruct event = { 0 };
                 event.events = EPOLLONESHOT;
-                event.data.ptr = spec.Ctx;
+                event.data.fd = spec.Ident;
 
                 if(spec.Filter & MUHEV_FILTER_READ)
                     event.events |= EPOLLIN;
@@ -193,13 +178,13 @@ namespace Skree {
                     event.events |= EPOLLOUT;
 
                 if(
-                    (epoll_ctl(QueueId, EPOLL_CTL_ADD, spec.Ident, &event) != 0)
+                    (epoll_ctl(QueueId, EPOLL_CTL_MOD, spec.Ident, &event) != 0)
                     && (
                         (
-                            (errno == EEXIST)
-                            && (epoll_ctl(QueueId, EPOLL_CTL_MOD, spec.Ident, &event) != 0)
+                            (errno == ENOENT)
+                            && (epoll_ctl(QueueId, EPOLL_CTL_ADD, spec.Ident, &event) != 0)
                         )
-                        || (errno != EEXIST)
+                        || (errno != ENOENT)
                     )
                 ) {
                     perror("epoll_ctl");
@@ -207,7 +192,7 @@ namespace Skree {
                 }
 
                 ++list.Pos;
-                list.FdMap[spec.Ctx] = spec.Ident;
+                list.FdMap[spec.Ident] = spec.Ctx;
 #else
                 if(spec.Filter & MUHEV_FILTER_READ) {
                     auto& event = (list.Events.get())[list.Pos++];

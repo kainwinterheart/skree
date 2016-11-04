@@ -303,7 +303,7 @@ namespace Skree {
         Client* client = (Client*)event.Ctx;
 
         if(event.Flags & NMuhEv::MUHEV_FLAG_ERROR) {
-            Utils::cluck(2, "EV_ERROR: %s", strerror(event.Data));
+            Utils::cluck(1, "EV_ERROR");
             client->drop();
             return;
         }

@@ -15,7 +15,7 @@ LDFLAGS = -L /usr/local/lib \
 -L contrib-build/usr/local/lib \
 -L contrib-build/usr/lib \
 -L contrib-build/lib \
--Wl,--export-dynamic \
+# -Wl,--export-dynamic \
 # -fsanitize=address,undefined,safe-stack
 
 OBJS = main.o src/skree/actions/n.o src/skree/actions/c.o src/skree/actions/e.o src/skree/actions/h.o src/skree/actions/i.o src/skree/actions/l.o src/skree/actions/r.o src/skree/actions/w.o src/skree/actions/x.o src/skree/base/action.o src/skree/base/pending_read.o src/skree/base/pending_write.o src/skree/base/worker.o src/skree/client.o src/skree/db_wrapper.o src/skree/meta/opcodes.o src/skree/pending_reads/replication/ping_task.o src/skree/pending_reads/replication/propose_self.o src/skree/pending_reads/replication.o src/skree/server.o src/skree/utils/misc.o src/skree/workers/client.o src/skree/workers/discovery.o src/skree/workers/replication.o src/skree/workers/synchronization.o src/skree/queue_db.o src/skree/workers/processor.o src/skree/workers/cleanup.o src/skree/meta/states.o src/skree/utils/string_sequence.o
