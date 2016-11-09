@@ -28,6 +28,7 @@ namespace Skree {
 #include "actions/e.hpp"
 #include "actions/r.hpp"
 #include "workers/synchronization.hpp"
+#include "workers/statistics.hpp"
 #include "workers/replication.hpp"
 #include "workers/discovery.hpp"
 #include "pending_reads/replication.hpp"

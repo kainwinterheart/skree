@@ -65,6 +65,9 @@ namespace Skree {
         Skree::Workers::Synchronization synchronization (*this);
         synchronization.start();
 
+        Skree::Workers::Statistics statistics (*this);
+        statistics.start();
+
         for(int i = 0; i < max_client_threads; ++i) {
             auto args = std::make_shared<Skree::Workers::Client::Args>();
             auto client = std::make_shared<Skree::Workers::Client>(*this, args.get());
