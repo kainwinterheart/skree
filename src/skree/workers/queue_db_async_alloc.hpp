@@ -14,7 +14,7 @@ namespace Skree {
 
             virtual void run() override {
                 cb();
-                delete this; // TODO?
+                // delete this; // TODO?
             }
         };
     }

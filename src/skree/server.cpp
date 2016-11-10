@@ -832,12 +832,12 @@ namespace Skree {
             return SKREE_META_EVENTSTATE_PROCESSED;
 
         } else if((flag_size == 1) && (flag[0] == '0')) {
-            free(flag);
+            delete[] flag;
             return SKREE_META_EVENTSTATE_PENDING;
 
         } else {
             if(flag_size > 0)
-                free(flag);
+                delete[] flag;
 
             return SKREE_META_EVENTSTATE_LOST;
         }

@@ -24,6 +24,7 @@ namespace Skree {
         struct AsyncAllocatorsItem {
             size_t sz;
             std::atomic<uint_fast16_t> done;
+            std::shared_ptr<void> thread;
         };
 
         struct read_rollback_t {
@@ -31,7 +32,7 @@ namespace Skree {
             QueueDb::read_rollback_t* l2;
         };
 
-        typedef Skree::Utils::AtomicHashMap<uint64_t, QueueDb::AsyncAllocatorsItem*> async_allocators_t;
+        typedef Skree::Utils::AtomicHashMap<uint64_t, std::shared_ptr<QueueDb::AsyncAllocatorsItem>> async_allocators_t;
 
         class Page {
         public:

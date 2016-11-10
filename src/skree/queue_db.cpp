@@ -171,11 +171,10 @@ namespace Skree {
             return;
         }
 
-        args.async_allocators[num] = new QueueDb::AsyncAllocatorsItem {
+        args.async_allocators[num].reset(new QueueDb::AsyncAllocatorsItem {
             .sz = 0
-        };
+        });
         args.async_allocators[num]->done = 0;
-        args.async_allocators.unlock();
 
         char* file = strdup(_file);
 
@@ -195,8 +194,11 @@ namespace Skree {
             }
         };
 
-        auto thread = new Skree::Workers::QueueDbAsyncAlloc<decltype(cb)>(cb);
+        auto thread = std::make_shared<Skree::Workers::QueueDbAsyncAlloc<decltype(cb)>>(cb);
         thread->start();
+
+        args.async_allocators[num]->thread = std::shared_ptr<void>(thread, (void*)thread.get());
+        args.async_allocators.unlock();
     }
 
     void QueueDb::Page::open_page(bool force_sync) {
@@ -214,7 +216,7 @@ namespace Skree {
                     }
 
                     effective_file_size = it->second->sz;
-                    delete it->second;
+                    // delete it->second;
 
                     args.async_allocators.lock();
                     args.async_allocators.erase(it);
