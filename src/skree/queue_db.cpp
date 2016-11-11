@@ -1,5 +1,6 @@
 #include "queue_db.hpp"
 // #include <execinfo.h>
+#include <stdio.h>
 
 namespace Skree {
     QueueDb::QueueDb(const char* _path, size_t _file_size) : path(_path), file_size(_file_size) {
@@ -124,42 +125,32 @@ namespace Skree {
     }
 
     size_t QueueDb::Page::alloc_page(const char* file) const {
-        int fh = open(file, O_RDWR | O_CREAT);
+        auto* fh = fopen(file, "w");
 
-        if(fh == -1) {
+        if(fh == nullptr) {
             perror("open");
             abort();
         }
 
-        fchmod(fh, 0000644);
-
-        size_t total = 0;
-        char* batch = (char*)malloc(SKREE_QUEUEDB_ZERO_BATCH_SIZE);
-        memset(batch, 0, SKREE_QUEUEDB_ZERO_BATCH_SIZE);
-        size_t chunk_size;
-        size_t written;
-
-        while(total < args.recommended_file_size) {
-            chunk_size = (
-                ((args.recommended_file_size - total) > SKREE_QUEUEDB_ZERO_BATCH_SIZE)
-                    ? SKREE_QUEUEDB_ZERO_BATCH_SIZE
-                    : (args.recommended_file_size - total)
-            );
-            written = Utils::write_chunk(fh, chunk_size, batch);
-            total += written;
-
-            if(chunk_size != written) {
-                break;
-            }
+        if(fchmod(fileno(fh), 0000644) == -1) {
+            perror("fchmod");
+            // abort();
         }
 
-        free(batch);
+        if(fseek(fh, args.recommended_file_size - 1, SEEK_SET) == -1) {
+            perror("fseek");
+            abort();
+        }
 
-        if(close(fh) == -1) {
+        if(fputc('\0', fh) == EOF) {
+            abort();
+        }
+
+        if(fclose(fh) == -1) {
             perror("close");
         }
 
-        return total;
+        return args.recommended_file_size;
     }
 
     void QueueDb::Page::async_alloc_page(char* _file) {
