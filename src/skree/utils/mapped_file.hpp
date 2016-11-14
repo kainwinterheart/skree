@@ -16,32 +16,18 @@ namespace Skree {
             inline MappedFile(const char* path, const size_t _size)
                 : size(_size)
             {
-                if(access(path, O_RDWR) == -1) {
-                    fh = open(path, O_RDWR | O_CREAT);
+                if(
+                    (access(path, O_RDWR) == -1)
+                    && (Utils::alloc_file(path, size) != size)
+                ) {
+                    abort();
+                }
 
-                    if(fh == -1) {
-                        perror(path);
-                        abort();
-                    }
+                fh = open(path, O_RDWR);
 
-                    fchmod(fh, 0000644);
-
-                    auto batch = (char*)malloc(size);
-                    memset(batch, 0, size);
-                    auto written = Utils::write_chunk(fh, size, batch);
-                    free(batch);
-
-                    if(written != size) {
-                        abort();
-                    }
-
-                } else {
-                    fh = open(path, O_RDWR);
-
-                    if(fh == -1) {
-                        perror(path);
-                        abort();
-                    }
+                if(fh == -1) {
+                    perror(path);
+                    abort();
                 }
 
                 addr = (char*)mmap(

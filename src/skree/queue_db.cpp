@@ -125,32 +125,7 @@ namespace Skree {
     }
 
     size_t QueueDb::Page::alloc_page(const char* file) const {
-        auto* fh = fopen(file, "w");
-
-        if(fh == nullptr) {
-            perror("open");
-            abort();
-        }
-
-        if(fchmod(fileno(fh), 0000644) == -1) {
-            perror("fchmod");
-            // abort();
-        }
-
-        if(fseek(fh, args.recommended_file_size - 1, SEEK_SET) == -1) {
-            perror("fseek");
-            abort();
-        }
-
-        if(fputc('\0', fh) == EOF) {
-            abort();
-        }
-
-        if(fclose(fh) == -1) {
-            perror("close");
-        }
-
-        return args.recommended_file_size;
+        return Utils::alloc_file(file, args.recommended_file_size);
     }
 
     void QueueDb::Page::async_alloc_page(char* _file) {

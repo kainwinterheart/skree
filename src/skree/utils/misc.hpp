@@ -235,23 +235,33 @@ namespace Skree {
             }
         }
 
-        static inline size_t write_chunk(int fh, size_t size, void* data) {
-            size_t written;
-            size_t total = 0;
+        static inline size_t alloc_file(const char* file, const size_t size) {
+            auto* fh = fopen(file, "w");
 
-            while(total < size) {
-                written = ::write(fh, ((unsigned char*)data) + total, size - total);
-
-                if(written == -1) {
-                    perror("write");
-                    break;
-
-                } else {
-                    total += written;
-                }
+            if(fh == nullptr) {
+                perror("open");
+                abort();
             }
 
-            return total;
+            if(fchmod(fileno(fh), 0000644) == -1) {
+                perror("fchmod");
+                // abort();
+            }
+
+            if(fseek(fh, size - 1, SEEK_SET) == -1) {
+                perror("fseek");
+                abort();
+            }
+
+            if(fputc('\0', fh) == EOF) {
+                abort();
+            }
+
+            if(fclose(fh) == -1) {
+                perror("close");
+            }
+
+            return size;
         }
 
         static inline std::string longmess(int offset = 1) {
