@@ -1,4 +1,5 @@
 #include "replication.hpp"
+#include <ctime>
 
 namespace Skree {
     namespace Workers {
@@ -120,10 +121,10 @@ namespace Skree {
                     return true;
 
                 } else {
-                    Utils::cluck(3,
-                        "Can't commit transaction for event %s: %s\n",
-                        event.id,
-                        kv.error().name()
+                    Utils::cluck(2,
+                        "Can't commit transaction for event %s",
+                        event.id
+                        // kv.error().name()
                     );
 
                     return false;
@@ -135,10 +136,10 @@ namespace Skree {
                     queue.write(raw_item_len, raw_item);
 
                     if(!kv.cas(item.failover_key->data, item.failover_key->len, "1", 1, "0", 1)) {
-                        Utils::cluck(3,
-                            "Can't remove key %s: %s\n",
-                            item.failover_key->data,
-                            kv.error().name()
+                        Utils::cluck(2,
+                            "Can't remove key %s",
+                            item.failover_key->data
+                            // kv.error().name()
                         );
                         // TODO: what should happen here?
                     }
@@ -147,10 +148,10 @@ namespace Skree {
                 return commit();
 
             } else {
-                Utils::cluck(3,
-                    "Can't create transaction for event %s: %s\n",
-                    event.id,
-                    kv.error().name()
+                Utils::cluck(2,
+                    "Can't create transaction for event %s",
+                    event.id
+                    // kv.error().name()
                 );
 
                 return false;
@@ -268,10 +269,10 @@ namespace Skree {
                 // );
 
             } else if(queue.kv->check(item->failover_key->data, item->failover_key->len) > 0) {
-                Utils::cluck(3,
-                    "Key %s could not be added to r2_queue: %s\n",
-                    item->failover_key->data,
-                    queue.kv->error().name()
+                Utils::cluck(2,
+                    "Key %s could not be added to r2_queue",
+                    item->failover_key->data
+                    // queue.kv->error().name()
                 );
                 commit = false;
                 do_failover(_item->len, _item->data, *item, event);

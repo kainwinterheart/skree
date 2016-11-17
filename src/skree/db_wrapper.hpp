@@ -1,8 +1,8 @@
 #pragma once
 
-#include <kchashdb.h>
-
 #include "utils/misc.hpp"
+#include "utils/mapped_file.hpp"
+#include <rocksdb/db.h>
 // #include <pthread.h>
 // #include <vector>
 // #include <string>
@@ -10,13 +10,13 @@
 namespace Skree {
     // typedef std::unordered_map<char*, Utils::muh_str_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> get_keys_result_t;
 
-    class DbWrapper : public kyotocabinet::HashDB {
+    class DbWrapper {
+    private:
+        std::shared_ptr<rocksdb::DB> Db;
+        std::shared_ptr<Utils::MappedFile> PkFile;
+
     public:
-        DbWrapper() : kyotocabinet::HashDB() {
-            pthread_mutexattr_init(&mutexattr);
-            pthread_mutexattr_settype(&mutexattr, PTHREAD_MUTEX_RECURSIVE);
-            pthread_mutex_init(&mutex,&mutexattr);
-        }
+        DbWrapper(std::string&& dbFileName);
 
         virtual bool add(
             const char * kbuf,
@@ -37,17 +37,7 @@ namespace Skree {
             size_t ksiz
         );
 
-        virtual int64_t increment(
-            const char * kbuf,
-            size_t ksiz,
-            int64_t num,
-            int64_t orig = 0
-        );
-
-        virtual int64_t remove_bulk(
-            const std::vector< std::string > & keys,
-            bool atomic = true
-        );
+        virtual uint64_t increment(uint64_t num);
 
         virtual bool cas(
             const char * kbuf,
@@ -58,37 +48,19 @@ namespace Skree {
             size_t nvsiz
         );
 
-        virtual bool synchronize(
-            bool hard = false,
-            kyotocabinet::BasicDB::FileProcessor * proc = nullptr,
-            kyotocabinet::BasicDB::ProgressChecker * checker = nullptr
-        );
+        virtual bool synchronize(bool hard = false);
 
         virtual bool begin_transaction(bool hard = false);
         virtual bool end_transaction(bool commit = true);
 
-        virtual char* get(
+        virtual std::string get(
             const char * kbuf,
-            size_t ksiz,
-            size_t * sp
-        );
-
-        virtual bool accept_bulk(
-            const std::vector<std::string> & keys,
-            kyotocabinet::DB::Visitor * visitor,
-            bool writable = true
+            size_t ksiz
         );
 
         virtual int32_t check(
             const char * kbuf,
             size_t ksiz
         );
-
-    private:
-        pthread_mutex_t mutex;
-        pthread_mutexattr_t mutexattr;
-
-        void lock() { pthread_mutex_lock(&mutex); }
-        void unlock() { pthread_mutex_unlock(&mutex); }
     };
 }

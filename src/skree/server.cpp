@@ -1,5 +1,6 @@
 #include "server.hpp"
 #include "meta.hpp"
+#include <ctime>
 
 namespace Skree {
     Server::Server(
@@ -286,7 +287,7 @@ namespace Skree {
                 ++stat_num_replications;
 
             } else {
-                Utils::cluck(3, "[repl_save] db.add(%s) failed: %s\n", failover_key, db.error().name());
+                Utils::cluck(2, "[repl_save] db.add(%s) failed", failover_key);//, db.error().name());
                 break;
             }
 
@@ -321,124 +322,119 @@ namespace Skree {
         short result = SAVE_EVENT_RESULT_F;
         bool replication_began = false;
         auto& db = *(queue.kv);
-        int64_t max_id = db.increment("inseq", 5, ctx.cnt, 0);
+        uint64_t max_id = db.increment(ctx.cnt);
 
-        if(max_id == kyotocabinet::INT64MIN) {
-            Utils::cluck(2, "Increment failed: %s\n", db.error().name());
+        uint32_t _cnt = 0;
+        uint32_t num_inserted = 0;
+        const char* _event_data;
+        max_id -= ctx.cnt;
+        uint64_t _max_id;
 
-        } else {
-            uint32_t _cnt = 0;
-            uint32_t num_inserted = 0;
-            const char* _event_data;
-            max_id -= ctx.cnt;
-            uint64_t _max_id;
+        while(_cnt < ctx.cnt) {
+            ++max_id;
+            auto event = (*ctx.events.get())[_cnt];
 
-            while(_cnt < ctx.cnt) {
-                ++max_id;
-                auto event = (*ctx.events.get())[_cnt];
+            // TODO: is this really necessary?
+            // event->id = (char*)malloc(21);
+            // sprintf(event->id, "%lu", max_id);
 
-                // TODO: is this really necessary?
-                // event->id = (char*)malloc(21);
-                // sprintf(event->id, "%lu", max_id);
+            _max_id = htonll(max_id);
 
-                _max_id = htonll(max_id);
+            // TODO: insert all events in a transaction
+            if(db.add((char*)&_max_id, sizeof(_max_id), "0", 1)) {
+                auto stream = queue.write();
+                stream->write(sizeof(_max_id), &_max_id);
+                stream->write(event->len, event->data);
+                delete stream;
 
-                // TODO: insert all events in a transaction
-                if(db.add((char*)&_max_id, sizeof(_max_id), "0", 1)) {
-                    auto stream = queue.write();
-                    stream->write(sizeof(_max_id), &_max_id);
-                    stream->write(event->len, event->data);
-                    delete stream;
-
-                    if(task_ids != nullptr) {
-                        // Utils::cluck(2, "add task_id: %u, %llu", _cnt, max_id);
-                        task_ids[_cnt] = max_id;
-                    }
-
-                    ++num_inserted;
-                    ++stat_num_inserts;
-
-                    _event_data = event->data; // TODO
-                    Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
-
-                    // {
-                    //     size_t sz;
-                    //     char* val = db.get((char*)&_max_id, sizeof(_max_id), &sz);
-                    //     Utils::cluck(2, "value size: %zu\n", sz);
-                    //     if(sz > 0) {
-                    //         Utils::cluck(2, "value: %s\n", val);
-                    //     }
-                    // }
-
-                } else {
-                    Utils::cluck(3, "[save_event] db.add(%llu) failed: %s\n", max_id, db.error().name());
-                    break;
+                if(task_ids != nullptr) {
+                    // Utils::cluck(2, "add task_id: %u, %llu", _cnt, max_id);
+                    task_ids[_cnt] = max_id;
                 }
 
-                ++_cnt;
+                ++num_inserted;
+                ++stat_num_inserts;
+
+                _event_data = event->data; // TODO
+                Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
+
+                // {
+                //     size_t sz;
+                //     char* val = db.get((char*)&_max_id, sizeof(_max_id), &sz);
+                //     Utils::cluck(2, "value size: %zu\n", sz);
+                //     if(sz > 0) {
+                //         Utils::cluck(2, "value: %s\n", val);
+                //     }
+                // }
+
+            } else {
+                Utils::cluck(2, "[save_event] db.add(%llu) failed", max_id);//, db.error().name());
+                break;
             }
 
-            r_req->finish();
+            ++_cnt;
+        }
 
-            if(num_inserted == ctx.cnt) {
-                /*****************************/
-                auto candidate_peer_ids = std::make_shared<std::vector<std::shared_ptr<Utils::muh_str_t>>>();
-                auto accepted_peers = std::make_shared<std::list<std::shared_ptr<packet_r_ctx_peer>>>();
+        r_req->finish();
 
-                known_peers.lock();
-    // Utils::cluck(2, "REPLICATION ATTEMPT: %lu\n", known_peers.size());
-                for(auto& it : known_peers) {
-                    candidate_peer_ids->push_back(it.first);
-                }
+        if(num_inserted == ctx.cnt) {
+            /*****************************/
+            auto candidate_peer_ids = std::make_shared<std::vector<std::shared_ptr<Utils::muh_str_t>>>();
+            auto accepted_peers = std::make_shared<std::list<std::shared_ptr<packet_r_ctx_peer>>>();
 
-                known_peers.unlock();
+            known_peers.lock();
+// Utils::cluck(2, "REPLICATION ATTEMPT: %lu\n", known_peers.size());
+            for(auto& it : known_peers) {
+                candidate_peer_ids->push_back(it.first);
+            }
 
-                // TODO
-                std::random_shuffle(
-                    candidate_peer_ids->begin(),
-                    candidate_peer_ids->end()
-                );
+            known_peers.unlock();
 
-                std::shared_ptr<out_packet_r_ctx> r_ctx;
-                r_ctx.reset(new out_packet_r_ctx {
-                    .sync = (replication_factor > 0),
-                    .replication_factor = replication_factor,
-                    .pending = 0,
-                    .client = client,
-                    .candidate_peer_ids = candidate_peer_ids,
-                    .accepted_peers = accepted_peers,
-                    .r_req = r_req,
-                    .origin = ctx.origin
-                });
-                /*****************************/
+            // TODO
+            std::random_shuffle(
+                candidate_peer_ids->begin(),
+                candidate_peer_ids->end()
+            );
 
-                if(r_ctx->sync) {
-                    if(candidate_peer_ids->size() > 0) {
-                        result = SAVE_EVENT_RESULT_NULL;
+            std::shared_ptr<out_packet_r_ctx> r_ctx;
+            r_ctx.reset(new out_packet_r_ctx {
+                .sync = (replication_factor > 0),
+                .replication_factor = replication_factor,
+                .pending = 0,
+                .client = client,
+                .candidate_peer_ids = candidate_peer_ids,
+                .accepted_peers = accepted_peers,
+                .r_req = r_req,
+                .origin = ctx.origin
+            });
+            /*****************************/
 
-                        begin_replication(r_ctx);
-                        replication_began = true;
+            if(r_ctx->sync) {
+                if(candidate_peer_ids->size() > 0) {
+                    result = SAVE_EVENT_RESULT_NULL;
 
-                    } else {
-                        result = SAVE_EVENT_RESULT_A;
-                        // delete r_ctx;
-                    }
+                    begin_replication(r_ctx);
+                    replication_began = true;
 
                 } else {
-                    result = SAVE_EVENT_RESULT_K;
-
-                    if(candidate_peer_ids->size() > 0) {
-                        begin_replication(r_ctx);
-                        replication_began = true;
-
-                    // } else {
-                    //     delete r_ctx;
-                    }
+                    result = SAVE_EVENT_RESULT_A;
+                    // delete r_ctx;
                 }
 
             } else {
-                Utils::cluck(1, "Batch insert failed\n");
+                result = SAVE_EVENT_RESULT_K;
+
+                if(candidate_peer_ids->size() > 0) {
+                    begin_replication(r_ctx);
+                    replication_began = true;
+
+                // } else {
+                //     delete r_ctx;
+                }
             }
+
+        } else {
+            Utils::cluck(1, "Batch insert failed\n");
         }
 
         // if(!replication_began) delete r_req;
@@ -454,7 +450,7 @@ namespace Skree {
         auto& kv = *(event.r_queue->kv);
 
         if(!kv.remove(failover_key, failover_key_len)) {
-            Utils::cluck(3, "Key %s could not be removed: %s\n", failover_key, kv.error().name());
+            Utils::cluck(2, "Key %s could not be removed", failover_key);//, kv.error().name());
         }
     }
 
@@ -824,21 +820,16 @@ namespace Skree {
         auto& kv = *(event.queue->kv);
         uint64_t id_net = htonll(id);
 
-        size_t flag_size;
         // TODO: this could possibly flap too
-        char* flag = kv.get((char*)&id_net, sizeof(id_net), &flag_size);
+        const auto& flag = kv.get((char*)&id_net, sizeof(id_net));
 
-        if(flag_size < 1) {
+        if(flag.size() < 1) {
             return SKREE_META_EVENTSTATE_PROCESSED;
 
-        } else if((flag_size == 1) && (flag[0] == '0')) {
-            delete[] flag;
+        } else if((flag.size() == 1) && (flag[0] == '0')) {
             return SKREE_META_EVENTSTATE_PENDING;
 
         } else {
-            if(flag_size > 0)
-                delete[] flag;
-
             return SKREE_META_EVENTSTATE_LOST;
         }
     }

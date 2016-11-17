@@ -1,4 +1,5 @@
 #include "c.hpp"
+#include <ctime>
 
 // debug
 // #define PREV_SKREE_META_OPCODE_K SKREE_META_OPCODE_K
@@ -71,7 +72,7 @@ namespace Skree {
                     auto& db = *(eit->second->queue->kv);
 
                     if(!db.remove((char*)&rid_net, sizeof(rid_net)))
-                        Utils::cluck(2, "db.remove failed: %s\n", db.error().name());
+                        Utils::cluck(1, "db.remove failed");//: %s\n", db.error().name());
 
                 } else {
                     // can't re-save event, try again

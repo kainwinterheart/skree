@@ -1,6 +1,7 @@
 #include "queue_db.hpp"
 // #include <execinfo.h>
 #include <stdio.h>
+#include <utility>
 
 namespace Skree {
     QueueDb::QueueDb(const char* _path, size_t _file_size) : path(_path), file_size(_file_size) {
@@ -32,21 +33,10 @@ namespace Skree {
             write_page = new QueueDb::Page(args);
         }
 
-        kv = new DbWrapper;
-
         std::string db_file_name (path, path_len);
         db_file_name.append("/skree.kch");
 
-        if(!kv->open(
-            db_file_name,
-            kyotocabinet::HashDB::OWRITER
-            | kyotocabinet::HashDB::OCREATE
-            | kyotocabinet::HashDB::ONOLOCK
-            | kyotocabinet::HashDB::OAUTOTRAN
-        )) {
-            Utils::cluck(2, "Failed to open database: %s\n", kv->error().name());
-            abort();
-        }
+        kv = new DbWrapper (std::move(db_file_name));
 
         read_page->get_next();
         write_page->get_next();

@@ -17,6 +17,8 @@
 #include <unistd.h>
 #include <cstddef>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "atomic_hash_map.hpp"
 

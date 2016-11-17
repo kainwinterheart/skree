@@ -4,3 +4,6 @@
 [submodule "contrib/gperftools"]
 	path = contrib/gperftools
 	url = https://github.com/gperftools/gperftools.git
+[submodule "contrib/rocksdb"]
+	path = contrib/rocksdb
+	url = https://github.com/facebook/rocksdb.git

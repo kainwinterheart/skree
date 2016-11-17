@@ -1,4 +1,5 @@
 #include "processor.hpp"
+#include <ctime>
 
 namespace Skree {
     namespace Workers {
