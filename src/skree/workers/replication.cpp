@@ -114,32 +114,32 @@ namespace Skree {
             Utils::known_event_t& event
         ) {
             auto& queue = *(event.r_queue);
-            auto& kv = *(queue.kv);
+            auto kv = queue.kv->NewSession();
 
             auto commit = [&kv, &event](){
-                if(kv.end_transaction(true)) {
+                if(kv->end_transaction(true)) {
                     return true;
 
                 } else {
                     Utils::cluck(2,
                         "Can't commit transaction for event %s",
                         event.id
-                        // kv.error().name()
+                        // kv->error().name()
                     );
 
                     return false;
                 }
             };
 
-            if(kv.begin_transaction()) {
-                if(kv.cas(item.failover_key->data, item.failover_key->len, "1", 1, "1", 1)) {
+            if(kv->begin_transaction()) {
+                if(kv->cas(item.failover_key->data, item.failover_key->len, "1", 1, "1", 1)) {
                     queue.write(raw_item_len, raw_item);
 
-                    if(!kv.cas(item.failover_key->data, item.failover_key->len, "1", 1, "0", 1)) {
+                    if(!kv->cas(item.failover_key->data, item.failover_key->len, "1", 1, "0", 1)) {
                         Utils::cluck(2,
                             "Can't remove key %s",
                             item.failover_key->data
-                            // kv.error().name()
+                            // kv->error().name()
                         );
                         // TODO: what should happen here?
                     }
@@ -151,7 +151,7 @@ namespace Skree {
                 Utils::cluck(2,
                     "Can't create transaction for event %s",
                     event.id
-                    // kv.error().name()
+                    // kv->error().name()
                 );
 
                 return false;

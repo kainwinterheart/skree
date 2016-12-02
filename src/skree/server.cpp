@@ -330,6 +330,8 @@ namespace Skree {
         max_id -= ctx.cnt;
         uint64_t _max_id;
 
+        auto batch = db.NewSession();
+
         while(_cnt < ctx.cnt) {
             ++max_id;
             auto event = (*ctx.events.get())[_cnt];
@@ -341,36 +343,29 @@ namespace Skree {
             _max_id = htonll(max_id);
 
             // TODO: insert all events in a transaction
-            if(db.add((char*)&_max_id, sizeof(_max_id), "0", 1)) {
-                auto stream = queue.write();
-                stream->write(sizeof(_max_id), &_max_id);
-                stream->write(event->len, event->data);
-                delete stream;
+            batch->add((char*)&_max_id, sizeof(_max_id), "0", 1);
 
-                if(task_ids != nullptr) {
-                    // Utils::cluck(2, "add task_id: %u, %llu", _cnt, max_id);
-                    task_ids[_cnt] = max_id;
-                }
+            char* data = (char*)malloc(sizeof(_max_id) + event->len);
 
-                ++num_inserted;
-                ++stat_num_inserts;
+            memcpy(data, &_max_id, sizeof(_max_id));
+            memcpy(data + sizeof(_max_id), event->data, event->len);
 
-                _event_data = event->data; // TODO
-                Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
+            char key [1 + sizeof(_max_id)];
+            key[0] = 'd';
+            memcpy(key + 1, &_max_id, sizeof(_max_id));
 
-                // {
-                //     size_t sz;
-                //     char* val = db.get((char*)&_max_id, sizeof(_max_id), &sz);
-                //     Utils::cluck(2, "value size: %zu\n", sz);
-                //     if(sz > 0) {
-                //         Utils::cluck(2, "value: %s\n", val);
-                //     }
-                // }
+            batch->add(key, 1 + sizeof(_max_id), data, sizeof(_max_id) + event->len);
 
-            } else {
-                Utils::cluck(2, "[save_event] db.add(%llu) failed", max_id);//, db.error().name());
-                break;
+            if(task_ids != nullptr) {
+                // Utils::cluck(2, "add task_id: %u, %llu", _cnt, max_id);
+                task_ids[_cnt] = max_id;
             }
+
+            ++num_inserted;
+            ++stat_num_inserts;
+
+            _event_data = event->data; // TODO
+            Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
 
             ++_cnt;
         }
