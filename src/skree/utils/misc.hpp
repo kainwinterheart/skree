@@ -73,7 +73,7 @@ namespace Skree {
         //BKDR hash algorithm
         static inline int CharPointerHash(size_t len, const char* key) {
             const int seed = 131; //31 131 1313 13131131313 etc//
-            int hash = 0;
+            uint64_t hash = 0;
 
             for(size_t i = 0; i < len; ++i) {
                 hash = ((hash * seed) + key[i]);
@@ -269,49 +269,51 @@ namespace Skree {
         static inline std::string longmess(int offset = 1) {
             std::string out;
 
-            // void* callstack[128];
-            // int frames = backtrace(callstack, 128);
-            // int status;
-            // char* name;
-            // bool dli_ok;
-            // Dl_info info;
-            // char tmp [21];
-            // int starting_offset = offset;
-            //
-            // for(; offset < frames; ++offset) {
-            //     status = dladdr(callstack[offset], &info);
-            //
-            //     if((status != 0) && (info.dli_sname != nullptr)) {
-            //         dli_ok = true;
-            //         name = abi::__cxa_demangle(info.dli_sname, 0, 0, &status);
-            //
-            //         if(status != 0) {
-            //             name = strdup(info.dli_sname);
-            //         }
-            //
-            //     } else {
-            //         if(status != 0)
-            //             dli_ok = true;
-            //
-            //         name = (char*)malloc(4);
-            //         sprintf(name, "???");
-            //         status = 1;
-            //     }
-            //
-            //     out.append("\t");
-            //
-            //     sprintf(tmp, "%d", (offset - starting_offset));
-            //     out.append(tmp);
-            //     out.append("\t");
-            //
-            //     out.append((dli_ok ? info.dli_fname : name));
-            //     out.append("\t");
-            //     out.append(name);
-            //
-            //     out.append("\n");
-            //
-            //     free(name);
-            // }
+#ifdef SKREE_LONGMESS
+            void* callstack[128];
+            int frames = backtrace(callstack, 128);
+            int status;
+            char* name;
+            bool dli_ok;
+            Dl_info info;
+            char tmp [21];
+            int starting_offset = offset;
+
+            for(; offset < frames; ++offset) {
+                status = dladdr(callstack[offset], &info);
+
+                if((status != 0) && (info.dli_sname != nullptr)) {
+                    dli_ok = true;
+                    name = abi::__cxa_demangle(info.dli_sname, 0, 0, &status);
+
+                    if(status != 0) {
+                        name = strdup(info.dli_sname);
+                    }
+
+                } else {
+                    if(status != 0)
+                        dli_ok = true;
+
+                    name = (char*)malloc(4);
+                    sprintf(name, "???");
+                    status = 1;
+                }
+
+                out.append("\t");
+
+                sprintf(tmp, "%d", (offset - starting_offset));
+                out.append(tmp);
+                out.append("\t");
+
+                out.append((dli_ok ? info.dli_fname : name));
+                out.append("\t");
+                out.append(name);
+
+                out.append("\n");
+
+                free(name);
+            }
+#endif
 
             return out;
         }
@@ -361,6 +363,13 @@ namespace Skree {
             }
 
             return Utils::SetTimeout(fh, timeoutMilliseconds);
+        }
+
+        template<typename TBuf>
+        static inline void PrintString(TBuf buf, const size_t size) {
+            for(size_t i = 0; i < size; ++i) {
+                fprintf(stderr, "[%zu] 0x%X\n", i, ((unsigned char*)buf)[i]);
+            }
         }
     }
 }

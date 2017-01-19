@@ -13,7 +13,7 @@ namespace Skree {
     struct in_packet_r_ctx_event {
         const char* data;
         // char* id;
-        uint64_t id_net;
+        // uint64_t id_net;
         uint32_t len;
     };
 

@@ -16,27 +16,14 @@ namespace Skree {
 
             virtual void run() override;
         private:
-            struct QueueItem {
-                uint64_t id;
-                uint64_t id_net;
-                const char* data;
-                uint64_t len; // TODO: 64 or 32?
-                std::shared_ptr<Utils::muh_str_t> origin;
-            };
-
-            static std::shared_ptr<Processor::QueueItem> parse_queue_item(
-                Utils::known_event_t& event,
-                std::shared_ptr<Utils::muh_str_t> item
-            );
-
             bool failover(const uint64_t& now, Utils::known_event_t& event);
             bool process(const uint64_t& now, Utils::known_event_t& event);
-            bool check_wip(const uint64_t& now, const Processor::QueueItem& item);
 
             bool do_failover(
                 const uint64_t& now,
                 Utils::known_event_t& event,
-                const Processor::QueueItem& item
+                uint64_t itemId,
+                std::shared_ptr<Utils::muh_str_t> item
             );
         };
     }

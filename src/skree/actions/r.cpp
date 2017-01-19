@@ -41,7 +41,7 @@ namespace Skree {
                 --cnt;
 
                 (*events.get())[cnt].reset(new in_packet_r_ctx_event {
-                    .id_net = *(uint64_t*)(args->data + in_pos),
+                    // .id_net = *(uint64_t*)(args->data + in_pos),
                     // .id = (char*)malloc(21),
                     .len = ntohl(*(uint32_t*)(args->data + in_pos + sizeof(uint64_t))),
                     .data = (args->data + in_pos + sizeof(uint64_t) + sizeof(uint32_t))

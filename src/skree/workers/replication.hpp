@@ -35,6 +35,7 @@ namespace Skree {
 
             static std::shared_ptr<Replication::QueueItem> parse_queue_item(
                 Utils::known_event_t& event,
+                const uint64_t itemId,
                 std::shared_ptr<Utils::muh_str_t> item
             );
 

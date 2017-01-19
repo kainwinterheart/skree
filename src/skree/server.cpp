@@ -186,74 +186,45 @@ namespace Skree {
         Client& client,
         QueueDb& queue
     ) {
-        const uint32_t _peers_cnt = htonl(ctx.peers_count);
-        Skree::Utils::StringSequence serialized_peers (
-            sizeof(_peers_cnt), (const char*)&_peers_cnt
-        );
-
-        // bool keep_peer_id;
-        // uint64_t _peer_id_len;
         bool _save_peers_to_discover = false;
+        size_t serialized_peers_len = 0;
 
         for(uint32_t i = 0; i < ctx.peers_count; ++i) {
-            auto peer = (*ctx.peers.get())[i];
+            const auto peer = (*ctx.peers.get())[i];
             auto _peer_id = Utils::make_peer_id(peer->hostname->len, peer->hostname->data, peer->port);
-
-            // keep_peer_id = false;
-            // _peer_id_len = strlen(_peer_id);
 
             auto peers_to_discover_end = peers_to_discover.lock();
             auto prev_item = peers_to_discover.find(_peer_id);
 
             if(prev_item == peers_to_discover_end) {
-                // std::shared_ptr<Utils::muh_str_t> _host;
-                // _host.reset(new Utils::muh_str_t {
-                //     .own = true,
-                //     .len = peer->hostname_len,
-                //     .data = strndup(peer->hostname, peer->hostname_len)
-                // });
-
                 peers_to_discover[_peer_id].reset(new peer_to_discover_t {
                     .host = peer->hostname,
                     .port = peer->port
                 });
 
-                // keep_peer_id = true;
                 _save_peers_to_discover = true;
             }
 
             peers_to_discover.unlock();
 
-            std::shared_ptr<Utils::muh_str_t> __peer_id;
-            __peer_id.reset(new Utils::muh_str_t {
-                .own = false,
-                .len = _peer_id->len + 1,
-                .data = _peer_id->data,
-                .origin = _peer_id
-            });
-
-            serialized_peers.concat(__peer_id);
-
-            // TODO
-            // if(!keep_peer_id) {
-            //     free(_peer_id);
-            //     free(peer->hostname);
-            // }
-
-            // delete peer; // TODO?
+            serialized_peers_len +=
+                sizeof(peer->hostname->len)
+                + peer->hostname->len
+                + sizeof(peer->port);
         }
 
         if(_save_peers_to_discover)
             save_peers_to_discover();
 
-        uint64_t now = htonll(std::time(nullptr));
-        size_t now_len = sizeof(now);
-        uint32_t _hostname_len = htonl(ctx.hostname_len);
-        uint32_t _port = htonl(ctx.port);
+        const uint64_t now = htonll(std::time(nullptr));
+        const size_t now_len = sizeof(now);
+        const uint32_t _hostname_len = htonl(ctx.hostname_len);
+        const uint32_t _port = htonl(ctx.port);
         auto peer_id = Utils::make_peer_id(ctx.hostname_len, ctx.hostname, ctx.port);
 
         char failover_key [
-            peer_id->len
+            1
+            + peer_id->len
             + 1 // :
             + 20 // wrinseq
             + 1 // \0
@@ -261,43 +232,114 @@ namespace Skree {
 
         auto& db = *(queue.kv);
         uint32_t processed = 0;
+        const uint32_t _peers_cnt = htonl(ctx.peers_count);
 
-        for(uint32_t i = 0; i < ctx.events_count; ++i) {
-            auto event = (*ctx.events.get())[i];
-            uint32_t event_len = htonl(event->len);
+        {
+            auto kv_batch = db.NewSession();
+            auto queue_batch = db.NewSession(DbWrapper::TSession::ST_QUEUE);
 
-            // TODO: ntohll(event->id_net) -> event->id
-            sprintf(failover_key, "%s:%llu", peer_id->data, ntohll(event->id_net));
+            for(uint32_t i = 0; i < ctx.events_count; ++i) {
+                const auto event = (*ctx.events.get())[i];
+                const uint32_t event_len = htonl(event->len);
 
-            if(db.add(failover_key, strlen(failover_key), "0", 1)) {
-                auto stream = queue.write();
+                size_t data_offset = 0;
+                char* data = (char*)malloc(
+                    sizeof(event_len)
+                    + event->len
+                    + now_len
+                    + sizeof(_hostname_len)
+                    + ctx.hostname_len
+                    + sizeof(_port)
+                    + sizeof(_peers_cnt)
+                    + serialized_peers_len
+                );
 
-                stream->write(sizeof(event_len), &event_len);
-                stream->write(event->len, event->data);
-                stream->write(now_len, &now);
-                stream->write(sizeof(event->id_net), &(event->id_net)); // == rid
-                stream->write(sizeof(_hostname_len), &_hostname_len);
-                stream->write(ctx.hostname_len, ctx.hostname);
-                stream->write(sizeof(_port), &_port);
-                stream->write(serialized_peers);
+                memcpy(data + data_offset, &event_len, sizeof(event_len));
+                data_offset += sizeof(event_len);
 
-                delete stream;
+                memcpy(data + data_offset, event->data, event->len);
+                data_offset += event->len;
 
-                ++processed;
-                ++stat_num_replications;
+                memcpy(data + data_offset, &now, now_len);
+                data_offset += now_len;
 
-            } else {
-                Utils::cluck(2, "[repl_save] db.add(%s) failed", failover_key);//, db.error().name());
-                break;
+                memcpy(data + data_offset, &_hostname_len, sizeof(_hostname_len));
+                data_offset += sizeof(_hostname_len);
+
+                memcpy(data + data_offset, ctx.hostname, ctx.hostname_len);
+                data_offset += ctx.hostname_len;
+
+                memcpy(data + data_offset, &_port, sizeof(_port));
+                data_offset += sizeof(_port);
+
+                // memcpy(data + data_offset, serialized_peers); // TODO
+                for(uint32_t i = 0; i < ctx.peers_count; ++i) {
+                    const auto peer = (*ctx.peers.get())[i];
+                    const uint32_t hostname_len = htonl(peer->hostname->len);
+                    const uint32_t port = htonl(peer->port);
+
+                    memcpy(data + data_offset, &hostname_len, sizeof(hostname_len));
+                    data_offset += sizeof(hostname_len);
+
+                    memcpy(data + data_offset, peer->hostname->data, peer->hostname->len);
+                    data_offset += peer->hostname->len;
+
+                    memcpy(data + data_offset, &port, sizeof(port));
+                    data_offset += sizeof(port);
+                }
+
+                uint64_t key;
+                bool rv = queue_batch->append(&key, data, data_offset);
+
+                free(data); // TODO: according to WT docs, this could break insertions
+
+                if(rv) {
+                    sprintf(failover_key, "%s:%llu", peer_id->data, key);
+
+                    kv_batch->add(failover_key, strlen(failover_key), "0", 1);
+
+                    ++processed;
+                    ++stat_num_replications;
+
+                } else {
+                    Utils::cluck(1, "WOOT");
+                    abort();
+                }
+
+                // free(event->data); // TODO
+                // delete event; // TODO?
             }
-
-            // free(event->data); // TODO
-            // delete event; // TODO?
         }
 
         // free(ctx.hostname); // TODO
 
         return ((processed == ctx.events_count) ? REPL_SAVE_RESULT_K : REPL_SAVE_RESULT_F);
+    }
+
+    void Server::save_one_event(
+        DbWrapper::TSession& kv_batch,
+        DbWrapper::TSession& queue_batch,
+        const uint32_t len,
+        const char* data,
+        std::function<void(const uint64_t)>&& onSuccess
+    ) {
+        uint64_t key;
+        bool rv = queue_batch.append(&key, data, len);
+
+        // free(data); // TODO: according to WT docs, this could break insertions
+
+        if(rv) {
+            uint64_t _key = htonll(key);
+            rv = kv_batch.add((char*)&_key, sizeof(_key), "0", 1);
+        }
+
+        if(rv) {
+            onSuccess(key);
+
+        } else {
+            Utils::cluck(1, "WOOT");
+            abort();
+        }
     }
 
     // TODO: get rid of ctx
@@ -322,52 +364,47 @@ namespace Skree {
         short result = SAVE_EVENT_RESULT_F;
         bool replication_began = false;
         auto& db = *(queue.kv);
-        uint64_t max_id = db.increment(ctx.cnt);
 
         uint32_t _cnt = 0;
         uint32_t num_inserted = 0;
-        const char* _event_data;
-        max_id -= ctx.cnt;
-        uint64_t _max_id;
+        // const char* _event_data;
 
-        auto batch = db.NewSession();
+        {
+            auto kv_batch = db.NewSession();
+            auto queue_batch = db.NewSession(DbWrapper::TSession::ST_QUEUE);
 
-        while(_cnt < ctx.cnt) {
-            ++max_id;
-            auto event = (*ctx.events.get())[_cnt];
+            while(_cnt < ctx.cnt) {
+                auto event = (*ctx.events.get())[_cnt];
 
-            // TODO: is this really necessary?
-            // event->id = (char*)malloc(21);
-            // sprintf(event->id, "%lu", max_id);
+                // TODO: insert all events in a transaction
+                save_one_event(
+                    *kv_batch,
+                    *queue_batch,
+                    event->len,
+                    event->data,
+                    [
+                        this,
+                        &event,
+                        &r_req,
+                        &num_inserted,
+                        &task_ids,
+                        &_cnt
+                    ](const uint64_t key) {
+                        if(task_ids != nullptr) {
+                            Utils::cluck(3, "add task_id: %u, %llu", _cnt, key);
+                            task_ids[_cnt] = key;
+                        }
 
-            _max_id = htonll(max_id);
+                        ++num_inserted;
+                        ++stat_num_inserts;
 
-            // TODO: insert all events in a transaction
-            batch->add((char*)&_max_id, sizeof(_max_id), "0", 1);
+                        // _event_data = event->data; // TODO
+                        Actions::R::out_add_event(r_req, key, event->len, event->data);
 
-            char* data = (char*)malloc(sizeof(_max_id) + event->len);
-
-            memcpy(data, &_max_id, sizeof(_max_id));
-            memcpy(data + sizeof(_max_id), event->data, event->len);
-
-            char key [1 + sizeof(_max_id)];
-            key[0] = 'd';
-            memcpy(key + 1, &_max_id, sizeof(_max_id));
-
-            batch->add(key, 1 + sizeof(_max_id), data, sizeof(_max_id) + event->len);
-
-            if(task_ids != nullptr) {
-                // Utils::cluck(2, "add task_id: %u, %llu", _cnt, max_id);
-                task_ids[_cnt] = max_id;
+                        ++_cnt;
+                    }
+                );
             }
-
-            ++num_inserted;
-            ++stat_num_inserts;
-
-            _event_data = event->data; // TODO
-            Actions::R::out_add_event(r_req, max_id, event->len, _event_data);
-
-            ++_cnt;
         }
 
         r_req->finish();

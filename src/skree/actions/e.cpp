@@ -21,8 +21,10 @@ namespace Skree {
 
             auto queue = it->second->queue;
 
-            uint32_t cnt (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t cnt;
+            memcpy(&cnt, args->data + in_pos, sizeof(uint32_t));
             in_pos += sizeof(cnt);
+            cnt = ntohl(cnt);
 
             const uint32_t events_count = cnt;
             auto events = std::make_shared<std::vector<std::shared_ptr<in_packet_e_ctx_event>>>(events_count);
@@ -30,8 +32,11 @@ namespace Skree {
             while(cnt > 0) {
                 --cnt;
 
+                uint32_t len;
+                memcpy(&len, args->data + in_pos, sizeof(uint32_t));
+
                 (*events.get())[cnt].reset(new in_packet_e_ctx_event {
-                    .len = ntohl(*(uint32_t*)(args->data + in_pos)),
+                    .len = ntohl(len),
                     .data = (const char*)(args->data + in_pos + sizeof(uint32_t)),
                     .id = nullptr // TODO: why is it nullptr?
                 });
@@ -39,8 +44,10 @@ namespace Skree {
                 in_pos += sizeof(uint32_t) + (*events.get())[cnt]->len;
             }
 
-            const uint32_t replication_factor (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t replication_factor;
+            memcpy(&replication_factor, args->data + in_pos, sizeof(uint32_t));
             in_pos += sizeof(replication_factor);
+            replication_factor = ntohl(replication_factor);
 
             in_packet_e_ctx ctx {
                 .cnt = events_count,

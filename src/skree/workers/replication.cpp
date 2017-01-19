@@ -32,6 +32,7 @@ namespace Skree {
 
         std::shared_ptr<Replication::QueueItem> Replication::parse_queue_item(
             Utils::known_event_t& event,
+            const uint64_t itemId,
             std::shared_ptr<Utils::muh_str_t> item
         ) {
             size_t item_pos = 0;
@@ -48,10 +49,8 @@ namespace Skree {
             out->rts = ntohll(*(uint64_t*)(item->data + item_pos));
             item_pos += sizeof(out->rts);
 
-            out->rid_net = *(uint64_t*)(item->data + item_pos);
-            item_pos += sizeof(out->rid_net);
-
-            out->rid = ntohll(out->rid_net);
+            out->rid_net = htonll(itemId);
+            out->rid = itemId;
 
             out->hostname_len = ntohl(*(uint32_t*)(item->data + item_pos));
             item_pos += sizeof(out->hostname_len);
@@ -69,12 +68,13 @@ namespace Skree {
 
             out->peer_id = Utils::make_peer_id(out->hostname_len, out->hostname, out->port);
             out->failover_key = Utils::NewStr(
-                out->peer_id->len
+                1
+                + out->peer_id->len
                 + 1 // :
                 + 20 // wrinseq
                 + 1 // \0
             );
-            sprintf(out->failover_key->data, "%s:%llu", out->peer_id->data, out->rid);
+            sprintf(out->failover_key->data, "d%s:%llu", out->peer_id->data, out->rid);
             out->failover_key->len = strlen(out->failover_key->data);
             // Utils::cluck(2, "repl thread: %s\n", suffix);
 
@@ -133,16 +133,28 @@ namespace Skree {
 
             if(kv->begin_transaction()) {
                 if(kv->cas(item.failover_key->data, item.failover_key->len, "1", 1, "1", 1)) {
-                    queue.write(raw_item_len, raw_item);
+                    auto kv_batch = queue.kv->NewSession();
+                    auto queue_batch = queue.kv->NewSession(DbWrapper::TSession::ST_QUEUE);
 
-                    if(!kv->cas(item.failover_key->data, item.failover_key->len, "1", 1, "0", 1)) {
-                        Utils::cluck(2,
-                            "Can't remove key %s",
-                            item.failover_key->data
-                            // kv->error().name()
-                        );
-                        // TODO: what should happen here?
-                    }
+                    server.save_one_event(
+                        *kv_batch,
+                        *queue_batch,
+                        raw_item_len,
+                        raw_item,
+                        [
+                            kv,
+                            &item
+                        ](const uint64_t key) {
+                            if(!kv->cas(item.failover_key->data, item.failover_key->len, "1", 1, "0", 1)) {
+                                Utils::cluck(2,
+                                    "Can't remove key %s",
+                                    item.failover_key->data
+                                    // kv->error().name()
+                                );
+                                // TODO: what should happen here?
+                            }
+                        }
+                    );
                 }
 
                 return commit();
@@ -160,14 +172,15 @@ namespace Skree {
 
         bool Replication::failover(const uint64_t& now, Utils::known_event_t& event) {
             auto& queue_r2 = *(event.r2_queue);
-            auto _item = queue_r2.read();
+            uint64_t itemId;
+            auto _item = queue_r2.read(itemId);
 
             if(!_item) {
                 // Utils::cluck(1, "replication: empty queue\n");
                 return false;
             }
 
-            auto item = parse_queue_item(event, _item);
+            auto item = parse_queue_item(event, itemId, _item);
             bool commit = true;
 
             {
@@ -198,14 +211,15 @@ namespace Skree {
         bool Replication::replication(const uint64_t& now, Utils::known_event_t& event) {
             // Utils::cluck(1, "replication: before read\n");
             auto& queue = *(event.r_queue);
-            auto _item = queue.read();
+            uint64_t itemId;
+            auto _item = queue.read(itemId);
 
             if(!_item) {
                 // Utils::cluck(1, "replication: empty queue\n");
                 return false;
             }
 
-            auto item = parse_queue_item(event, _item);
+            auto item = parse_queue_item(event, itemId, _item);
             // auto cleanup = [&item](){
             //     free(item->peer_id);
             //     free(item->failover_key);
@@ -261,7 +275,8 @@ namespace Skree {
             bool commit = true;
 
             if(queue.kv->cas(item->failover_key->data, item->failover_key->len, "0", 1, "1", 1)) {
-                event.r2_queue->write(_item->len, _item->data);
+                uint64_t key;
+                event.r2_queue->kv->append(&key, _item->data, _item->len);
                 // Utils::cluck(3,
                 //     "Key %s for event %s has been added to r2_queue\n",
                 //     item->failover_key,

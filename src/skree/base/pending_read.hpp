@@ -69,7 +69,8 @@ namespace Skree {
                     }
 
                     void begin_data() {
-                        len = ntohl(*(uint32_t*)(buf + 1));
+                        memcpy(&len, buf + 1, sizeof(uint32_t));
+                        len = ntohl(len);
                         opcode = buf[0];
                         pos = 0;
 

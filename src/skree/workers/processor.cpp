@@ -16,12 +16,12 @@ namespace Skree {
 
                     if(failover(now, event)) {
                         active = true;
-                        ++(event.stat_num_processed);
+                        ++(event.stat_num_failovered);
                     }
 
                     if(process(now, event)) {
                         active = true;
-                        ++(event.stat_num_failovered);
+                        ++(event.stat_num_processed);
                     }
                 }
 
@@ -31,32 +31,17 @@ namespace Skree {
             }
         }
 
-        std::shared_ptr<Processor::QueueItem> Processor::parse_queue_item(
-            Utils::known_event_t& event,
-            std::shared_ptr<Utils::muh_str_t> item
-        ) {
-            std::shared_ptr<Processor::QueueItem> _item;
-            _item.reset(new Processor::QueueItem {
-                .id_net = *(uint64_t*)item->data,
-                .id = ntohll(*(uint64_t*)item->data),
-                .data = item->data + sizeof(uint64_t),
-                .len = item->len - sizeof(uint64_t),
-                .origin = item
-            });
-
-            return _item;
-        }
-
         bool Processor::do_failover(
             const uint64_t& now,
             Utils::known_event_t& event,
-            const Processor::QueueItem& item
+            uint64_t itemId,
+            std::shared_ptr<Utils::muh_str_t> item
         ) {
             auto events = std::make_shared<std::vector<std::shared_ptr<in_packet_e_ctx_event>>>(1);
 
             (*events.get())[0].reset(new in_packet_e_ctx_event {
-               .len = (uint32_t)(item.len), // TODO
-               .data = item.data
+               .len = item->len,
+               .data = item->data
             });
 
             in_packet_e_ctx e_ctx {
@@ -64,7 +49,7 @@ namespace Skree {
                .event_name_len = event.id_len,
                .event_name = event.id,
                .events = events,
-               .origin = std::shared_ptr<void>(item.origin, (void*)item.origin.get())
+               .origin = std::shared_ptr<void>(item, (void*)item.get()),
             };
 
             short result = server.save_event(
@@ -74,10 +59,15 @@ namespace Skree {
                nullptr,
                *(event.queue)
             );
+            Utils::cluck(1, "[processor] do_failover() done");
+            abort();
 
             if(result == SAVE_EVENT_RESULT_K) {
+                auto itemIdNet = htonll(itemId);
                 auto& kv = *(event.queue->kv);
-                kv.remove((char*)&(item.id_net), sizeof(item.id_net));
+
+                kv.remove((char*)&itemIdNet, sizeof(itemIdNet));
+                kv.remove(itemId);
 
                 return true; // success, key removed
 
@@ -88,20 +78,21 @@ namespace Skree {
 
         bool Processor::failover(const uint64_t& now, Utils::known_event_t& event) {
             auto& queue_r2 = *(event.queue2);
-            auto _item = queue_r2.read();
+            uint64_t itemId;
+            auto item = queue_r2.read(itemId);
 
-            if(!_item) {
+            if(!item) {
                 // Utils::cluck(1, "processor: empty queue\n");
                 return false;
             }
 
-            auto item = parse_queue_item(event, _item);
-            // auto cleanup = [&item, &_item](){
-            //     // delete item;
-            //     free(_item);
-            // };
+            uint64_t origItemId;
+            memcpy(&origItemId, item->data, sizeof(origItemId));
 
-            auto state = server.get_event_state(item->id, event, now);
+            uint32_t itemLen = item->len - sizeof(origItemId);
+            char* itemData = item->data + sizeof(origItemId);
+
+            auto state = server.get_event_state(origItemId, event, now);
             bool repeat = false;
             bool key_removed = false;
             // short reason = 0;
@@ -113,7 +104,15 @@ namespace Skree {
                 repeat = true;
 
             } else if(state == SKREE_META_EVENTSTATE_LOST) {
-                if(do_failover(now, event, *item)) {
+                std::shared_ptr<Utils::muh_str_t> _item;
+                _item.reset(new Utils::muh_str_t {
+                    .own = false,
+                    .data = itemData,
+                    .len = itemLen,
+                    .origin = item,
+                });
+
+                if(do_failover(now, event, origItemId, _item)) {
                     key_removed = true;
                     // reason = 1;
 
@@ -123,20 +122,44 @@ namespace Skree {
             }
 
             if(repeat) {
-                Utils::cluck(3, "[processor::failover] releat: %llu, state: %u\n", item->id, state);
+                Utils::cluck(3, "[processor::failover] releat: %llu, state: %u\n", origItemId, state);
                 queue_r2.sync_read_offset(false);
                 // cleanup();
                 return false;
             }
 
+            auto origItemIdNet = htonll(origItemId);
+
             if(!key_removed) {
                 auto& kv = *(event.queue->kv);
-                key_removed = kv.remove((char*)&(item->id_net), sizeof(item->id_net));
+                key_removed = kv.remove((char*)&origItemIdNet, sizeof(origItemIdNet));
                 // reason = 2;
 
                 if(!key_removed) {
-                    key_removed = (kv.check((char*)&(item->id_net), sizeof(item->id_net)) <= 0);
+                    key_removed = (kv.check((char*)&origItemIdNet, sizeof(origItemIdNet)) <= 0);
                     // reason = 3;
+                }
+            }
+
+            if(key_removed) {
+                auto& kv = *(event.queue->kv);
+                key_removed = kv.remove(origItemIdNet);
+                // reason = 4;
+
+                if(!key_removed) {
+                    key_removed = (kv.check(origItemIdNet) <= 0);
+                    // reason = 5;
+                }
+            }
+
+            if(key_removed) {
+                auto& kv = *(event.queue2->kv);
+                key_removed = kv.remove(itemId);
+                // reason = 6;
+
+                if(!key_removed) {
+                    key_removed = (kv.check(itemId) <= 0);
+                    // reason = 7;
                 }
             }
 
@@ -145,6 +168,10 @@ namespace Skree {
             // }
 
             queue_r2.sync_read_offset(key_removed);
+
+            // if(key_removed) {
+            //     event.queue2->kv->remove((char*)&itemIdNet, sizeof(itemIdNet));
+            // }
             // cleanup();
             return key_removed;
         }
@@ -153,22 +180,19 @@ namespace Skree {
             Skree::Client* peer;
             // Utils::cluck(1, "processor: before read\n");
             auto& queue = *(event.queue);
-            auto _item = queue.read();
+            uint64_t itemId;
+            auto item = queue.read(itemId);
 
-            if(!_item) {
+            if(!item) {
                 // Utils::cluck(1, "processor: empty queue\n");
                 return false;
             }
 
+            auto itemIdNet = htonll(itemId);
+
             // TODO: batch event processing
 
-            auto item = parse_queue_item(event, _item);
-            // auto cleanup = [&item, &_item](){
-            //     // delete item;
-            //     free(_item);
-            // };
-
-            if(server.get_event_state(item->id, event, now) == SKREE_META_EVENTSTATE_PROCESSING) {
+            if(server.get_event_state(itemId, event, now) == SKREE_META_EVENTSTATE_PROCESSING) {
                 // TODO: what should really happen here?
                 // Utils::cluck(1, "skip repl: no_failover flag is set\n");
                 // cleanup();
@@ -178,20 +202,36 @@ namespace Skree {
 
             auto& wip = server.wip;
             wip.lock();
-            wip[item->id] = now;
+            wip[itemId] = now;
             wip.unlock();
 
             bool commit = true;
             auto& kv = *(queue.kv);
 
-            if(kv.cas((char*)&(item->id_net), sizeof(item->id_net), "0", 1, "1", 1)) {
-                event.queue2->write(_item->len, _item->data);
+            if(kv.cas((char*)&itemIdNet, sizeof(itemIdNet), "0", 1, "1", 1)) {
+                const size_t failover_item_len = sizeof(itemIdNet) + item->len;
+                char* failover_item = (char*)malloc(failover_item_len);
+
+                memcpy(failover_item, &itemIdNet, sizeof(itemIdNet));
+                memcpy(failover_item + sizeof(itemIdNet), item->data, item->len);
+
+                uint64_t key;
+                if(!event.queue2->kv->append(&key, failover_item, failover_item_len)) {
+                    abort();
+                }
+
+                free(failover_item);
 
                 // TODO: process event here
 
-                if(!kv.remove((char*)&(item->id_net), sizeof(item->id_net))) {
+                if(!kv.remove((char*)&itemIdNet, sizeof(itemIdNet))) {
                     // TODO: what should really happen here?
-                    commit = (kv.check((char*)&(item->id_net), sizeof(item->id_net)) <= 0);
+                    commit = (kv.check((char*)&itemIdNet, sizeof(itemIdNet)) <= 0);
+                }
+
+                if(commit && !kv.remove(itemId)) {
+                    // TODO: what should really happen here?
+                    commit = (kv.check(itemId) <= 0);
                 }
 
             } else {
@@ -206,15 +246,14 @@ namespace Skree {
                 //     Utils::cluck(2, "value: %s\n", _val);
                 // }
                 // abort();
-                if(!do_failover(now, event, *item)) {
-                commit = false;
-            }}
+                commit = do_failover(now, event, itemId, item);
+            }
 
             queue.sync_read_offset(commit);
             // Utils::cluck(2, "processor: after sync_read_offset(), rid: %llu\n", item->id);
 
             auto wip_end = wip.lock();
-            auto it = wip.find(item->id);
+            auto it = wip.find(itemId);
 
             if(it != wip_end) {
                 // TODO: this should not be done here unconditionally
@@ -222,6 +261,10 @@ namespace Skree {
             }
 
             wip.unlock();
+
+            if(commit) {
+                // Utils::cluck(1, "[processor] ALL DONE");
+            }
 
             return commit;
         }

@@ -309,7 +309,7 @@ namespace Skree {
         }
 
         if(event.Flags & NMuhEv::MUHEV_FLAG_EOF) {
-            Utils::cluck(1, "EV_EOF");
+            // Utils::cluck(1, "EV_EOF");
             client->drop();
             return;
         }

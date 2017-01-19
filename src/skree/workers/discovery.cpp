@@ -406,14 +406,18 @@ namespace Skree {
             if(args->opcode == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 0;
 
-                const uint32_t len (ntohl(*(uint32_t*)(args->data + in_pos)));
+                uint32_t len;
+                memcpy(&len, args->data + in_pos, sizeof(uint32_t));
                 in_pos += sizeof(len);
+                len = ntohl(len);
 
                 const char* peer_name = args->data + in_pos;
                 in_pos += len + 1;
 
-                uint32_t _tmp (ntohl(*(uint32_t*)(args->data + in_pos)));
+                uint32_t _tmp;
+                memcpy(&_tmp, args->data + in_pos, sizeof(uint32_t));
                 in_pos += sizeof(_tmp);
+                _tmp = ntohl(_tmp);
 
                 client.set_max_parallel_connections(std::min(
                     server.get_max_parallel_connections(),
