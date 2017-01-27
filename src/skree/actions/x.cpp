@@ -5,14 +5,18 @@ namespace Skree {
         void X::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
             uint64_t in_pos = 0;
 
-            const uint32_t peer_id_len (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t peer_id_len;
+            memcpy(&peer_id_len, (args->data + in_pos), sizeof(peer_id_len));
             in_pos += sizeof(peer_id_len);
+            peer_id_len = ntohl(peer_id_len);
 
             const char* peer_id = args->data + in_pos;
             in_pos += peer_id_len + 1;
 
-            const uint32_t event_id_len (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t event_id_len;
+            memcpy(&event_id_len, (args->data + in_pos), sizeof(event_id_len));
             in_pos += sizeof(event_id_len);
+            event_id_len = ntohl(event_id_len);
 
             const char* event_id = args->data + in_pos;
             in_pos += event_id_len + 1;
@@ -24,8 +28,10 @@ namespace Skree {
                 return;
             }
 
-            const uint64_t rid (ntohll(*(uint64_t*)(args->data + in_pos)));
+            uint64_t rid;
+            memcpy(&rid, (args->data + in_pos), sizeof(rid));
             in_pos += sizeof(rid);
+            rid = ntohll(rid);
 
             auto suffix = Utils::NewStr(
                 peer_id_len
@@ -34,7 +40,7 @@ namespace Skree {
                 + 1 // \0
             );
 
-            sprintf(suffix->data, "%s:%lu", peer_id, rid);
+            sprintf(suffix->data, "%s:%llu", peer_id, rid);
             suffix->len = strlen(suffix->data);
 
             auto& event = *(eit->second);

@@ -223,10 +223,10 @@ namespace Skree {
         auto peer_id = Utils::make_peer_id(ctx.hostname_len, ctx.hostname, ctx.port);
 
         char failover_key [
-            1
-            + peer_id->len
+            peer_id->len
             + 1 // :
             + 20 // wrinseq
+            + 1 // 'm'
             + 1 // \0
         ];
 
@@ -247,6 +247,7 @@ namespace Skree {
                     sizeof(event_len)
                     + event->len
                     + now_len
+                    + sizeof(event->id_net)
                     + sizeof(_hostname_len)
                     + ctx.hostname_len
                     + sizeof(_port)
@@ -263,6 +264,9 @@ namespace Skree {
                 memcpy(data + data_offset, &now, now_len);
                 data_offset += now_len;
 
+                memcpy(data + data_offset, &(event->id_net), sizeof(event->id_net)); // == rid
+                data_offset += sizeof(event->id_net);
+
                 memcpy(data + data_offset, &_hostname_len, sizeof(_hostname_len));
                 data_offset += sizeof(_hostname_len);
 
@@ -271,6 +275,9 @@ namespace Skree {
 
                 memcpy(data + data_offset, &_port, sizeof(_port));
                 data_offset += sizeof(_port);
+
+                memcpy(data + data_offset, &_peers_cnt, sizeof(_peers_cnt));
+                data_offset += sizeof(_peers_cnt);
 
                 // memcpy(data + data_offset, serialized_peers); // TODO
                 for(uint32_t i = 0; i < ctx.peers_count; ++i) {
@@ -295,8 +302,20 @@ namespace Skree {
 
                 if(rv) {
                     sprintf(failover_key, "%s:%llu", peer_id->data, key);
+                    size_t failover_key_len = strlen(failover_key);
 
-                    kv_batch->add(failover_key, strlen(failover_key), "0", 1);
+                    kv_batch->add(failover_key, failover_key_len, "0", 1);
+
+                    failover_key[failover_key_len] = 'm';
+                    ++failover_key_len;
+                    auto keyNet = htonll(key);
+
+                    kv_batch->add(
+                        failover_key,
+                        failover_key_len,
+                        (char*)&keyNet,
+                        sizeof(keyNet)
+                    );
 
                     ++processed;
                     ++stat_num_replications;
@@ -314,32 +333,6 @@ namespace Skree {
         // free(ctx.hostname); // TODO
 
         return ((processed == ctx.events_count) ? REPL_SAVE_RESULT_K : REPL_SAVE_RESULT_F);
-    }
-
-    void Server::save_one_event(
-        DbWrapper::TSession& kv_batch,
-        DbWrapper::TSession& queue_batch,
-        const uint32_t len,
-        const char* data,
-        std::function<void(const uint64_t)>&& onSuccess
-    ) {
-        uint64_t key;
-        bool rv = queue_batch.append(&key, data, len);
-
-        // free(data); // TODO: according to WT docs, this could break insertions
-
-        if(rv) {
-            uint64_t _key = htonll(key);
-            rv = kv_batch.add((char*)&_key, sizeof(_key), "0", 1);
-        }
-
-        if(rv) {
-            onSuccess(key);
-
-        } else {
-            Utils::cluck(1, "WOOT");
-            abort();
-        }
     }
 
     // TODO: get rid of ctx
@@ -365,7 +358,6 @@ namespace Skree {
         bool replication_began = false;
         auto& db = *(queue.kv);
 
-        uint32_t _cnt = 0;
         uint32_t num_inserted = 0;
         // const char* _event_data;
 
@@ -373,37 +365,36 @@ namespace Skree {
             auto kv_batch = db.NewSession();
             auto queue_batch = db.NewSession(DbWrapper::TSession::ST_QUEUE);
 
-            while(_cnt < ctx.cnt) {
-                auto event = (*ctx.events.get())[_cnt];
+            while(num_inserted < ctx.cnt) {
+                auto event = (*ctx.events.get())[num_inserted];
 
                 // TODO: insert all events in a transaction
-                save_one_event(
-                    *kv_batch,
-                    *queue_batch,
-                    event->len,
-                    event->data,
-                    [
-                        this,
-                        &event,
-                        &r_req,
-                        &num_inserted,
-                        &task_ids,
-                        &_cnt
-                    ](const uint64_t key) {
-                        if(task_ids != nullptr) {
-                            Utils::cluck(3, "add task_id: %u, %llu", _cnt, key);
-                            task_ids[_cnt] = key;
-                        }
+                uint64_t key;
+                bool rv = queue_batch->append(&key, event->data, event->len);
 
-                        ++num_inserted;
-                        ++stat_num_inserts;
+                // free(data); // TODO: according to WT docs, this could break insertions
 
-                        // _event_data = event->data; // TODO
-                        Actions::R::out_add_event(r_req, key, event->len, event->data);
+                if(rv) {
+                    uint64_t _key = htonll(key);
+                    rv = kv_batch->add((char*)&_key, sizeof(_key), "0", 1);
+                }
 
-                        ++_cnt;
+                if(rv) {
+                    if(task_ids != nullptr) {
+                        Utils::cluck(3, "add task_id: %u, %llu", num_inserted, key);
+                        task_ids[num_inserted] = key;
                     }
-                );
+
+                    ++num_inserted;
+                    ++stat_num_inserts;
+
+                    // _event_data = event->data; // TODO
+                    Actions::R::out_add_event(r_req, key, event->len, event->data);
+
+                // } else {
+                //     Utils::cluck(1, "WOOT");
+                //     abort();
+                }
             }
         }
 
@@ -422,11 +413,13 @@ namespace Skree {
 
             known_peers.unlock();
 
-            // TODO
-            std::random_shuffle(
-                candidate_peer_ids->begin(),
-                candidate_peer_ids->end()
-            );
+            if(candidate_peer_ids->size() > 0) {
+                // TODO
+                std::random_shuffle(
+                    candidate_peer_ids->begin(),
+                    candidate_peer_ids->end()
+                );
+            }
 
             std::shared_ptr<out_packet_r_ctx> r_ctx;
             r_ctx.reset(new out_packet_r_ctx {
@@ -480,9 +473,30 @@ namespace Skree {
         Utils::known_event_t& event
     ) {
         auto& kv = *(event.r_queue->kv);
+        char meta_key [failover_key_len + 2];
+
+        memcpy(meta_key, failover_key, failover_key_len);
+        meta_key[failover_key_len] = 'm';
+        meta_key[failover_key_len + 1] = '0';
+
+        const auto& meta = kv.get(meta_key, failover_key_len + 1);
+
+        if(meta.size() > 0) {
+            uint64_t id;
+            memcpy(&id, meta.data(), sizeof(id));
+            id = ntohll(id);
+
+            if(!kv.remove(id)) {
+                Utils::cluck(2, "Key %llu could not be removed", id);
+            }
+        }
+
+        if(!kv.remove(meta_key, failover_key_len + 1)) {
+            Utils::cluck(2, "Key %s could not be removed", meta_key);
+        }
 
         if(!kv.remove(failover_key, failover_key_len)) {
-            Utils::cluck(2, "Key %s could not be removed", failover_key);//, kv.error().name());
+            Utils::cluck(2, "Key %s could not be removed", failover_key);
         }
     }
 
@@ -491,7 +505,6 @@ namespace Skree {
 
         while((peer == nullptr) && (r_ctx->candidate_peer_ids->size() > 0)) {
             const auto& peer_id = r_ctx->candidate_peer_ids->back();
-            r_ctx->candidate_peer_ids->pop_back();
 
             auto known_peers_end = known_peers.lock();
             auto it = known_peers.find(peer_id);
@@ -499,6 +512,8 @@ namespace Skree {
 
             if(it != known_peers_end)
                 peer = it->second.next();
+
+            r_ctx->candidate_peer_ids->pop_back();
         }
 
         bool done = false;
@@ -772,19 +787,7 @@ namespace Skree {
 
                 x_req->memorize(e_ctx.origin);
 
-                std::shared_ptr<Utils::muh_str_t> _peer_id;
-                _peer_id.reset(new Utils::muh_str_t {
-                    .own = false,
-                    .len = 0,
-                    .data = nullptr
-                });
-
-                while(ctx->peers_cnt > 0) {
-                    // Utils::cluck(2, "zxc: %u", ctx->peers_cnt);
-                    _peer_id->len = strlen(ctx->rpr + offset);
-                    _peer_id->data = ctx->rpr + offset;
-                    offset += _peer_id->len + 1;
-
+                for(const auto& _peer_id : *ctx->rpr) {
                     auto known_peers_end = known_peers.lock();
                     auto it = known_peers.find(_peer_id);
                     known_peers.unlock();
@@ -793,8 +796,6 @@ namespace Skree {
                         it->second.next()->push_write_queue(x_req);
                         written = true;
                     }
-
-                    --(ctx->peers_cnt);
                 }
                 // Utils::cluck(1, "qwe");
 

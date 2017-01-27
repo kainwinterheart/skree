@@ -204,8 +204,10 @@ namespace Skree {
             if(args->opcode == SKREE_META_OPCODE_K) {
                 uint64_t in_pos = 0;
 
-                uint32_t cnt (ntohl(*(uint32_t*)(args->data + in_pos)));
+                uint32_t cnt;
+                memcpy(&cnt, (args->data + in_pos), sizeof(cnt));
                 in_pos += sizeof(cnt);
+                cnt = ntohl(cnt);
 
                 bool got_new_peers = false;
                 auto& peers_to_discover = server.peers_to_discover;
@@ -213,14 +215,18 @@ namespace Skree {
                 while(cnt > 0) {
                     --cnt;
 
-                    uint32_t host_len = ntohl(*(uint32_t*)(args->data + in_pos));
+                    uint32_t host_len;
+                    memcpy(&host_len, (args->data + in_pos), sizeof(host_len));
                     in_pos += sizeof(host_len);
+                    host_len = ntohl(host_len);
 
                     const char* host = args->data + in_pos;
                     in_pos += host_len + 1;
 
-                    uint32_t port = ntohl(*(uint32_t*)(args->data + in_pos));
+                    uint32_t port;
+                    memcpy(&port, (args->data + in_pos), sizeof(port));
                     in_pos += sizeof(port);
+                    port = ntohl(port);
 
                     auto _peer_id = Utils::make_peer_id(host_len, host, port);
 
@@ -296,10 +302,10 @@ namespace Skree {
 
                 if(!args->stop) {
                     int max_parallel_connections(client.get_max_parallel_connections() - 1);
+                    const auto& peer_name = client.get_peer_name();
+                    const auto& peer_port = client.get_peer_port();
 
                     for(int i = 0; i < max_parallel_connections; ++i) {
-                        const auto& peer_name = client.get_peer_name();
-                        const auto& peer_port = client.get_peer_port();
                         std::shared_ptr<sockaddr_in> addr;
                         socklen_t addr_len;
                         int fh;

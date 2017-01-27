@@ -3,7 +3,10 @@
 namespace Skree {
     namespace Actions {
         void N::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
-            client.set_protocol_version(ntohl(*(uint32_t*)args->data));
+            uint32_t version;
+            memcpy(&version, args->data, sizeof(version));
+
+            client.set_protocol_version(ntohl(version));
         }
 
         std::shared_ptr<Skree::Base::PendingWrite::QueueItem> N::out_init() {

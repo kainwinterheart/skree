@@ -88,6 +88,7 @@ namespace Skree {
 
             uint64_t origItemId;
             memcpy(&origItemId, item->data, sizeof(origItemId));
+            origItemId = ntohll(origItemId);
 
             uint32_t itemLen = item->len - sizeof(origItemId);
             char* itemData = item->data + sizeof(origItemId);
@@ -143,11 +144,11 @@ namespace Skree {
 
             if(key_removed) {
                 auto& kv = *(event.queue->kv);
-                key_removed = kv.remove(origItemIdNet);
+                key_removed = kv.remove(origItemId);
                 // reason = 4;
 
                 if(!key_removed) {
-                    key_removed = (kv.check(origItemIdNet) <= 0);
+                    key_removed = (kv.check(origItemId) <= 0);
                     // reason = 5;
                 }
             }

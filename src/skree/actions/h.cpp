@@ -5,14 +5,18 @@ namespace Skree {
         void H::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
             uint64_t in_pos = 0;
 
-            const uint32_t host_len (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t host_len;
+            memcpy(&host_len, (args->data + in_pos), sizeof(host_len));
             in_pos += sizeof(host_len);
+            host_len = ntohl(host_len);
 
             const char* host = args->data + in_pos;
             in_pos += host_len + 1;
 
-            const uint32_t port (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t port;
+            memcpy(&port, (args->data + in_pos), sizeof(port));
             in_pos += sizeof(port);
+            port = ntohl(port);
 
             // TODO: (char*)(char[len])
             auto _peer_id = Utils::make_peer_id(host_len, host, port);

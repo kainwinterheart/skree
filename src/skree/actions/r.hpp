@@ -13,7 +13,7 @@ namespace Skree {
     struct in_packet_r_ctx_event {
         const char* data;
         // char* id;
-        // uint64_t id_net;
+        uint64_t id_net;
         uint32_t len;
     };
 
@@ -23,11 +23,11 @@ namespace Skree {
     };
 
     struct in_packet_r_ctx {
-        uint32_t hostname_len;
-        uint32_t port;
-        const char* hostname;
-        uint32_t events_count;
-        uint32_t peers_count;
+        uint32_t hostname_len; // TODO: probably remove this
+        uint32_t port; // TODO: probably remove this
+        const char* hostname; // TODO: probably remove this
+        uint32_t events_count; // TODO: remove this
+        uint32_t peers_count; // TODO: remove this
         std::shared_ptr<std::vector<std::shared_ptr<in_packet_r_ctx_event>>> events;
         std::shared_ptr<std::vector<std::shared_ptr<packet_r_ctx_peer>>> peers;
         const char* event_name;
@@ -54,9 +54,10 @@ namespace Skree {
         std::shared_ptr<uint32_t> count_replicas;
         std::shared_ptr<uint32_t> pending;
         std::shared_ptr<uint32_t> acceptances;
-        char* rpr; // TODO?
+        // char* rpr; // TODO?
+        std::shared_ptr<std::deque<std::shared_ptr<Utils::muh_str_t>>> rpr;
         uint64_t rid;
-        uint32_t peers_cnt;
+        // uint32_t peers_cnt;
         std::shared_ptr<Utils::muh_str_t> origin;
     };
 

@@ -6,17 +6,23 @@ namespace Skree {
             // Utils::cluck(1, "R::in begin");
             uint64_t in_pos = 0;
 
-            const uint32_t hostname_len (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t hostname_len;
+            memcpy(&hostname_len, (args->data + in_pos), sizeof(hostname_len));
             in_pos += sizeof(hostname_len);
+            hostname_len = ntohl(hostname_len);
 
-            const char* hostname = args->data + in_pos;
+            const char* hostname = args->data + in_pos; // TODO: why is this here?
             in_pos += hostname_len + 1;
 
-            const uint32_t port (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t port;
+            memcpy(&port, (args->data + in_pos), sizeof(port));
             in_pos += sizeof(port);
+            port = ntohl(port);
 
-            const uint32_t event_name_len (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t event_name_len;
+            memcpy(&event_name_len, (args->data + in_pos), sizeof(event_name_len));
             in_pos += sizeof(event_name_len);
+            event_name_len = ntohl(event_name_len);
 
             const char* event_name = args->data + in_pos;
             in_pos += event_name_len + 1;
@@ -31,30 +37,39 @@ namespace Skree {
 
             auto queue = it->second->r_queue;
 
-            uint32_t cnt (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t cnt;
+            memcpy(&cnt, (args->data + in_pos), sizeof(cnt));
             in_pos += sizeof(cnt);
+            cnt = ntohl(cnt);
 
             const uint32_t events_count = cnt;
             auto events = std::make_shared<std::vector<std::shared_ptr<in_packet_r_ctx_event>>>(events_count);
 
             while(cnt > 0) {
                 --cnt;
+                uint64_t ridNet;
+                memcpy(&ridNet, (args->data + in_pos), sizeof(ridNet));
+
+                uint32_t len;
+                memcpy(&len, (args->data + in_pos + sizeof(ridNet)), sizeof(len));
+                len = ntohl(len);
 
                 (*events.get())[cnt].reset(new in_packet_r_ctx_event {
-                    // .id_net = *(uint64_t*)(args->data + in_pos),
+                    .id_net = ridNet,
                     // .id = (char*)malloc(21),
-                    .len = ntohl(*(uint32_t*)(args->data + in_pos + sizeof(uint64_t))),
-                    .data = (args->data + in_pos + sizeof(uint64_t) + sizeof(uint32_t))
+                    .len = len,
+                    .data = (args->data + in_pos + sizeof(ridNet) + sizeof(len)),
                 });
 
                 // sprintf((*events.get())[cnt]->id, "%llu", ntohll((*events.get())[cnt]->id_net)); // TODO: is this really necessary?
                 // Utils::cluck(2, "repl got id: %lu\n", ntohll(events[cnt]->id_net));
 
-                in_pos += sizeof(uint64_t) + sizeof(uint32_t) + (*events.get())[cnt]->len;
+                in_pos += sizeof(ridNet) + sizeof(len) + (*events.get())[cnt]->len;
             }
 
-            cnt = ntohl(*(uint32_t*)(args->data + in_pos));
+            memcpy(&cnt, (args->data + in_pos), sizeof(cnt));
             in_pos += sizeof(cnt);
+            cnt = ntohl(cnt);
 
             const uint32_t peers_count = cnt;
             auto peers = std::make_shared<std::vector<std::shared_ptr<packet_r_ctx_peer>>>(peers_count);
@@ -62,8 +77,10 @@ namespace Skree {
             while(cnt > 0) {
                 --cnt;
 
-                const uint32_t len (ntohl(*(uint32_t*)(args->data + in_pos)));
+                uint32_t len;
+                memcpy(&len, (args->data + in_pos), sizeof(len));
                 in_pos += sizeof(len);
+                len = ntohl(len);
 
                 std::shared_ptr<Utils::muh_str_t> hostname;
                 hostname.reset(new Utils::muh_str_t {
@@ -72,12 +89,16 @@ namespace Skree {
                     .data = strndup(args->data + in_pos, len)
                 });
 
+                uint32_t port;
+                memcpy(&port, (args->data + in_pos + len + 1), sizeof(port));
+                port = ntohl(port);
+
                 (*peers.get())[cnt].reset(new packet_r_ctx_peer {
                     .hostname = hostname,
-                    .port = ntohl(*(uint32_t*)(args->data + in_pos + len + 1))
+                    .port = port,
                 });
 
-                in_pos += len + 1 + sizeof(uint32_t);
+                in_pos += len + 1 + sizeof(port);
             }
 
             in_packet_r_ctx ctx {

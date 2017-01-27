@@ -8,7 +8,7 @@ namespace Skree {
     struct out_data_c_ctx {
         Utils::known_event_t* event;
         std::shared_ptr<Utils::muh_str_t> rin;
-        std::shared_ptr<Utils::muh_str_t> rpr;
+        // std::shared_ptr<Utils::muh_str_t> rpr;
         uint64_t rid;
         std::shared_ptr<Utils::muh_str_t> failover_key;
         std::shared_ptr<Utils::muh_str_t> origin;

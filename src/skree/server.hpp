@@ -128,14 +128,6 @@ namespace Skree {
         );
         virtual ~Server();
 
-        void save_one_event(
-            DbWrapper::TSession& kv_batch,
-            DbWrapper::TSession& queue_batch,
-            const uint32_t len,
-            const char* data,
-            std::function<void(const uint64_t)>&& onSuccess
-        );
-
         short save_event(
             in_packet_e_ctx& ctx,
             uint32_t replication_factor,

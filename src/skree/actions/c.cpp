@@ -11,8 +11,10 @@ namespace Skree {
             // Utils::cluck(1, "CHECK");
             uint64_t in_pos = 0;
 
-            const uint32_t event_name_len (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t event_name_len;
+            memcpy(&event_name_len, (args->data + in_pos), sizeof(event_name_len));
             in_pos += sizeof(event_name_len);
+            event_name_len = ntohl(event_name_len);
 
             const char* event_name = args->data + in_pos;
             in_pos += event_name_len + 1;
@@ -25,17 +27,22 @@ namespace Skree {
                 return;
             }
 
-            const uint64_t rid_net (ntohll(*(uint64_t*)(args->data + in_pos)));
+            uint64_t rid_net;
+            memcpy(&rid_net, (args->data + in_pos), sizeof(rid_net));
             in_pos += sizeof(rid_net);
 
-            const uint32_t rin_len (ntohl(*(uint32_t*)(args->data + in_pos)));
+            const uint64_t rid = ntohll(rid_net);
+
+            uint32_t rin_len;
+            memcpy(&rin_len, (args->data + in_pos), sizeof(rin_len));
             in_pos += sizeof(rin_len);
+            rin_len = ntohl(rin_len);
 
             const char* rin (args->data + in_pos);
             in_pos += rin_len;
 
             uint64_t now = std::time(nullptr);
-            auto state = server.get_event_state(ntohll(rid_net), *(eit->second), now);
+            auto state = server.get_event_state(rid, *(eit->second), now);
 
             if(state == SKREE_META_EVENTSTATE_PROCESSED) {
                 // event is processed, everything is fine
@@ -72,6 +79,9 @@ namespace Skree {
                     auto& db = *(eit->second->queue->kv);
 
                     if(!db.remove((char*)&rid_net, sizeof(rid_net)))
+                        Utils::cluck(1, "db.remove failed");//: %s\n", db.error().name());
+
+                    if(!db.remove(rid))
                         Utils::cluck(1, "db.remove failed");//: %s\n", db.error().name());
 
                 } else {

@@ -142,6 +142,9 @@ namespace Skree {
             }
 
             ~TLoop() {
+                if(close(QueueId) == -1) {
+                    perror("close");
+                }
             }
 
         private:

@@ -307,6 +307,7 @@ namespace Skree {
 
                 if(value.size() != ovsiz) {
                     Utils::cluck(3, "[cas] size mismatch: %llu != %llu", value.size(), ovsiz);
+                    // abort();
                     return false;
                 }
 
