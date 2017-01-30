@@ -268,6 +268,9 @@ namespace Skree {
     ) {
         item->finish();
 
+        if(destroyed)
+            return;
+
         pthread_mutex_lock(&write_queue_mutex);
 
         if(write_queue.empty())
@@ -292,6 +295,9 @@ namespace Skree {
         // if(item->len == 9) {
         //     throw std::logic_error ("trap");
         // }
+
+        if(destroyed)
+            return;
 
         if(front)
             pending_reads.push_front(item);

@@ -60,7 +60,7 @@ namespace Skree {
             short result = server.save_event(
                 ctx,
                 replication_factor,
-                &client,
+                client.GetNewSharedPtr(),
                 nullptr,
                 *queue
             );

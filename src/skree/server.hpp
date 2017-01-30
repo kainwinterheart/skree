@@ -131,7 +131,7 @@ namespace Skree {
         short save_event(
             in_packet_e_ctx& ctx,
             uint32_t replication_factor,
-            Client* client,
+            std::shared_ptr<Client> client,
             uint64_t* task_ids,
             QueueDb& queue
         );

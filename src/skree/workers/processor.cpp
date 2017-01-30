@@ -55,7 +55,7 @@ namespace Skree {
             short result = server.save_event(
                e_ctx,
                0, // TODO: should wait for synchronous replication
-               nullptr,
+               std::shared_ptr<Skree::Client>(),
                nullptr,
                *(event.queue)
             );

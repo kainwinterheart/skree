@@ -339,7 +339,7 @@ namespace Skree {
     short Server::save_event(
         in_packet_e_ctx& ctx,
         uint32_t replication_factor,
-        Client* client,
+        std::shared_ptr<Client> client,
         uint64_t* task_ids,
         QueueDb& queue
     ) {
@@ -523,7 +523,7 @@ namespace Skree {
                 uint32_t accepted_peers_count = r_ctx->accepted_peers->size();
 
                 if(accepted_peers_count >= r_ctx->replication_factor) {
-                    if(r_ctx->client != nullptr) {
+                    if(r_ctx->client) {
                         r_ctx->client->push_write_queue(std::make_shared<Skree::Base::PendingWrite::QueueItem>(
                             SKREE_META_OPCODE_K
                         ));
@@ -532,7 +532,7 @@ namespace Skree {
                     r_ctx->sync = false;
 
                 } else if(r_ctx->pending == 0) {
-                    if(r_ctx->client != nullptr) {
+                    if(r_ctx->client) {
                         r_ctx->client->push_write_queue(std::make_shared<Skree::Base::PendingWrite::QueueItem>(
                             SKREE_META_OPCODE_A
                         ));
@@ -552,7 +552,7 @@ namespace Skree {
                 r_ctx->sync
                 && (accepted_peers_count >= r_ctx->replication_factor)
             ) {
-                if(r_ctx->client != nullptr) {
+                if(r_ctx->client) {
                     r_ctx->client->push_write_queue(std::make_shared<Skree::Base::PendingWrite::QueueItem>(
                         SKREE_META_OPCODE_K
                     ));
@@ -760,7 +760,7 @@ namespace Skree {
             save_event(
                 e_ctx,
                 0,
-                nullptr,
+                std::shared_ptr<Client>(),
                 task_ids,
                 *(ctx->event->queue)
             );

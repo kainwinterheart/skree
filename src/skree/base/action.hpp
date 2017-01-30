@@ -27,6 +27,7 @@ namespace Skree {
         protected:
             Skree::Server& server;
             Skree::Client& client;
+
         public:
             Action(
                 Skree::Server& _server,

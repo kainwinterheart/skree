@@ -113,6 +113,7 @@ namespace Skree {
                     server
                 );
 
+                client->SetWeakPtr(client);
                 new_client->cb(*client);
                 ActiveClients.push_back(client);
 

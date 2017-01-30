@@ -37,7 +37,7 @@ namespace Skree {
     struct out_packet_r_ctx {
         uint32_t replication_factor;
         uint32_t pending;
-        Client* client;
+        std::shared_ptr<Client> client;
         std::shared_ptr<std::vector<std::shared_ptr<Utils::muh_str_t>>> candidate_peer_ids;
         std::shared_ptr<std::list<std::shared_ptr<packet_r_ctx_peer>>> accepted_peers;
         std::shared_ptr<const Skree::Base::PendingWrite::QueueItem> r_req;

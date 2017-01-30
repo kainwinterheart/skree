@@ -57,10 +57,34 @@ namespace Skree {
         void destroy();
 
         bool ShouldWrite_ = false;
+        std::weak_ptr<Client> SelfWeakPtr;
 
     public:
         std::shared_ptr<Base::PendingRead::Callback::Args> active_read;
         static void client_cb(const NMuhEv::TEvSpec& event);
+
+        void SetWeakPtr(const std::shared_ptr<Client>& ptr) {
+            if(!SelfWeakPtr.expired()) {
+                Utils::cluck(1, "SelfWeakPtr is already set");
+                abort();
+            }
+
+            if(ptr.get() != this) {
+                Utils::cluck(1, "Tried to set SelfWeakPtr to another client");
+                abort();
+            }
+
+            SelfWeakPtr = ptr;
+        }
+
+        std::shared_ptr<Client> GetNewSharedPtr() const {
+            // if(SelfWeakPtr.expired()) {
+            //     Utils::cluck(1, "SelfWeakPtr is not set");
+            //     abort();
+            // }
+
+            return std::shared_ptr<Client>(SelfWeakPtr); // throws on empty SelfWeakPtr
+        }
 
         bool ShouldWrite() const {
             return ShouldWrite_;
