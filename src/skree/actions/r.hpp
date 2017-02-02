@@ -72,16 +72,6 @@ namespace Skree {
             ) : Skree::Base::Action(_server, _client) {}
 
             virtual void in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) override;
-
-            static std::shared_ptr<Skree::Base::PendingWrite::QueueItem> out_init(
-                const Server& server, const uint32_t event_name_len,
-                const char* event_name, const uint32_t cnt
-            );
-
-            static void out_add_event(
-                std::shared_ptr<Skree::Base::PendingWrite::QueueItem> r_req,
-                const uint64_t id, const uint32_t len, const char* data
-            );
         };
     }
 }

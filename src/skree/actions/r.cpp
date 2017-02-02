@@ -6,19 +6,6 @@ namespace Skree {
             // Utils::cluck(1, "R::in begin");
             uint64_t in_pos = 0;
 
-            uint32_t hostname_len;
-            memcpy(&hostname_len, (args->data + in_pos), sizeof(hostname_len));
-            in_pos += sizeof(hostname_len);
-            hostname_len = ntohl(hostname_len);
-
-            const char* hostname = args->data + in_pos; // TODO: why is this here?
-            in_pos += hostname_len + 1;
-
-            uint32_t port;
-            memcpy(&port, (args->data + in_pos), sizeof(port));
-            in_pos += sizeof(port);
-            port = ntohl(port);
-
             uint32_t event_name_len;
             memcpy(&event_name_len, (args->data + in_pos), sizeof(event_name_len));
             in_pos += sizeof(event_name_len);
@@ -103,10 +90,12 @@ namespace Skree {
                 in_pos += sizeof(port);
             }
 
+            const auto& peer_name = client.get_peer_name();
+
             in_packet_r_ctx ctx {
-                .hostname_len = hostname_len,
-                .port = port,
-                .hostname = hostname,
+                .hostname_len = peer_name->len,
+                .port = client.get_peer_port(),
+                .hostname = peer_name->data,
                 .event_name_len = event_name_len,
                 .event_name = event_name,
                 .events_count = events_count,
@@ -128,44 +117,6 @@ namespace Skree {
                 abort();
             }
             // Utils::cluck(1, "R::in end");
-        }
-
-        std::shared_ptr<Skree::Base::PendingWrite::QueueItem> R::out_init(
-            const Server& server, const uint32_t event_name_len,
-            const char* event_name, const uint32_t cnt
-        ) {
-            uint32_t _cnt = htonl(cnt);
-            auto out = std::make_shared<Skree::Base::PendingWrite::QueueItem>(opcode());
-
-            uint32_t _hostname_len = htonl(server.my_hostname_len);
-            out->copy_concat(sizeof(_hostname_len), &_hostname_len);
-
-            // TODO: this is unnecessary
-            out->concat(server.my_hostname_len + 1, server.my_hostname);
-
-            uint32_t _my_port = htonl(server.my_port);
-            out->copy_concat(sizeof(_my_port), &_my_port);
-
-            uint32_t _event_name_len = htonl(event_name_len);
-            out->copy_concat(sizeof(_event_name_len), &_event_name_len);
-
-            out->concat(event_name_len + 1, event_name);
-            out->copy_concat(sizeof(_cnt), &_cnt);
-
-            return out;
-        }
-
-        void R::out_add_event(
-            std::shared_ptr<Skree::Base::PendingWrite::QueueItem> r_req,
-            const uint64_t id, const uint32_t len, const char* data
-        ) {
-            uint64_t _id = htonll(id);
-            r_req->copy_concat(sizeof(_id), &_id);
-
-            uint32_t _event_len = htonl(len);
-            r_req->copy_concat(sizeof(_event_len), &_event_len);
-
-            r_req->concat(len, data);
         }
     }
 }

@@ -346,20 +346,36 @@ namespace Skree {
         if(replication_factor > max_replication_factor)
             replication_factor = max_replication_factor;
 
-        const char* _event_name = ctx.event_name;
-        auto r_req = Actions::R::out_init(
-            *this,
-            ctx.event_name_len,
-            _event_name,
-            ctx.cnt
-        );
-
         short result = SAVE_EVENT_RESULT_F;
         bool replication_began = false;
         auto& db = *(queue.kv);
 
         uint32_t num_inserted = 0;
-        // const char* _event_data;
+        uint32_t msg_len = sizeof(ctx.event_name_len) + ctx.event_name_len + 1 + sizeof(ctx.cnt);
+
+        while(num_inserted < ctx.cnt) {
+            const auto& event = (*ctx.events.get())[num_inserted];
+            msg_len += sizeof(uint64_t) + sizeof(event->len) + event->len;
+            ++num_inserted;
+        }
+
+        num_inserted = 0;
+        char* msg = (char*)malloc(msg_len);
+        uint32_t msg_pos = 0;
+        auto _msg = std::shared_ptr<void>((void*)msg, [](void* msg) {
+            free((char*)msg);
+        });
+
+        const uint32_t _event_name_len = htonl(ctx.event_name_len);
+        memcpy(msg + msg_pos, &_event_name_len, sizeof(_event_name_len));
+        msg_pos += sizeof(_event_name_len);
+
+        memcpy(msg + msg_pos, ctx.event_name, ctx.event_name_len + 1);
+        msg_pos += ctx.event_name_len + 1;
+
+        const uint32_t _cnt = htonl(ctx.cnt);
+        memcpy(msg + msg_pos, &_cnt, sizeof(_cnt));
+        msg_pos += sizeof(_cnt);
 
         {
             auto kv_batch = db.NewSession();
@@ -381,23 +397,29 @@ namespace Skree {
 
                 if(rv) {
                     if(task_ids != nullptr) {
-                        Utils::cluck(3, "add task_id: %u, %llu", num_inserted, key);
+                        // Utils::cluck(3, "add task_id: %u, %llu", num_inserted, key);
                         task_ids[num_inserted] = key;
                     }
 
                     ++num_inserted;
                     ++stat_num_inserts;
 
-                    // _event_data = event->data; // TODO
-                    Actions::R::out_add_event(r_req, key, event->len, event->data);
+                    const auto _key = htonll(key);
+                    memcpy(msg + msg_pos, &_key, sizeof(_key));
+                    msg_pos += sizeof(_key);
 
-                // } else {
-                //     Utils::cluck(1, "WOOT");
-                //     abort();
+                    const auto _len = htonl(event->len);
+                    memcpy(msg + msg_pos, &_len, sizeof(_len));
+                    msg_pos += sizeof(_len);
+
+                    memcpy(msg + msg_pos, event->data, event->len);
+                    msg_pos += event->len;
                 }
             }
         }
 
+        auto r_req = std::make_shared<Skree::Base::PendingWrite::QueueItem>(Skree::Actions::R::opcode());
+        r_req->concat(msg_len, msg);
         r_req->finish();
 
         if(num_inserted == ctx.cnt) {
@@ -430,7 +452,7 @@ namespace Skree {
                 .candidate_peer_ids = candidate_peer_ids,
                 .accepted_peers = accepted_peers,
                 .r_req = r_req,
-                .origin = ctx.origin
+                .origin = _msg
             });
             /*****************************/
 
