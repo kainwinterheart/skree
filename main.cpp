@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
             "client-threads",
             "Client threads",
             false,
-            1, // TODO: sane default
+            60, // TODO: sane default
             "thread_count"
         );
 

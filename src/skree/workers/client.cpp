@@ -7,7 +7,7 @@ namespace Skree {
             NMuhEv::TLoop loop;
 
             while(true) {
-                auto list = NMuhEv::MakeEvList(ActiveClients.size() + 1);
+                auto list = NMuhEv::MakeEvList(ActiveClients.size() + 2);
                 decltype(ActiveClients) newActiveClients;
 
                 for(auto client : ActiveClients) {
@@ -33,11 +33,18 @@ namespace Skree {
                     .Ident = (uintptr_t)((Args*)args)->fds[0],
                     .Filter = NMuhEv::MUHEV_FILTER_READ,
                     .Flags = NMuhEv::MUHEV_FLAG_NONE,
-                    .Ctx = nullptr
+                    .Ctx = &AcceptContext
+                }, list);
+
+                loop.AddEvent(NMuhEv::TEvSpec {
+                    .Ident = (uintptr_t)WakeupFds[0],
+                    .Filter = NMuhEv::MUHEV_FILTER_READ,
+                    .Flags = NMuhEv::MUHEV_FLAG_NONE,
+                    .Ctx = &WakeupContext
                 }, list);
 
                 int triggeredCount = loop.Wait(list);
-                // Utils::cluck(2, "%d", triggeredCount);
+                // Utils::cluck(3, "Got %d events in thread %llu", triggeredCount, Utils::ThreadId());
                 if(triggeredCount < 0) {
                     perror("kevent");
                     abort();
@@ -46,7 +53,7 @@ namespace Skree {
                     for(int i = 0; i < triggeredCount; ++i) {
                         const auto& event = NMuhEv::GetEvent(list, i);
 
-                        if(event.Ctx == nullptr) {
+                        if((event.Ctx == &AcceptContext) || (event.Ctx == &WakeupContext)) {
                             // if(event.Ident == ((Args*)args)->fds[0]) {
                                 if(event.Flags & NMuhEv::MUHEV_FLAG_EOF) {
                                     Utils::cluck(1, "EV_EOF");
@@ -74,7 +81,9 @@ namespace Skree {
                                 }
 
                                 // Utils::cluck(1, "accept()");
-                                accept();
+                                if(event.Ctx == &AcceptContext) {
+                                    accept();
+                                }
 
                             // } else {
                             //     Utils::cluck(1, "wut");
@@ -108,7 +117,7 @@ namespace Skree {
 
                 auto client = std::make_shared<Skree::Client>(
                     new_client->fh,
-                    // ((Args*)args)->loop,
+                    WakeupFds[1],
                     new_client->s_in,
                     server
                 );

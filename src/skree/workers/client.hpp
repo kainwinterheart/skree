@@ -24,7 +24,6 @@ namespace Skree {
                     pthread_mutex_init(mutex.get(), NULL);
 
                     if(socketpair(PF_LOCAL, SOCK_STREAM, 0, fds) == -1) {
-                    // if(pipe(fds) == -1) {
                         perror("socketpair");
                         abort();
                     }
@@ -42,6 +41,12 @@ namespace Skree {
             Client(Skree::Server& _server, const void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args)
             {
+                AcceptContext = WakeupContext = '\0';
+
+                if(socketpair(PF_LOCAL, SOCK_STREAM, 0, WakeupFds) == -1) {
+                    perror("socketpair");
+                    abort();
+                }
             }
 
             virtual void run() override;
@@ -52,6 +57,9 @@ namespace Skree {
 
         private:
             std::deque<std::shared_ptr<Skree::Client>> ActiveClients;
+            int WakeupFds[2];
+            char WakeupContext;
+            char AcceptContext;
         };
     }
 }

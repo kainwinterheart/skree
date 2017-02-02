@@ -89,8 +89,10 @@ namespace Skree {
                     .data = strndup(args->data + in_pos, len)
                 });
 
+                in_pos += len + 1;
+
                 uint32_t port;
-                memcpy(&port, (args->data + in_pos + len + 1), sizeof(port));
+                memcpy(&port, (args->data + in_pos), sizeof(port));
                 port = ntohl(port);
 
                 (*peers.get())[cnt].reset(new packet_r_ctx_peer {
@@ -98,7 +100,7 @@ namespace Skree {
                     .port = port,
                 });
 
-                in_pos += len + 1 + sizeof(port);
+                in_pos += sizeof(port);
             }
 
             in_packet_r_ctx ctx {

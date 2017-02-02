@@ -355,7 +355,7 @@ namespace Skree {
                     .data = (char*)(item->rin) // TODO
                 });
 
-                Utils::cluck(2, "item->peers_cnt = %lu", item->peers_cnt);
+                // Utils::cluck(2, "item->peers_cnt = %lu", item->peers_cnt);
 
                 if(item->peers_cnt > 0) {
                     *count_replicas = item->peers_cnt;

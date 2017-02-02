@@ -19,6 +19,8 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <pthread.h>
+#include <algorithm>
 
 #include "atomic_hash_map.hpp"
 
@@ -370,6 +372,13 @@ namespace Skree {
             for(size_t i = 0; i < size; ++i) {
                 fprintf(stderr, "[%zu] 0x%X\n", i, ((unsigned char*)buf)[i]);
             }
+        }
+
+        static inline uint64_t ThreadId() {
+            pthread_t ptid = pthread_self();
+            uint64_t threadId = 0;
+            memcpy(&threadId, &ptid, std::min(sizeof(threadId), sizeof(ptid)));
+            return threadId;
         }
     }
 }

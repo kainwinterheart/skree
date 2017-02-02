@@ -58,6 +58,11 @@ namespace Skree {
 
         bool ShouldWrite_ = false;
         std::weak_ptr<Client> SelfWeakPtr;
+        int WakeupFd;
+
+        void Wakeup() const {
+            ::write(WakeupFd, "1", 1);
+        }
 
     public:
         std::shared_ptr<Base::PendingRead::Callback::Args> active_read;
@@ -92,7 +97,7 @@ namespace Skree {
 
         Client(
             int _fh,
-            // struct ev_loop* _loop,
+            int wakeupFd,
             std::shared_ptr<sockaddr_in> _s_in,
             // socklen_t _s_in_len,
             Server& _server

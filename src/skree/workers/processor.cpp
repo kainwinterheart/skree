@@ -59,8 +59,6 @@ namespace Skree {
                nullptr,
                *(event.queue)
             );
-            Utils::cluck(1, "[processor] do_failover() done");
-            abort();
 
             if(result == SAVE_EVENT_RESULT_K) {
                 auto itemIdNet = htonll(itemId);

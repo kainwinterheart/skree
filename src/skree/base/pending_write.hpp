@@ -44,7 +44,7 @@ namespace Skree {
 
                 QueueItem(const QueueItem& prev);
                 uint32_t calc_body_len() const;
-                void write(Skree::Client& client, int fd, uint32_t total_len);
+                bool write(Skree::Client& client, int fd, uint32_t total_len);
 
                 inline void Throw(const char* text) const {
                     std::string out;
@@ -148,11 +148,11 @@ namespace Skree {
                     done = true;
                 }
 
-                inline void write(Skree::Client& client, int fd) {
+                inline bool write(Skree::Client& client, int fd) {
                     if(!done)
                         Throw("write() called on read-write write queue item");
 
-                    write(client, fd, calc_body_len());
+                    return write(client, fd, calc_body_len());
                 }
 
                 inline char get_opcode() const {

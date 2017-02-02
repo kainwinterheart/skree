@@ -95,7 +95,7 @@ namespace Skree {
 
     Client::Client(
         int _fh,
-        // struct ev_loop* _loop,
+        int wakeupFd,
         std::shared_ptr<sockaddr_in> _s_in,
         // socklen_t _s_in_len,
         Server& _server
@@ -105,6 +105,7 @@ namespace Skree {
         , s_in(_s_in)
         // , s_in_len(_s_in_len)
         , server(_server)
+        , WakeupFd(wakeupFd)
     {
         conn_port = 0;
         protocol_version = 0;
@@ -273,8 +274,10 @@ namespace Skree {
 
         pthread_mutex_lock(&write_queue_mutex);
 
-        if(write_queue.empty())
+        if(write_queue.empty()) {
             ShouldWrite_ = true;//ev_io_set(&watcher.watcher, fh, EV_READ | EV_WRITE);
+            Wakeup();
+        }
 
         if(front)
             write_queue.push_front(item);
@@ -329,104 +332,122 @@ namespace Skree {
             if(active_read->rest() == 0)
                 throw std::logic_error ("Zero-length active_read");
 
-            int read = recvfrom(
-                event.Ident,
-                active_read->end(),
-                active_read->rest(),
-                MSG_DONTWAIT,
-                NULL,
-                0
-            );
+            while(true) {
+                int read = recvfrom(
+                    event.Ident,
+                    active_read->end(),
+                    active_read->rest(),
+                    MSG_DONTWAIT,
+                    NULL,
+                    0
+                );
 
-            if(read > 0) {
-#ifdef SKREE_NET_DEBUG
-                {
-                    const auto& peer_id = client->get_peer_id();
-                    const auto& conn_id = client->get_conn_id();
-
-                    for(int i = 0; i < read; ++i)
-                        fprintf(
-                            stderr,
-                            "read from %s/%s [%d]: 0x%.2X\n",
-                            (peer_id ? peer_id->data : "(null)"),
-                            (conn_id ? conn_id->data : "(null)"),
-                            i,
-                            ((unsigned char*)(active_read->end()))[i]
-                        );
-                }
-#endif
-                active_read->advance(read);
-#ifdef SKREE_NET_DEBUG
-                Utils::cluck(2, "[client_cb::1] rest=%u", active_read->rest());
-#endif
-                if(active_read->rest() == 0) {
-                    if(active_read->should_begin_data()) {
-                        active_read->begin_data();
-#ifdef SKREE_NET_DEBUG
-                        Utils::cluck(2, "[client_cb::2] rest=%u", active_read->rest());
-#endif
-                        if(active_read->rest() == 0) {
-#ifdef SKREE_NET_DEBUG
-                            Utils::cluck(1, "[client_cb] data is empty, run");
-#endif
-                            if(client->read_cb(active_read))
-                                client->active_read.reset();
-                        }
-
-                    } else {
-#ifdef SKREE_NET_DEBUG
-                        Utils::cluck(1, "[client_cb] data already began, run");
-#endif
-                        if(client->read_cb(active_read))
-                            client->active_read.reset();
-                    }
-                }
-
-            } else if(read < 0) {
-                if((errno != EAGAIN) && (errno != EINTR)) {
-                    std::string str ("recv(");
-
+                if(read > 0) {
+    #ifdef SKREE_NET_DEBUG
                     {
                         const auto& peer_id = client->get_peer_id();
-
-                        if(peer_id)
-                            str += peer_id->data;
-                        else
-                            str += "(null)";
-                    }
-
-                    str += '/';
-
-                    {
                         const auto& conn_id = client->get_conn_id();
 
-                        if(conn_id == nullptr)
-                            str += conn_id->data;
-                        else
-                            str += "(null)";
+                        for(int i = 0; i < read; ++i)
+                            fprintf(
+                                stderr,
+                                "read from %s/%s [%d]: 0x%.2X\n",
+                                (peer_id ? peer_id->data : "(null)"),
+                                (conn_id ? conn_id->data : "(null)"),
+                                i,
+                                ((unsigned char*)(active_read->end()))[i]
+                            );
+                    }
+    #endif
+                    active_read->advance(read);
+    #ifdef SKREE_NET_DEBUG
+                    Utils::cluck(2, "[client_cb::1] rest=%u", active_read->rest());
+    #endif
+                    if(active_read->rest() == 0) {
+                        if(active_read->should_begin_data()) {
+                            active_read->begin_data();
+    #ifdef SKREE_NET_DEBUG
+                            Utils::cluck(2, "[client_cb::2] rest=%u", active_read->rest());
+    #endif
+                            if(active_read->rest() == 0) {
+    #ifdef SKREE_NET_DEBUG
+                                Utils::cluck(1, "[client_cb] data is empty, run");
+    #endif
+                                if(client->read_cb(active_read))
+                                    client->active_read.reset();
+
+                                break;
+                            }
+
+                        } else {
+    #ifdef SKREE_NET_DEBUG
+                            Utils::cluck(1, "[client_cb] data already began, run");
+    #endif
+                            if(client->read_cb(active_read))
+                                client->active_read.reset();
+
+                            break;
+                        }
                     }
 
-                    str += ')';
+                } else if(read < 0) {
+                    if((errno != EAGAIN) && (errno != EINTR)) {
+                        std::string str ("recv(");
 
-                    perror(str.c_str());
+                        {
+                            const auto& peer_id = client->get_peer_id();
+
+                            if(peer_id)
+                                str += peer_id->data;
+                            else
+                                str += "(null)";
+                        }
+
+                        str += '/';
+
+                        {
+                            const auto& conn_id = client->get_conn_id();
+
+                            if(conn_id == nullptr)
+                                str += conn_id->data;
+                            else
+                                str += "(null)";
+                        }
+
+                        str += ')';
+
+                        perror(str.c_str());
+                        client->drop();
+                        return;
+
+                    } else if(errno == EAGAIN) {
+                        break;
+                    }
+
+                } else {
+                    // if(client->get_peer_id() != nullptr)
+                    //     Utils::cluck(3, "%s/%s disconnected", client->get_peer_id(), client->get_conn_id());
+
                     client->drop();
                     return;
                 }
-
-            } else {
-                // if(client->get_peer_id() != nullptr)
-                //     Utils::cluck(3, "%s/%s disconnected", client->get_peer_id(), client->get_conn_id());
-
-                client->drop();
-                return;
             }
         }
 
         if(event.Filter & NMuhEv::MUHEV_FILTER_WRITE) {
-            auto item = client->get_pending_write();
+            while(true) {
+                auto item = client->get_pending_write();
 
-            if(item != nullptr)
-                item->write(*client, event.Ident);
+                if(
+                    (item != nullptr)
+                    && item->write(*client, event.Ident)
+                ) {
+                    // ok
+
+                } else {
+                    break;
+                }
+            }
         }
     }
 

@@ -41,7 +41,7 @@ namespace Skree {
                 return (prev->calc_body_len() + real_len - 5);
             }
 
-            void QueueItem::write(Skree::Client& client, int fd, uint32_t total_len) {
+            bool QueueItem::write(Skree::Client& client, int fd, uint32_t total_len) {
                 if(pos == 0) {
                     if(prev) {
                         pos += 1 + sizeof(real_len);
@@ -54,109 +54,122 @@ namespace Skree {
                     }
                 }
 
-                if((prev != nullptr) && prev->can_be_written()) {
-                    prev->write(client, fd, total_len);
-                    return;
+                if(
+                    prev
+                    && prev->can_be_written()
+                    && !prev->write(client, fd, total_len)
+                ) {
+                    return false;
                 }
+
 #ifdef SKREE_NET_DEBUG
                 Utils::cluck(6, "about to write %u bytes, real_len: %u, pos: %u, fd: %d", (real_len - pos), real_len, pos, fd);
 #endif
 
-                size_t next = 0;
-                uint32_t len = 0;
-                const char* str = data->read(data_last, data_pos, &len, &next);
-                int written = ::write(fd, str, len);
+                while(can_be_written()) {
+                    size_t next = 0;
+                    uint32_t len = 0;
+                    const char* str = data->read(data_last, data_pos, &len, &next);
+                    int written = ::write(fd, str, len);
 
-#ifdef SKREE_NET_DEBUG
-                {
-                    const auto& peer_id = client.get_peer_id();
-                    const auto& conn_id = client.get_conn_id();
-
-                    Utils::cluck(
-                        5,
-                        "written %d bytes to %s/%s, len: %lu, fd: %d",
-                        written,
-                        (peer_id ? peer_id->data : "(null)"),
-                        (conn_id ? conn_id->data : "(null)"),
-                        real_len,
-                        fd
-                    );
-                }
-#endif
-                if(written < 0) {
-                    if((errno != EAGAIN) && (errno != EINTR)) {
-                        std::string str ("write(");
-
-                        {
-                            const auto& peer_id = client.get_peer_id();
-
-                            if(peer_id)
-                                str += peer_id->data;
-                            else
-                                str += "(null)";
-                        }
-
-                        str += '/';
-
-                        {
-                            const auto& conn_id = client.get_conn_id();
-
-                            if(conn_id)
-                                str += conn_id->data;
-                            else
-                                str += "(null)";
-                        }
-
-                        str += ')';
-
-                        perror(str.c_str());
-                        client.drop(); // TODO?
-                        // Throw("woot");
-                        return;
-                    }
-
-                } else {
-#ifdef SKREE_NET_DEBUG
-                    for(int i = 0; i < written; ++i) {
+    #ifdef SKREE_NET_DEBUG
+                    {
                         const auto& peer_id = client.get_peer_id();
                         const auto& conn_id = client.get_conn_id();
 
-                        if((i == 0) && !prev) {
-                            fprintf(
-                                stderr,
-                                "written to %s/%s [%d]: %c (opcode; 0x%.2X)\n",
-                                (peer_id ? peer_id->data : "(null)"),
-                                (conn_id ? conn_id->data : "(null)"),
-                                i,
-                                str[0],
-                                (unsigned char)str[0]
-                            );
+                        Utils::cluck(
+                            5,
+                            "written %d bytes to %s/%s, len: %lu, fd: %d",
+                            written,
+                            (peer_id ? peer_id->data : "(null)"),
+                            (conn_id ? conn_id->data : "(null)"),
+                            real_len,
+                            fd
+                        );
+                    }
+    #endif
+                    if(written < 0) {
+                        auto e = errno;
 
-                        } else {
-                            fprintf(
-                                stderr,
-                                "written to %s/%s [%d]: 0x%.2X\n",
-                                (peer_id ? peer_id->data : "(null)"),
-                                (conn_id ? conn_id->data : "(null)"),
-                                i,
-                                ((unsigned char*)str)[i]
-                            );
+                        if((e != EAGAIN) && (e != EINTR)) {
+                            std::string str ("write(");
+
+                            {
+                                const auto& peer_id = client.get_peer_id();
+
+                                if(peer_id)
+                                    str += peer_id->data;
+                                else
+                                    str += "(null)";
+                            }
+
+                            str += '/';
+
+                            {
+                                const auto& conn_id = client.get_conn_id();
+
+                                if(conn_id)
+                                    str += conn_id->data;
+                                else
+                                    str += "(null)";
+                            }
+
+                            str += ')';
+
+                            perror(str.c_str());
+                            client.drop(); // TODO?
+                            // Throw("woot");
+                        }
+
+                        if(e != EINTR) {
+                            return false;
+                        }
+
+                    } else {
+    #ifdef SKREE_NET_DEBUG
+                        for(int i = 0; i < written; ++i) {
+                            const auto& peer_id = client.get_peer_id();
+                            const auto& conn_id = client.get_conn_id();
+
+                            if((i == 0) && !prev) {
+                                fprintf(
+                                    stderr,
+                                    "written to %s/%s [%d]: %c (opcode; 0x%.2X)\n",
+                                    (peer_id ? peer_id->data : "(null)"),
+                                    (conn_id ? conn_id->data : "(null)"),
+                                    i,
+                                    str[0],
+                                    (unsigned char)str[0]
+                                );
+
+                            } else {
+                                fprintf(
+                                    stderr,
+                                    "written to %s/%s [%d]: 0x%.2X\n",
+                                    (peer_id ? peer_id->data : "(null)"),
+                                    (conn_id ? conn_id->data : "(null)"),
+                                    i,
+                                    ((unsigned char*)str)[i]
+                                );
+                            }
+                        }
+    #endif
+                        if(next != data_last) {
+                            data_last = next;
+                            data_pos = 0;
+                        }
+
+                        pos += written;
+                        data_pos += written;
+
+                        if((pos >= real_len) && cb) {
+                            client.push_pending_reads_queue(cb);
+                            cb.reset();
                         }
                     }
-#endif
-                    if(next != data_last) {
-                        data_last = next;
-                        data_pos = 0;
-                    }
-
-                    pos += written;
-                    data_pos += written;
-
-                    if((pos >= real_len) && cb) {
-                        client.push_pending_reads_queue(cb);
-                        cb.reset();
-                    }
                 }
+
+                return true;
             }
         }
     }
