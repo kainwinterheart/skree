@@ -110,7 +110,6 @@ namespace Skree {
         conn_port = 0;
         protocol_version = 0;
         destroyed = false;
-        pthread_mutex_init(&write_queue_mutex, nullptr);
 
         Utils::SetupSocket(fh, server.discovery_timeout_milliseconds); // TODO: check return value
         fcntl(fh, F_SETFL, fcntl(fh, F_GETFL, 0) | O_NONBLOCK);
@@ -217,7 +216,9 @@ namespace Skree {
             // delete item; //TODO?
         }
 
-        pthread_mutex_lock(&write_queue_mutex);
+        while(write_queue_mutex.exchange(true)) {
+            continue;
+        }
 
         while(!write_queue.empty()) {
             auto item = write_queue.front();
@@ -234,21 +235,27 @@ namespace Skree {
             // delete item; // TODO?
         }
 
-        pthread_mutex_unlock(&write_queue_mutex);
-        pthread_mutex_destroy(&write_queue_mutex);
+        if(!write_queue_mutex.exchange(false)) {
+            abort();
+        }
 
         // if(peer_name != nullptr) free(peer_name);
         // if(conn_name != nullptr) free(conn_name);
     }
 
     std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Client::get_pending_write() {
-        pthread_mutex_lock(&write_queue_mutex);
+        while(write_queue_mutex.exchange(true)) {
+            continue;
+        }
 
         while(!write_queue.empty()) {
             auto item = write_queue.front();
 
             if(item->can_be_written()) {
-                pthread_mutex_unlock(&write_queue_mutex);
+                if(!write_queue_mutex.exchange(false)) {
+                    abort();
+                }
+
                 return item;
             }
 
@@ -259,7 +266,9 @@ namespace Skree {
         // ev_io_set(&watcher.watcher, fh, EV_READ);
         ShouldWrite_ = false;
 
-        pthread_mutex_unlock(&write_queue_mutex);
+        if(!write_queue_mutex.exchange(false)) {
+            abort();
+        }
 
         return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
     }
@@ -272,7 +281,9 @@ namespace Skree {
         if(destroyed)
             return;
 
-        pthread_mutex_lock(&write_queue_mutex);
+        while(write_queue_mutex.exchange(true)) {
+            continue;
+        }
 
         if(write_queue.empty()) {
             ShouldWrite_ = true;//ev_io_set(&watcher.watcher, fh, EV_READ | EV_WRITE);
@@ -284,7 +295,9 @@ namespace Skree {
         else
             write_queue.push_back(item);
 
-        pthread_mutex_unlock(&write_queue_mutex);
+        if(!write_queue_mutex.exchange(false)) {
+            abort();
+        }
     }
 
     void Client::push_pending_reads_queue(

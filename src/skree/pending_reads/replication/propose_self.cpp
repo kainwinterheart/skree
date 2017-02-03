@@ -10,7 +10,10 @@ namespace Skree {
             ) {
                 std::shared_ptr<out_packet_i_ctx> ctx (item.ctx, (out_packet_i_ctx*)item.ctx.get());
 
-                pthread_mutex_lock(ctx->mutex.get());
+                while(ctx->mutex.get()->exchange(true)) {
+                    continue;
+                }
+
                 --(*(ctx->pending));
 
                 if(args->opcode == SKREE_META_OPCODE_K)
@@ -27,7 +30,10 @@ namespace Skree {
             ) {
                 std::shared_ptr<out_packet_i_ctx> ctx (item.ctx, (out_packet_i_ctx*)item.ctx.get());
 
-                pthread_mutex_lock(ctx->mutex.get());
+                while(ctx->mutex.get()->exchange(true)) {
+                    continue;
+                }
+
                 --(*(ctx->pending));
 
                 continue_replication_exec(ctx);
@@ -37,11 +43,14 @@ namespace Skree {
                 std::shared_ptr<out_packet_i_ctx> ctx
             ) {
                 if(*(ctx->pending) == 0) {
-                    pthread_mutex_unlock(ctx->mutex.get());
+                    if(!ctx->mutex.get()->exchange(false)) {
+                        abort();
+                    }
+
                     server.replication_exec(ctx);
 
-                } else {
-                    pthread_mutex_unlock(ctx->mutex.get());
+                } else if(!ctx->mutex.get()->exchange(false)) {
+                    abort();
                 }
             }
         }

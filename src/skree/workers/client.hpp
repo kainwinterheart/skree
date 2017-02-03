@@ -13,16 +13,11 @@ namespace Skree {
         class Client : public Skree::Base::Worker {
         public:
             struct Args {
-                std::shared_ptr<std::queue<std::shared_ptr<new_client_t>>> queue;
-                std::shared_ptr<pthread_mutex_t> mutex;
+                std::queue<std::shared_ptr<new_client_t>> queue;
+                std::atomic<bool> mutex;
                 int fds[2];
 
-                Args()
-                    : queue(std::make_shared<std::queue<std::shared_ptr<new_client_t>>>())
-                    , mutex(std::make_shared<pthread_mutex_t>())
-                {
-                    pthread_mutex_init(mutex.get(), NULL);
-
+                Args() : mutex(false) {
                     if(socketpair(PF_LOCAL, SOCK_STREAM, 0, fds) == -1) {
                         perror("socketpair");
                         abort();
@@ -30,8 +25,6 @@ namespace Skree {
                 }
 
                 ~Args() {
-                    pthread_mutex_destroy(mutex.get());
-
                     for(int i = 0; i < 2; ++i) {
                         close(fds[i]);
                     }

@@ -46,7 +46,7 @@ namespace Skree {
     };
 
     struct out_packet_i_ctx {
-        std::shared_ptr<pthread_mutex_t> mutex;
+        std::shared_ptr<std::atomic<bool>> mutex;
         Utils::known_event_t* event;
         std::shared_ptr<Utils::muh_str_t> data;
         std::shared_ptr<Utils::muh_str_t> peer_id;

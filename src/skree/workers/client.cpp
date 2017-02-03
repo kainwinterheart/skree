@@ -109,11 +109,13 @@ namespace Skree {
         }
 
         void Client::accept() {
-            pthread_mutex_lock(((Args*)args)->mutex.get());
+            while(((Args*)args)->mutex.exchange(true)) {
+                continue;
+            }
 
-            while(!((Args*)args)->queue->empty()) {
-                auto new_client = ((Args*)args)->queue->front();
-                ((Args*)args)->queue->pop();
+            while(!((Args*)args)->queue.empty()) {
+                auto new_client = ((Args*)args)->queue.front();
+                ((Args*)args)->queue.pop();
 
                 auto client = std::make_shared<Skree::Client>(
                     new_client->fh,
@@ -129,7 +131,9 @@ namespace Skree {
                 // delete new_client; // TODO: seems to be unnecessary since it's std::shared_ptr
             }
 
-            pthread_mutex_unlock(((Args*)args)->mutex.get());
+            if(!((Args*)args)->mutex.exchange(false)) {
+                abort();
+            }
         }
     }
 }

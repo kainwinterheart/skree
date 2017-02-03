@@ -1,7 +1,8 @@
 #pragma once
 
-#include <pthread.h>
+#include <stdlib.h>
 #include <unordered_map>
+#include <atomic>
 
 namespace Skree {
     namespace Utils {
@@ -13,23 +14,32 @@ namespace Skree {
         >
         class AtomicHashMap : public std::unordered_map<Key, Value, Hasher, Comparator> {
         private:
-            pthread_mutex_t mutex; // yep
+            std::atomic<bool> mutex; // yep
         public:
             AtomicHashMap() : std::unordered_map<Key, Value, Hasher, Comparator>() {
-                pthread_mutex_init(&mutex, nullptr);
+                mutex = false;
+            }
+
+            AtomicHashMap(const AtomicHashMap& right)
+                : std::unordered_map<Key, Value, Hasher, Comparator>(right) {
+                mutex = false;
             }
 
             virtual ~AtomicHashMap() {
-                pthread_mutex_destroy(&mutex);
             }
 
             virtual typename std::unordered_map<Key, Value, Hasher, Comparator>::iterator lock() {
-                pthread_mutex_lock(&mutex);
+                while(mutex.exchange(true)) {
+                    continue;
+                }
+
                 return std::unordered_map<Key, Value, Hasher, Comparator>::end();
             }
 
             virtual void unlock() {
-                pthread_mutex_unlock(&mutex);
+                if(!mutex.exchange(false)) {
+                    abort();
+                }
             }
         };
     }

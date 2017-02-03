@@ -30,7 +30,7 @@ namespace Skree {
     private:
         int fh;
         // struct ev_loop* loop;
-        pthread_mutex_t write_queue_mutex;
+        std::atomic<bool> write_queue_mutex;
         std::shared_ptr<Utils::muh_str_t> peer_name;
         uint16_t peer_port;
         std::shared_ptr<Utils::muh_str_t> conn_name;

@@ -523,7 +523,7 @@ namespace Skree {
     }
 
     void Server::begin_replication(std::shared_ptr<out_packet_r_ctx> r_ctx) {
-        Client* peer = nullptr;
+        Client* peer = nullptr; // TODO: should be shared_ptr<Client> 'cos segfault is possible
 
         while((peer == nullptr) && (r_ctx->candidate_peer_ids->size() > 0)) {
             const auto& peer_id = r_ctx->candidate_peer_ids->back();
@@ -750,9 +750,15 @@ namespace Skree {
     void Server::push_new_client(std::shared_ptr<new_client_t> new_client) {
         auto thread = threads.next();
 
-        pthread_mutex_lock(thread.first->mutex.get());
-        thread.first->queue->push(new_client);
-        pthread_mutex_unlock(thread.first->mutex.get());
+        while(thread.first->mutex.exchange(true)) {
+            continue;
+        }
+
+        thread.first->queue.push(new_client);
+
+        if(!thread.first->mutex.exchange(false)) {
+            abort();
+        }
 
         // Utils::cluck(1, "push_new_client()");
         ::write(thread.first->fds[1], "1", 1);
@@ -839,7 +845,6 @@ namespace Skree {
             // delete ctx->data;
         }
 
-        pthread_mutex_destroy(ctx->mutex.get());
         // Utils::cluck(1, "woot");
 
         // free(ctx->mutex);
