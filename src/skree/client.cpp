@@ -106,6 +106,7 @@ namespace Skree {
         // , s_in_len(_s_in_len)
         , server(_server)
         , WakeupFd(wakeupFd)
+        , ThreadId_(Utils::ThreadId())
     {
         conn_port = 0;
         protocol_version = 0;
@@ -216,27 +217,23 @@ namespace Skree {
             // delete item; //TODO?
         }
 
-        while(write_queue_mutex.exchange(true)) {
-            continue;
-        }
+        {
+            Utils::TSpinLockGuard guard(write_queue_mutex);
 
-        while(!write_queue.empty()) {
-            auto item = write_queue.front();
-            auto __cb = item->get_cb();
+            while(!write_queue.empty()) {
+                auto item = write_queue.front();
+                auto __cb = item->get_cb();
 
-            if(__cb) {
-                auto _cb = __cb->cb;
+                if(__cb) {
+                    auto _cb = __cb->cb;
 
-                if(_cb != nullptr)
-                    _cb->error(*this, *__cb);
+                    if(_cb != nullptr)
+                        _cb->error(*this, *__cb);
+                }
+
+                write_queue.pop_front();
+                // delete item; // TODO?
             }
-
-            write_queue.pop_front();
-            // delete item; // TODO?
-        }
-
-        if(!write_queue_mutex.exchange(false)) {
-            abort();
         }
 
         // if(peer_name != nullptr) free(peer_name);
@@ -244,18 +241,12 @@ namespace Skree {
     }
 
     std::shared_ptr<Skree::Base::PendingWrite::QueueItem> Client::get_pending_write() {
-        while(write_queue_mutex.exchange(true)) {
-            continue;
-        }
+        Utils::TSpinLockGuard guard(write_queue_mutex);
 
         while(!write_queue.empty()) {
             auto item = write_queue.front();
 
             if(item->can_be_written()) {
-                if(!write_queue_mutex.exchange(false)) {
-                    abort();
-                }
-
                 return item;
             }
 
@@ -265,10 +256,6 @@ namespace Skree {
 
         // ev_io_set(&watcher.watcher, fh, EV_READ);
         ShouldWrite_ = false;
-
-        if(!write_queue_mutex.exchange(false)) {
-            abort();
-        }
 
         return std::shared_ptr<Skree::Base::PendingWrite::QueueItem>();
     }
@@ -281,9 +268,7 @@ namespace Skree {
         if(destroyed)
             return;
 
-        while(write_queue_mutex.exchange(true)) {
-            continue;
-        }
+        Utils::TSpinLockGuard guard(write_queue_mutex);
 
         if(write_queue.empty()) {
             ShouldWrite_ = true;//ev_io_set(&watcher.watcher, fh, EV_READ | EV_WRITE);
@@ -294,10 +279,6 @@ namespace Skree {
             write_queue.push_front(item);
         else
             write_queue.push_back(item);
-
-        if(!write_queue_mutex.exchange(false)) {
-            abort();
-        }
     }
 
     void Client::push_pending_reads_queue(

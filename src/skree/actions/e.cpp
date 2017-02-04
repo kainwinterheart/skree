@@ -5,8 +5,10 @@ namespace Skree {
         void E::in(std::shared_ptr<Skree::Base::PendingRead::Callback::Args> args) {
             uint64_t in_pos = 0;
 
-            const uint32_t event_name_len (ntohl(*(uint32_t*)(args->data + in_pos)));
+            uint32_t event_name_len;
+            memcpy(&event_name_len, (args->data + in_pos), sizeof(event_name_len));
             in_pos += sizeof(event_name_len);
+            event_name_len = ntohl(event_name_len);
 
             const char* event_name = args->data + in_pos;
             in_pos += event_name_len + 1;

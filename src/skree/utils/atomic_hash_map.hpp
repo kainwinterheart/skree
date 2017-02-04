@@ -2,7 +2,8 @@
 
 #include <stdlib.h>
 #include <unordered_map>
-#include <atomic>
+#include <memory>
+#include "spin_lock.hpp"
 
 namespace Skree {
     namespace Utils {
@@ -14,32 +15,29 @@ namespace Skree {
         >
         class AtomicHashMap : public std::unordered_map<Key, Value, Hasher, Comparator> {
         private:
-            std::atomic<bool> mutex; // yep
+            std::shared_ptr<Utils::TSpinLock> mutex; // yep
+
         public:
             AtomicHashMap() : std::unordered_map<Key, Value, Hasher, Comparator>() {
-                mutex = false;
+                mutex.reset(new Utils::TSpinLock());
             }
 
             AtomicHashMap(const AtomicHashMap& right)
                 : std::unordered_map<Key, Value, Hasher, Comparator>(right) {
-                mutex = false;
+                mutex.reset(new Utils::TSpinLock());
             }
 
             virtual ~AtomicHashMap() {
             }
 
             virtual typename std::unordered_map<Key, Value, Hasher, Comparator>::iterator lock() {
-                while(mutex.exchange(true)) {
-                    continue;
-                }
+                mutex->Lock();
 
                 return std::unordered_map<Key, Value, Hasher, Comparator>::end();
             }
 
             virtual void unlock() {
-                if(!mutex.exchange(false)) {
-                    abort();
-                }
+                mutex->Unlock();
             }
         };
     }

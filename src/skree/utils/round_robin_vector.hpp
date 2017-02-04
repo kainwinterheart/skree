@@ -3,22 +3,21 @@
 #include <stdlib.h>
 #include <vector>
 #include <atomic>
+#include "spin_lock.hpp"
 
 namespace Skree {
     namespace Utils {
         template<typename Value>
         class RoundRobinVector : public std::vector<Value> {
         private:
-            std::atomic<bool> mutex;
+            Utils::TSpinLock mutex;
             uint64_t pos;
 
             Value next_impl() {
                 if(std::vector<Value>::empty())
                     throw std::logic_error ("next() called on empty round-robin vector");
 
-                while(mutex.exchange(true)) {
-                    continue;
-                }
+                Utils::TSpinLockGuard guard (mutex);
 
                 if(pos >= std::vector<Value>::size())
                     pos = 0;
@@ -26,15 +25,10 @@ namespace Skree {
                 const auto& value = std::vector<Value>::at(pos);
                 ++pos;
 
-                if(!mutex.exchange(false)) {
-                    abort();
-                }
-
                 return value;
             }
         public:
             RoundRobinVector() : std::vector<Value>() {
-                mutex = false;
                 pos = 0;
             }
 

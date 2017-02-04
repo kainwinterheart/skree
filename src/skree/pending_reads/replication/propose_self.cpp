@@ -10,9 +10,7 @@ namespace Skree {
             ) {
                 std::shared_ptr<out_packet_i_ctx> ctx (item.ctx, (out_packet_i_ctx*)item.ctx.get());
 
-                while(ctx->mutex.get()->exchange(true)) {
-                    continue;
-                }
+                ctx->mutex->Lock();
 
                 --(*(ctx->pending));
 
@@ -30,9 +28,7 @@ namespace Skree {
             ) {
                 std::shared_ptr<out_packet_i_ctx> ctx (item.ctx, (out_packet_i_ctx*)item.ctx.get());
 
-                while(ctx->mutex.get()->exchange(true)) {
-                    continue;
-                }
+                ctx->mutex->Lock();
 
                 --(*(ctx->pending));
 
@@ -43,14 +39,12 @@ namespace Skree {
                 std::shared_ptr<out_packet_i_ctx> ctx
             ) {
                 if(*(ctx->pending) == 0) {
-                    if(!ctx->mutex.get()->exchange(false)) {
-                        abort();
-                    }
+                    ctx->mutex->Unlock();
 
                     server.replication_exec(ctx);
 
-                } else if(!ctx->mutex.get()->exchange(false)) {
-                    abort();
+                } else {
+                    ctx->mutex->Unlock();
                 }
             }
         }

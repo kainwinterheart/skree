@@ -345,7 +345,7 @@ namespace Skree {
                 auto acceptances = std::make_shared<uint32_t>(0);
                 auto pending = std::make_shared<uint32_t>(0);
 
-                auto mutex = std::make_shared<std::atomic<bool>>();
+                auto mutex = std::make_shared<Utils::TSpinLock>();
 
                 std::shared_ptr<Utils::muh_str_t> data_str;
                 data_str.reset(new Utils::muh_str_t {
@@ -391,27 +391,16 @@ namespace Skree {
 
                         if(it == known_peers_end) {
                             // Utils::cluck(2, "Peer %s NOT found", _peer_id->data);
-                            while(mutex.get()->exchange(true)) {
-                                continue;
-                            }
-
+                            Utils::TSpinLockGuard guard(*mutex);
                             ++(*acceptances);
-
-                            if(!mutex.get()->exchange(false)) {
-                                abort();
-                            }
 
                         } else {
                             // Utils::cluck(2, "Peer %s is found", _peer_id->data);
                             have_rpr = true;
-                            while(mutex.get()->exchange(true)) {
-                                continue;
-                            }
 
-                            ++(*pending);
-
-                            if(!mutex.get()->exchange(false)) {
-                                abort();
+                            {
+                                Utils::TSpinLockGuard guard(*mutex);
+                                ++(*pending);
                             }
 
                             std::shared_ptr<out_packet_i_ctx> ctx;

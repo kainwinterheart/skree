@@ -30,7 +30,7 @@ namespace Skree {
     private:
         int fh;
         // struct ev_loop* loop;
-        std::atomic<bool> write_queue_mutex;
+        Utils::TSpinLock write_queue_mutex;
         std::shared_ptr<Utils::muh_str_t> peer_name;
         uint16_t peer_port;
         std::shared_ptr<Utils::muh_str_t> conn_name;
@@ -59,9 +59,12 @@ namespace Skree {
         bool ShouldWrite_ = false;
         std::weak_ptr<Client> SelfWeakPtr;
         int WakeupFd;
+        uint64_t ThreadId_;
 
         void Wakeup() const {
-            ::write(WakeupFd, "1", 1);
+            if(ThreadId_ != Utils::ThreadId()) {
+                ::write(WakeupFd, "1", 1);
+            }
         }
 
     public:

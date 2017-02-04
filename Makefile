@@ -8,10 +8,11 @@ CXXFLAGS = -I $(HOME)/llvm/llvm_cmake_build/lib/clang/4.0.0/include/ \
 -I contrib-build/usr/local/include \
 -I contrib-build/usr/include \
 -I contrib-build/include \
--std=c++11 -fstack-protector-all -Wno-expansion-to-defined \
+-std=c++14 -Wno-expansion-to-defined \
 -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free \
--fsanitize=address \
 -g -fno-omit-frame-pointer \
+# -fstack-protector-all \
+# -fsanitize=address \
 # -DSKREE_LONGMESS -DSKREE_DBWRAPPER_DEBUG \
 # -fsanitize=undefined -fno-sanitize=vptr \
 
@@ -20,9 +21,9 @@ LDFLAGS = -L /usr/local/lib \
 -L contrib-build/usr/lib \
 -L contrib-build/lib \
 -L $(HOME)/llvm/llvm_cmake_build/lib/clang/4.0.0/lib/darwin/ \
--fsanitize=address \
 -g \
 -Wl,-no_pie \
+# -fsanitize=address \
 # -fsanitize=undefined -fno-sanitize=vptr \
 # -Wl,--export-dynamic \
 

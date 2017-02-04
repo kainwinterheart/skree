@@ -14,10 +14,10 @@ namespace Skree {
         public:
             struct Args {
                 std::queue<std::shared_ptr<new_client_t>> queue;
-                std::atomic<bool> mutex;
+                Utils::TSpinLock mutex;
                 int fds[2];
 
-                Args() : mutex(false) {
+                Args() {
                     if(socketpair(PF_LOCAL, SOCK_STREAM, 0, fds) == -1) {
                         perror("socketpair");
                         abort();

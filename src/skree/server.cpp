@@ -435,7 +435,7 @@ namespace Skree {
 
             known_peers.unlock();
 
-            if(candidate_peer_ids->size() > 0) {
+            if(candidate_peer_ids->size() > 1) {
                 // TODO
                 std::random_shuffle(
                     candidate_peer_ids->begin(),
@@ -750,15 +750,9 @@ namespace Skree {
     void Server::push_new_client(std::shared_ptr<new_client_t> new_client) {
         auto thread = threads.next();
 
-        while(thread.first->mutex.exchange(true)) {
-            continue;
-        }
+        Utils::TSpinLockGuard guard (thread.first->mutex);
 
         thread.first->queue.push(new_client);
-
-        if(!thread.first->mutex.exchange(false)) {
-            abort();
-        }
 
         // Utils::cluck(1, "push_new_client()");
         ::write(thread.first->fds[1], "1", 1);

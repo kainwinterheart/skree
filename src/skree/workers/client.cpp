@@ -109,9 +109,7 @@ namespace Skree {
         }
 
         void Client::accept() {
-            while(((Args*)args)->mutex.exchange(true)) {
-                continue;
-            }
+            Utils::TSpinLockGuard guard(((Args*)args)->mutex);
 
             while(!((Args*)args)->queue.empty()) {
                 auto new_client = ((Args*)args)->queue.front();
@@ -129,10 +127,6 @@ namespace Skree {
                 ActiveClients.push_back(client);
 
                 // delete new_client; // TODO: seems to be unnecessary since it's std::shared_ptr
-            }
-
-            if(!((Args*)args)->mutex.exchange(false)) {
-                abort();
             }
         }
     }
