@@ -339,7 +339,7 @@ namespace Skree {
             // Utils::cluck(2, "Seems like I need to failover task %llu\n", item->rid);
 
             if(peer == nullptr) {
-                bool have_rpr = false;
+                bool should_run_replication_exec = false;
 
                 auto count_replicas = std::make_shared<uint32_t>(0);
                 auto acceptances = std::make_shared<uint32_t>(0);
@@ -354,12 +354,15 @@ namespace Skree {
                     .data = (char*)(item->rin) // TODO
                 });
 
+                std::shared_ptr<std::deque<std::shared_ptr<Utils::muh_str_t>>> peers;
+
                 // Utils::cluck(2, "item->peers_cnt = %lu", item->peers_cnt);
 
                 if(item->peers_cnt > 0) {
                     *count_replicas = item->peers_cnt;
                     size_t offset = 0;
-                    auto peers = std::make_shared<std::deque<std::shared_ptr<Utils::muh_str_t>>>();
+
+                    peers.reset(new std::deque<std::shared_ptr<Utils::muh_str_t>>());
 
                     while(item->peers_cnt > 0) {
                         uint32_t peer_name_len;
@@ -385,6 +388,8 @@ namespace Skree {
                     }
 
                     for(const auto& _peer_id : *peers) {
+                        ++(item->peers_cnt);
+
                         known_peers_end = known_peers.lock();
                         auto it = known_peers.find(_peer_id);
                         known_peers.unlock();
@@ -394,9 +399,13 @@ namespace Skree {
                             Utils::TSpinLockGuard guard(*mutex);
                             ++(*acceptances);
 
+                            if((item->peers_cnt == *count_replicas) && (*pending > 0)) {
+                                should_run_replication_exec = false;
+                            }
+
                         } else {
                             // Utils::cluck(2, "Peer %s is found", _peer_id->data);
-                            have_rpr = true;
+                            should_run_replication_exec = false;
 
                             {
                                 Utils::TSpinLockGuard guard(*mutex);
@@ -414,7 +423,6 @@ namespace Skree {
                                 .peer_id = item->peer_id,
                                 .failover_key = item->failover_key,
                                 .rpr = peers,
-                                // .peers_cnt = _peers_cnt, // TODO
                                 .rid = item->rid,
                                 .origin = _item
                             });
@@ -432,7 +440,7 @@ namespace Skree {
                     // Utils::cluck(2, "zxc: %u", item->peers_cnt);
                 }
 
-                if(!have_rpr) {
+                if(should_run_replication_exec) {
                     std::shared_ptr<out_packet_i_ctx> ctx;
                     ctx.reset(new out_packet_i_ctx {
                         .count_replicas = count_replicas,
@@ -443,9 +451,7 @@ namespace Skree {
                         .data = data_str,
                         .peer_id = item->peer_id,
                         .failover_key = item->failover_key,
-                        // .rpr = item->rpr, // TODO: why is it not nullptr here?
-                        .rpr = std::shared_ptr<std::deque<std::shared_ptr<Utils::muh_str_t>>>(),
-                        // .peers_cnt = 0,
+                        .rpr = peers,
                         .rid = item->rid,
                         .origin = _item
                     });
@@ -462,22 +468,10 @@ namespace Skree {
                     .data = (char*)(item->rin) // TODO?
                 });
 
-                // std::shared_ptr<Utils::muh_str_t> rpr_str;
-                //
-                // if(item->peers_cnt > 0) {
-                //     rpr_str.reset(new Utils::muh_str_t {
-                //         .own = false,
-                //         // .len = (uint32_t)strlen(item->rpr), // TODO: it is incorrect
-                //         .len = (uint32_t)(_item->len - (item->rpr - _item->data)), // TODO: unreliable crutch
-                //         .data = item->rpr
-                //     });
-                // }
-
                 std::shared_ptr<out_data_c_ctx> ctx;
                 ctx.reset(new out_data_c_ctx {
                     .event = &event,
                     .rin = rin_str,
-                    // .rpr = rpr_str, // TODO?
                     .rid = item->rid,
                     .failover_key = item->failover_key,
                     .origin = _item

@@ -799,7 +799,7 @@ namespace Skree {
                 *(ctx->event)
             );
 
-            if(ctx->rpr != nullptr) {
+            if(ctx->rpr) {
                 // Utils::cluck(2, "asd: %u", ctx->peers_cnt);
                 // const muh_str_t*& peer_id, const known_event_t*& event,
                 // const uint64_t& rid
