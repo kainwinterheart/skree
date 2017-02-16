@@ -61,9 +61,19 @@ namespace Skree {
         }
 
         bool sync_read_offset(bool commit) {
-            // (void)commit;
+            (void)commit;
             // return /*(commit ? true : */Reader->StepBack()/*)*/;
-            return (commit ? Reader->Reset() : Reader->StepBack());
+            // return (commit ? true : Reader->Reset());
+            return Reader->Reset();
+            // return true;
+        }
+        bool Reset() {
+            return Reader->Reset();
+            // return true;
+        }
+        bool Reset2() {
+            // return Reader->Reset();
+            return true;
         }
     };
 }

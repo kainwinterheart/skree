@@ -16,7 +16,7 @@ namespace Skree {
         result = wiredtiger_open(
             dbFileName.c_str(),
             NULL,
-            "create",
+            "create,cache_size=5GB,eviction=(threads_max=20,threads_min=5),eviction_dirty_target=30,eviction_target=40,eviction_trigger=60,session_max=10000",
             &db
         );
 

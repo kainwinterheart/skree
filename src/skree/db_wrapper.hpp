@@ -167,8 +167,6 @@ namespace Skree {
                     }
 
                     Utils::cluck(2, "GetUnpackedKey() failed: key of size %lu", _key.size);
-
-                    rv = false;
                 }
 
                 return rv;
@@ -434,7 +432,7 @@ namespace Skree {
 
                 if(result != 0) {
                     if(result == WT_NOTFOUND) {
-                        Reset();
+                        // Reset();
 
                     } else {
                         Utils::cluck(
@@ -451,6 +449,7 @@ namespace Skree {
                     return false;
                 }
 
+                // Cursor->get_key(Cursor.get(), key);
                 Cursor->get_value(Cursor.get(), &value);
 
                 return true;

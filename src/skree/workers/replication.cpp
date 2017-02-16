@@ -11,15 +11,15 @@ namespace Skree {
                 now = std::time(nullptr);
                 active = false;
 
-                for(auto& it : server.known_events) {
-                    if(failover(now, *(it.second))) {
-                        active = true;
-                    }
-
-                    if(replication(now, *(it.second))) {
-                        active = true;
-                    }
-                }
+                // for(auto& it : server.known_events) {
+                //     if(failover(now, *(it.second))) {
+                //         active = true;
+                //     }
+                //
+                //     if(replication(now, *(it.second))) {
+                //         active = true;
+                //     }
+                // }
 
                 if(active) {
                     ++(server.stat_num_repl_it);
@@ -194,6 +194,7 @@ namespace Skree {
 
             if(!_item) {
                 // Utils::cluck(1, "replication: empty queue\n");
+                queue_r2.Reset();
                 return false;
             }
 
@@ -227,6 +228,9 @@ namespace Skree {
             }
 
             queue_r2.sync_read_offset(commit);
+            if(!commit) {
+                queue_r2.Reset();
+            }
 
             // free(item->peer_id);
             // free(item->failover_key);
@@ -244,6 +248,7 @@ namespace Skree {
 
             if(!_item) {
                 // Utils::cluck(1, "replication: empty queue\n");
+                queue.Reset();
                 return false;
             }
 
@@ -256,6 +261,7 @@ namespace Skree {
                 // Utils::cluck(3, "skip repl: not now, rts: %llu, now: %llu\n", item->rts, now);
                 // cleanup();
                 queue.sync_read_offset(false);
+                queue.Reset();
                 return false;
             }
 
@@ -273,6 +279,7 @@ namespace Skree {
                     // Utils::cluck(1, "skip repl: failover flag is set\n");
                     // cleanup();
                     queue.sync_read_offset(false);
+                    queue.Reset();
                     return false;
                 }
             }
@@ -282,6 +289,7 @@ namespace Skree {
                 // Utils::cluck(1, "skip repl: no_failover flag is set\n");
                 // cleanup();
                 queue.sync_read_offset(false);
+                queue.Reset();
                 return false;
             }
 
@@ -323,6 +331,7 @@ namespace Skree {
             queue.sync_read_offset(commit);
 
             if(!commit) {
+                queue.Reset();
                 event.unfailover(item->failover_key);
                 // cleanup();
                 return false;

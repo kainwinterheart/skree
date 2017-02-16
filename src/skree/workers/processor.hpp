@@ -17,7 +17,7 @@ namespace Skree {
             virtual void run() override;
         private:
             bool failover(const uint64_t& now, Utils::known_event_t& event);
-            bool process(const uint64_t& now, Utils::known_event_t& event);
+            uint32_t process(const uint64_t& now, Utils::known_event_t& event);
 
             bool do_failover(
                 const uint64_t& now,

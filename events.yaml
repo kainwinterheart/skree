@@ -10,3 +10,4 @@
         -
             id: ExampleEvent
             ttl: 10
+            batch_size: 10000

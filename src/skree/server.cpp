@@ -851,7 +851,8 @@ namespace Skree {
     short Server::get_event_state(
         uint64_t id,
         Utils::known_event_t& event,
-        const uint64_t now
+        const uint64_t now,
+        DbWrapper::TSession* session
     ) {
         auto wip_end = wip.lock();
         auto it = wip.find(id);
@@ -871,11 +872,17 @@ namespace Skree {
 
         wip.unlock();
 
-        auto& kv = *(event.queue->kv);
+        std::shared_ptr<DbWrapper::TSession> _session;
+
+        if(session == nullptr) {
+            _session = event.queue->kv->NewSession(DbWrapper::TSession::ST_KV);
+            session = _session.get();
+        }
+
         uint64_t id_net = htonll(id);
 
         // TODO: this could possibly flap too
-        const auto& flag = kv.get((char*)&id_net, sizeof(id_net));
+        const auto& flag = session->get((char*)&id_net, sizeof(id_net));
 
         if(flag.size() < 1) {
             return SKREE_META_EVENTSTATE_PROCESSED;

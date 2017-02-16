@@ -128,6 +128,7 @@ namespace Skree {
             char* id;
             event_group_t* group;
             uint32_t ttl;
+            uint32_t BatchSize;
             QueueDb* queue;
             QueueDb* queue2;
             QueueDb* r_queue;

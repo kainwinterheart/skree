@@ -1,5 +1,6 @@
 #include "processor.hpp"
 #include <ctime>
+#include <limits>
 
 namespace Skree {
     namespace Workers {
@@ -14,14 +15,15 @@ namespace Skree {
                 for(auto& it : server.known_events) {
                     auto& event = *(it.second);
 
-                    if(failover(now, event)) {
-                        active = true;
-                        ++(event.stat_num_failovered);
-                    }
+                    // if(failover(now, event)) {
+                    //     active = true;
+                    //     ++(event.stat_num_failovered);
+                    // }
 
-                    if(process(now, event)) {
+                    uint32_t processedCount;
+                    if((processedCount = process(now, event)) > 0) {
                         active = true;
-                        ++(event.stat_num_processed);
+                        event.stat_num_processed += processedCount;
                     }
                 }
 
@@ -81,6 +83,7 @@ namespace Skree {
 
             if(!item) {
                 // Utils::cluck(1, "processor: empty queue\n");
+                queue_r2.Reset();
                 return false;
             }
 
@@ -123,6 +126,7 @@ namespace Skree {
             if(repeat) {
                 Utils::cluck(3, "[processor::failover] releat: %llu, state: %u\n", origItemId, state);
                 queue_r2.sync_read_offset(false);
+                queue_r2.Reset();
                 // cleanup();
                 return false;
             }
@@ -167,6 +171,9 @@ namespace Skree {
             // }
 
             queue_r2.sync_read_offset(key_removed);
+            if(!key_removed) {
+                queue_r2.Reset();
+            }
 
             // if(key_removed) {
             //     event.queue2->kv->remove((char*)&itemIdNet, sizeof(itemIdNet));
@@ -175,97 +182,117 @@ namespace Skree {
             return key_removed;
         }
 
-        bool Processor::process(const uint64_t& now, Utils::known_event_t& event) {
-            Skree::Client* peer;
+        uint32_t Processor::process(const uint64_t& now, Utils::known_event_t& event) {
             // Utils::cluck(1, "processor: before read\n");
             auto& queue = *(event.queue);
-            uint64_t itemId;
-            auto item = queue.read(itemId);
-
-            if(!item) {
-                // Utils::cluck(1, "processor: empty queue\n");
-                return false;
-            }
-
-            auto itemIdNet = htonll(itemId);
-
-            // TODO: batch event processing
-
-            if(server.get_event_state(itemId, event, now) == SKREE_META_EVENTSTATE_PROCESSING) {
-                // TODO: what should really happen here?
-                // Utils::cluck(1, "skip repl: no_failover flag is set\n");
-                // cleanup();
-                queue.sync_read_offset(false);
-                return false;
-            }
-
+            std::deque<std::pair<uint64_t, std::shared_ptr<Utils::muh_str_t>>> items;
+            bool waited = false;
             auto& wip = server.wip;
-            wip.lock();
-            wip[itemId] = now;
-            wip.unlock();
 
-            bool commit = true;
-            auto& kv = *(queue.kv);
+            auto kv_session = queue.kv->NewSession(DbWrapper::TSession::ST_KV);
+            auto queue_session = queue.kv->NewSession(DbWrapper::TSession::ST_QUEUE);
+            auto queue2_session = event.queue2->kv->NewSession(DbWrapper::TSession::ST_QUEUE);
 
-            if(kv.cas((char*)&itemIdNet, sizeof(itemIdNet), "0", 1, "1", 1)) {
-                const size_t failover_item_len = sizeof(itemIdNet) + item->len;
-                char* failover_item = (char*)malloc(failover_item_len);
+            for(uint32_t i = 0; i < event.BatchSize; ++i) {
+                uint64_t itemId;
+                auto item = queue.read(itemId);
 
-                memcpy(failover_item, &itemIdNet, sizeof(itemIdNet));
-                memcpy(failover_item + sizeof(itemIdNet), item->data, item->len);
+                if(item) {
+                    if(server.get_event_state(itemId, event, now, kv_session.get())
+                        == SKREE_META_EVENTSTATE_PROCESSING) {
+                        break;
+                    }
 
-                uint64_t key;
-                if(!event.queue2->kv->append(&key, failover_item, failover_item_len)) {
-                    abort();
+                    wip.lock();
+                    wip[itemId] = now;
+                    wip.unlock();
+
+                    auto itemIdNet = htonll(itemId);
+
+                    if(kv_session->cas((char*)&itemIdNet, sizeof(itemIdNet), "0", 1, "1", 1)) {
+                        const size_t failover_item_len = sizeof(itemIdNet) + item->len;
+                        char* failover_item = (char*)malloc(failover_item_len);
+
+                        memcpy(failover_item, &itemIdNet, sizeof(itemIdNet));
+                        memcpy(failover_item + sizeof(itemIdNet), item->data, item->len);
+
+                        uint64_t key;
+                        if(!queue2_session->append(&key, failover_item, failover_item_len)) {
+                            abort();
+                        }
+
+                        free(failover_item);
+
+                    } else {
+                        // Utils::cluck(2, "db.cas() failed: %s\n", kv.error().name());
+                        // size_t sz;
+                        // char* val = kv.get((char*)&(item->id_net), sizeof(item->id_net), &sz);
+                        // Utils::cluck(2, "value size: %lld\n", sz);
+                        // if(sz > 0) {
+                        //     char _val [sz + 1];
+                        //     memcpy(_val, &val, sz);
+                        //     _val[sz] = '\0';
+                        //     Utils::cluck(2, "value: %s\n", _val);
+                        // }
+                        // abort();
+                        do_failover(now, event, itemId, item);
+                        break;
+                    }
+
+                    items.push_back(std::make_pair(itemId, item));
+
+                } else if((i > 0) && !waited) {
+                    waited = true;
+                    // nanosleep(); // TODO
+                    --i;
+                    continue;
+
+                } else {
+                    break;
                 }
-
-                free(failover_item);
-
-                // TODO: process event here
-
-                if(!kv.remove((char*)&itemIdNet, sizeof(itemIdNet))) {
-                    // TODO: what should really happen here?
-                    commit = (kv.check((char*)&itemIdNet, sizeof(itemIdNet)) <= 0);
-                }
-
-                if(commit && !kv.remove(itemId)) {
-                    // TODO: what should really happen here?
-                    commit = (kv.check(itemId) <= 0);
-                }
-
-            } else {
-                // Utils::cluck(2, "db.cas() failed: %s\n", kv.error().name());
-                // size_t sz;
-                // char* val = kv.get((char*)&(item->id_net), sizeof(item->id_net), &sz);
-                // Utils::cluck(2, "value size: %lld\n", sz);
-                // if(sz > 0) {
-                //     char _val [sz + 1];
-                //     memcpy(_val, &val, sz);
-                //     _val[sz] = '\0';
-                //     Utils::cluck(2, "value: %s\n", _val);
-                // }
-                // abort();
-                commit = do_failover(now, event, itemId, item);
             }
 
-            queue.sync_read_offset(commit);
+            if(items.empty()) {
+                // Utils::cluck(1, "processor: empty queue\n");
+                queue.Reset();
+                return 0;
+            }
+
+            // TODO: process event here
+
+            for(const auto& item : items) {
+                auto itemId = item.first;
+                auto itemIdNet = htonll(itemId);
+
+                if(!kv_session->remove((char*)&itemIdNet, sizeof(itemIdNet))) {
+                    // TODO: what should really happen here?
+                    // commit = (kv.check((char*)&itemIdNet, sizeof(itemIdNet)) <= 0);
+                }
+
+                if(/*commit && */!queue_session->remove(itemId)) {
+                    // TODO: what should really happen here?
+                    // commit = (kv.check(itemId) <= 0);
+                }
+
+                auto wip_end = wip.lock();
+                auto it = wip.find(itemId);
+
+                if(it != wip_end) {
+                    // TODO: this should not be done here unconditionally
+                    wip.erase(it);
+                }
+
+                wip.unlock();
+            }
+
+            queue.Reset();
             // Utils::cluck(2, "processor: after sync_read_offset(), rid: %llu\n", item->id);
 
-            auto wip_end = wip.lock();
-            auto it = wip.find(itemId);
+            // if(commit) {
+            //     // Utils::cluck(1, "[processor] ALL DONE");
+            // }
 
-            if(it != wip_end) {
-                // TODO: this should not be done here unconditionally
-                wip.erase(it);
-            }
-
-            wip.unlock();
-
-            if(commit) {
-                // Utils::cluck(1, "[processor] ALL DONE");
-            }
-
-            return commit;
+            return items.size();//commit;
         }
     }
 }

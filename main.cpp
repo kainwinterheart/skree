@@ -198,7 +198,9 @@ int main(int argc, char** argv) {
 
                 if(_id && (_id.Type() == YAML::NodeType::Scalar)) {
                     const YAML::Node _ttl = (*event)["ttl"];
+                    const YAML::Node _batchSize = (*event)["batch_size"];
                     uint32_t ttl;
+                    uint32_t batchSize = 1;
 
                     if(_ttl && (_ttl.Type() == YAML::NodeType::Scalar)) {
                         ttl = _ttl.as<uint32_t>();
@@ -206,6 +208,15 @@ int main(int argc, char** argv) {
                     } else {
                         fprintf(stderr, "Every event should have a ttl\n");
                         abort();
+                    }
+
+                    if(_batchSize && (_batchSize.Type() == YAML::NodeType::Scalar)) {
+                        batchSize = _batchSize.as<uint32_t>();
+                    }
+
+                    if(batchSize < 1) {
+                        fprintf(stderr, "batch_size not specified, assuming 1\n");
+                        batchSize = 1; // sane enough
                     }
 
                     std::string id = _id.as<std::string>();
@@ -230,6 +241,7 @@ int main(int argc, char** argv) {
                         .id = id_,
                         .group = event_group,
                         .ttl = ttl,
+                        .BatchSize = batchSize,
                         .queue = create_queue_db(id),
                         .queue2 = create_queue_db(id + "/failover"),
                         .r_queue = create_queue_db(id + "/replication"),
@@ -249,6 +261,7 @@ int main(int argc, char** argv) {
 
     printf("Running on port: %u\n", my_port);
     signal(SIGPIPE, SIG_IGN);
+    signal(SIGHUP, SIG_IGN);
     signal(SIGTERM, signal_handler);
     signal(SIGINT, signal_handler);
 
