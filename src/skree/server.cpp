@@ -2,6 +2,14 @@
 #include "meta.hpp"
 #include <ctime>
 
+#include "workers/synchronization.hpp"
+#include "workers/statistics.hpp"
+#include "workers/replication.hpp"
+#include "workers/discovery.hpp"
+#include "workers/processor.hpp"
+#include "workers/processor_failover.hpp"
+#include "workers/cleanup.hpp"
+
 namespace Skree {
     Server::Server(
         uint32_t _my_port,
@@ -152,6 +160,9 @@ namespace Skree {
 
         Skree::Workers::Processor processor (*this);
         processor.start();
+
+        Skree::Workers::ProcessorFailover processorFailover (*this);
+        processorFailover.start();
 
         while(true) { // TODO
             NMuhEv::TLoop loop;
@@ -341,14 +352,14 @@ namespace Skree {
         uint32_t replication_factor,
         std::shared_ptr<Client> client,
         uint64_t* task_ids,
-        QueueDb& queue
+        DbWrapper::TSession& kv_batch,
+        DbWrapper::TSession& queue_batch
     ) {
         if(replication_factor > max_replication_factor)
             replication_factor = max_replication_factor;
 
         short result = SAVE_EVENT_RESULT_F;
         bool replication_began = false;
-        auto& db = *(queue.kv);
 
         uint32_t num_inserted = 0;
         uint32_t msg_len = sizeof(ctx.event_name_len) + ctx.event_name_len + 1 + sizeof(ctx.cnt);
@@ -377,22 +388,30 @@ namespace Skree {
         memcpy(msg + msg_pos, &_cnt, sizeof(_cnt));
         msg_pos += sizeof(_cnt);
 
-        {
-            auto kv_batch = db.NewSession();
-            auto queue_batch = db.NewSession(DbWrapper::TSession::ST_QUEUE);
+        bool in_transaction = false;
 
+        if(queue_batch.begin_transaction()) {
+            if(kv_batch.begin_transaction()) {
+                in_transaction = true;
+
+            } else {
+                queue_batch.end_transaction(false);
+            }
+        }
+
+        if(in_transaction) {
             while(num_inserted < ctx.cnt) {
                 auto event = (*ctx.events.get())[num_inserted];
 
                 // TODO: insert all events in a transaction
                 uint64_t key;
-                bool rv = queue_batch->append(&key, event->data, event->len);
+                bool rv = queue_batch.append(&key, event->data, event->len);
 
                 // free(data); // TODO: according to WT docs, this could break insertions
 
                 if(rv) {
                     uint64_t _key = htonll(key);
-                    rv = kv_batch->add((char*)&_key, sizeof(_key), "0", 1);
+                    rv = kv_batch.add((char*)&_key, sizeof(_key), "0", 1);
                 }
 
                 if(rv) {
@@ -415,6 +434,14 @@ namespace Skree {
                     memcpy(msg + msg_pos, event->data, event->len);
                     msg_pos += event->len;
                 }
+            }
+
+            bool commit = (num_inserted == ctx.cnt);
+            auto kv_rv = kv_batch.end_transaction(commit);
+            auto queue_rv = queue_batch.end_transaction(commit && kv_rv);
+
+            if(!kv_rv || !queue_rv) {
+                num_inserted = 0;
             }
         }
 
@@ -784,7 +811,8 @@ namespace Skree {
                 0,
                 std::shared_ptr<Client>(),
                 task_ids,
-                *(ctx->event->queue)
+                *ctx->event->queue->kv->NewSession(DbWrapper::TSession::ST_KV),
+                *ctx->event->queue->kv->NewSession(DbWrapper::TSession::ST_QUEUE)
             );
 
             auto& failover = ctx->event->failover;

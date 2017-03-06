@@ -64,7 +64,8 @@ namespace Skree {
                 replication_factor,
                 client.GetNewSharedPtr(),
                 nullptr,
-                *queue
+                *queue->kv->NewSession(DbWrapper::TSession::ST_KV),
+                *queue->kv->NewSession(DbWrapper::TSession::ST_QUEUE)
             );
 
             switch(result) {

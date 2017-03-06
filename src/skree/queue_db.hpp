@@ -58,6 +58,8 @@ namespace Skree {
         }
 
         inline void sync() {
+            kv->NewSession(DbWrapper::TSession::ST_KV)->Sync();
+            kv->NewSession(DbWrapper::TSession::ST_QUEUE)->Sync();
         }
 
         bool sync_read_offset(bool commit) {

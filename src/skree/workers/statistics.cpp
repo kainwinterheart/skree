@@ -1,4 +1,4 @@
-#include "synchronization.hpp"
+#include "statistics.hpp"
 
 namespace Skree {
     namespace Workers {

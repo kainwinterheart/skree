@@ -69,7 +69,8 @@ namespace Skree {
                    0, // TODO: should wait for synchronous replication
                    std::shared_ptr<Client>(),
                    nullptr,
-                   *(eit->second->queue)
+                   *eit->second->queue->kv->NewSession(DbWrapper::TSession::ST_KV),
+                   *eit->second->queue->kv->NewSession(DbWrapper::TSession::ST_QUEUE)
                 );
 
                 if(result == SAVE_EVENT_RESULT_K) {

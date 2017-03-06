@@ -8,6 +8,18 @@
 // #include <vector>
 // #include <string>
 
+// struct WT_SESSION_IMPL {
+//     WT_SESSION iface;
+//
+//     void    *lang_private;      /* Language specific private storage */
+//
+//     uint32_t active;           /* Non-zero if the session is in-use */
+//
+//     const char *name;       /* Name */
+//     const char *lastop;     /* Last operation */
+//     uint32_t id;            /* UID, offset in session array */
+// };
+
 namespace Skree {
     // typedef std::unordered_map<char*, Utils::muh_str_t*, Utils::char_pointer_hasher, Utils::char_pointer_comparator> get_keys_result_t;
 
@@ -46,8 +58,8 @@ namespace Skree {
 
             const char* TableFormat() {
                 return ((Table == ST_KV)
-                    ? "key_format=u,value_format=u"
-                    : "key_format=r,value_format=u");
+                    ? "key_format=u,value_format=u,split_pct=100,internal_page_max=16KB,leaf_page_max=16KB,leaf_value_max=64MB"
+                    : "key_format=r,value_format=u,split_pct=100,internal_page_max=16KB,leaf_page_max=16KB,leaf_value_max=64MB");
             }
 
             template<typename TReturn, typename TCallback, typename... TArgs>
@@ -97,6 +109,15 @@ namespace Skree {
                 });
             }
 
+            virtual ~TSession() {
+                // #ifdef SKREE_DBWRAPPER_DEBUG
+                // Utils::cluck(2, "Session %llu destroyed", (uint64_t)this);
+                // #endif
+                // OwTCursor->reset(OwTCursor.get());
+                // OwFCursor->reset(OwFCursor.get());
+                // fprintf(stderr, "Destroy session %d(%lx)\n", ((WT_SESSION_IMPL*)Session_.get())->id, (unsigned long)Session_.get());
+            }
+
             TSession(
                 DbWrapper& db,
                 ESessionTable table,
@@ -105,6 +126,10 @@ namespace Skree {
                 : Db(db)
                 , Table(table)
             {
+                #ifdef SKREE_DBWRAPPER_DEBUG
+                Utils::cluck(2, "Session %llu created", (uint64_t)this);
+                #endif
+
                 WT_SESSION* session;
                 AssertOk("Error opening session", Db.Db->open_session(
                     Db.Db.get(),
@@ -116,6 +141,8 @@ namespace Skree {
                 Session_ = std::shared_ptr<WT_SESSION>(session, [](WT_SESSION* session) {
                     AssertOk("Failed to close session", session->close(session, nullptr));
                 });
+
+                // Utils::cluck(2, "Create session %d(%lx)", ((WT_SESSION_IMPL*)Session_.get())->id, (unsigned long)Session_.get());
 
                 if(create) {
                     AssertOk("Failed to create table", session->create(
@@ -133,11 +160,6 @@ namespace Skree {
                     ? "overwrite=false,raw"
                     : "overwrite=false,raw,append"));
             }
-
-            // ~TSession() {
-            //     OwTCursor->reset(OwTCursor.get());
-            //     OwFCursor->reset(OwFCursor.get());
-            // }
 
             bool GetUnpackedKey(WT_CURSOR& cursor, uint64_t* key) {
                 WT_ITEM _key {
@@ -170,6 +192,10 @@ namespace Skree {
                 }
 
                 return rv;
+            }
+
+            void Sync() {
+                AssertOk("log_flush() failed", Session_->log_flush(Session_.get(), "sync=off"));
             }
 
             bool add(
@@ -211,6 +237,10 @@ namespace Skree {
                 const char * vbuf,
                 size_t vsiz
             ) {
+                #ifdef SKREE_DBWRAPPER_DEBUG
+                Utils::cluck(2, "Append at session %llu", (uint64_t)this);
+                #endif
+
                 if(Table != ST_QUEUE) {
                     Utils::cluck(1, "append() is only allowed for ST_QUEUE");
                     abort();
@@ -340,14 +370,23 @@ namespace Skree {
             }
 
             bool begin_transaction() {
+                #ifdef SKREE_DBWRAPPER_DEBUG
+                Utils::cluck(2, "Transaction started at session %llu", (uint64_t)this);
+                #endif
                 return (Session_->begin_transaction(Session_.get(), "snapshot") == 0);
             }
 
             bool end_transaction(bool commit = true) {
                 if(commit) {
+                    #ifdef SKREE_DBWRAPPER_DEBUG
+                    Utils::cluck(2, "Transaction committed at session %llu", (uint64_t)this);
+                    #endif
                     return (Session_->commit_transaction(Session_.get(), nullptr) == 0);
 
                 } else {
+                    #ifdef SKREE_DBWRAPPER_DEBUG
+                    Utils::cluck(2, "Transaction rolled back at session %llu", (uint64_t)this);
+                    #endif
                     return (Session_->rollback_transaction(Session_.get(), nullptr) == 0);
                 }
             }
@@ -389,6 +428,44 @@ namespace Skree {
                 });
             }
 
+            std::shared_ptr<Utils::muh_str_t> next(uint64_t& key) {
+#ifdef SKREE_DBWRAPPER_DEBUG
+                Utils::cluck(1, "[next]");
+#endif
+
+                std::shared_ptr<Utils::muh_str_t> out;
+                int result = OwFCursor->next(OwFCursor.get());
+
+                if(result != 0) {
+                    if(result != WT_NOTFOUND) {
+                        Utils::cluck(
+                            2,
+                            "read failed: %s",
+                            wiredtiger_strerror(result)
+                        );
+                    }
+
+                    return out;
+                }
+
+                if(!GetUnpackedKey(*OwFCursor, &key)) {
+                    return out;
+                }
+
+                WT_ITEM value;
+                AssertOk("Failed to fetch data", OwFCursor->get_value(OwFCursor.get(), &value));
+
+                out.reset(new Utils::muh_str_t {
+                    .len = (uint32_t)value.size,
+                    .own = true,
+                    .data = (char*)malloc((uint32_t)value.size),
+                });
+
+                memcpy(out->data, value.data, out->len);
+
+                return out;
+            }
+
             int32_t check(
                 const char * kbuf,
                 size_t ksiz
@@ -412,6 +489,10 @@ namespace Skree {
                     options
                 ));
             }
+
+            void Reset() {
+                AssertOk("Failed to reset the session", Session_->reset(Session_.get()));
+            }
         };
 
         class TReader {
@@ -423,8 +504,8 @@ namespace Skree {
             using TData = WT_ITEM;
 
             TReader(DbWrapper& db) {
-                Session = db.NewSession(DbWrapper::TSession::ST_QUEUE);
-                Cursor = Session->NewCursor("raw,readonly");
+                // Session = db.NewSession(DbWrapper::TSession::ST_QUEUE);
+                // Cursor = Session->NewCursor("raw,readonly");
             }
 
             bool Read(uint64_t* key, TData& value) {
@@ -477,17 +558,18 @@ namespace Skree {
             }
 
             bool Reset() {
-                int result = Cursor->reset(Cursor.get());
-
-                if(result != 0) {
-                    Utils::cluck(
-                        2,
-                        "reset failed: %s",
-                        wiredtiger_strerror(result)
-                    );
-
-                    return false;
-                }
+                Session->Reset();
+                // int result = Cursor->reset(Cursor.get());
+                //
+                // if(result != 0) {
+                //     Utils::cluck(
+                //         2,
+                //         "reset failed: %s",
+                //         wiredtiger_strerror(result)
+                //     );
+                //
+                //     return false;
+                // }
 
                 return true;
             }

@@ -27,15 +27,9 @@ namespace Skree {
 #include "workers/client.hpp"
 #include "actions/e.hpp"
 #include "actions/r.hpp"
-#include "workers/synchronization.hpp"
-#include "workers/statistics.hpp"
-#include "workers/replication.hpp"
-#include "workers/discovery.hpp"
 #include "pending_reads/replication.hpp"
 #include "queue_db.hpp"
-#include "workers/processor.hpp"
 #include "meta/states.hpp"
-#include "workers/cleanup.hpp"
 
 #include <stdexcept>
 #include <functional>
@@ -133,7 +127,8 @@ namespace Skree {
             uint32_t replication_factor,
             std::shared_ptr<Client> client,
             uint64_t* task_ids,
-            QueueDb& queue
+            DbWrapper::TSession& kv_batch,
+            DbWrapper::TSession& queue_batch
         );
 
         short repl_save(

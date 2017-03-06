@@ -11,7 +11,7 @@ namespace Skree {
         db_file_name.append("/skree.kch");
 
         kv = new DbWrapper (std::move(db_file_name));
-        Reader = kv->NewReader();
+        // Reader = kv->NewReader();
     }
 
     QueueDb::~QueueDb() {
