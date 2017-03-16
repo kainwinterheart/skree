@@ -10,7 +10,9 @@
 #include <atomic>
 #include <execinfo.h>
 #include <stdlib.h>
+#ifdef SKREE_LONGMESS
 #include <cxxabi.h>
+#endif
 #include <string>
 #include <dlfcn.h>
 #include <stdarg.h>

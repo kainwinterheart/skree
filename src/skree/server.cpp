@@ -5,6 +5,7 @@
 #include "workers/synchronization.hpp"
 #include "workers/statistics.hpp"
 #include "workers/replication.hpp"
+#include "workers/replication_failover.hpp"
 #include "workers/discovery.hpp"
 #include "workers/processor.hpp"
 #include "workers/processor_failover.hpp"
@@ -154,6 +155,9 @@ namespace Skree {
 
         Skree::Workers::Replication replication (*this);
         replication.start();
+
+        Skree::Workers::ReplicationFailover replicationFailover (*this);
+        replicationFailover.start();
 
         Skree::Workers::Discovery discovery (*this);
         discovery.start();

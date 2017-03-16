@@ -80,18 +80,27 @@ namespace Skree {
         uint32_t Processor::process(const uint64_t& now, Utils::known_event_t& event) const {
             // Utils::cluck(1, "processor: before read\n");
             // auto& queue = *(event.queue);
-            std::deque<std::pair<uint64_t, std::shared_ptr<Utils::muh_str_t>>> items;
-            bool waited = false;
-            auto& wip = server.wip;
 
-            auto kv_session = event.queue->kv->NewSession(DbWrapper::TSession::ST_KV);
-            auto queue_session = event.queue->kv->NewSession(DbWrapper::TSession::ST_QUEUE);
             auto queue2_session = event.queue2->kv->NewSession(DbWrapper::TSession::ST_QUEUE);
 
             // kv_session->begin_transaction();
             if(!queue2_session->begin_transaction()) {
                 return 0;
             }
+
+            auto kv_session = event.queue->kv->NewSession(DbWrapper::TSession::ST_KV);
+
+            // if(!kv_session->begin_transaction()) { // this breaks cas()
+            //     queue2_session->end_transaction(false); // this can fail too
+            //     return 0;
+            // }
+
+            std::deque<std::pair<uint64_t, std::shared_ptr<Utils::muh_str_t>>> itemsToProcess;
+            decltype(itemsToProcess) itemsToFailover;
+            bool waited = false;
+            auto& wip = server.wip;
+
+            auto queue_session = event.queue->kv->NewSession(DbWrapper::TSession::ST_QUEUE);
 
             for(uint32_t i = 0; i < event.BatchSize; ++i) {
                 uint64_t itemId;
@@ -123,6 +132,8 @@ namespace Skree {
 
                         free(failover_item);
 
+                        itemsToProcess.push_back(std::make_pair(itemId, item));
+
                     } else {
                         // Utils::cluck(2, "db.cas() failed: %s\n", kv.error().name());
                         // size_t sz;
@@ -135,11 +146,9 @@ namespace Skree {
                         //     Utils::cluck(2, "value: %s\n", _val);
                         // }
                         // abort();
-                        do_failover(now, event, itemId, item, *kv_session, *queue_session);
-                        break;
-                    }
 
-                    items.push_back(std::make_pair(itemId, item));
+                        itemsToFailover.push_back(std::make_pair(itemId, item));
+                    }
 
                 } else if((i > 0) && !waited) {
                     waited = true;
@@ -155,28 +164,44 @@ namespace Skree {
             // queue.Reset();
 
             {
-                // const auto queue2_rv = queue2_session->end_transaction(true);
+                const auto queue2_rv = queue2_session->end_transaction(true);
                 // kv_session->end_transaction(queue2_rv);
 
-                if(!/*queue2_rv*/queue2_session->end_transaction(true)) {
+                if(!queue2_rv) {
                     return 0;
                 }
-            }
-
-            if(items.empty()) {
-                // Utils::cluck(1, "processor: empty queue\n");
-                return 0;
             }
 
             kv_session->Reset();
             queue_session->Reset();
             queue2_session->Reset();
 
+            if(!itemsToFailover.empty()) {
+                for(const auto& item : itemsToFailover) {
+                    do_failover(
+                        now,
+                        event,
+                        item.first,
+                        item.second,
+                        *kv_session,
+                        *queue_session
+                    );
+                }
+
+                kv_session->Reset();
+                queue_session->Reset();
+            }
+
+            if(itemsToProcess.empty()) {
+                // Utils::cluck(1, "processor: empty queue\n");
+                return itemsToFailover.size();
+            }
+
             // TODO: process event here
 
             queue_session->begin_transaction(); // this can fail, but I think it is not critical
 
-            for(const auto& item : items) {
+            for(const auto& item : itemsToProcess) {
                 auto itemId = item.first;
                 auto itemIdNet = htonll(itemId);
 
@@ -208,7 +233,8 @@ namespace Skree {
             //     // Utils::cluck(1, "[processor] ALL DONE");
             // }
 
-            return items.size();//commit;
+            // TODO: better statistics
+            return itemsToProcess.size() + itemsToFailover.size();//commit;
         }
     }
 }

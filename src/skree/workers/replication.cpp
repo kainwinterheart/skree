@@ -11,23 +11,24 @@ namespace Skree {
                 now = std::time(nullptr);
                 active = false;
 
-                // for(auto& it : server.known_events) {
-                //     if(failover(now, *(it.second))) {
-                //         active = true;
-                //     }
-                //
-                //     if(replication(now, *(it.second))) {
-                //         active = true;
-                //     }
-                // }
+                for(auto& it : server.known_events) {
+                    auto& event = *(it.second);
+                    uint32_t processedCount;
 
-                if(active) {
-                    ++(server.stat_num_repl_it);
+                    if((processedCount = process(now, event)) > 0) {
+                        active = true;
+                        Stat(event, processedCount);
+                    }
+                }
 
-                } else {
+                if(!active) {
                     sleep(1);
                 }
             }
+        }
+
+        void Replication::Stat(Utils::known_event_t& event, uint32_t count) const {
+            server.stat_num_repl_it += count;
         }
 
         std::shared_ptr<Replication::QueueItem> Replication::parse_queue_item(
@@ -96,7 +97,7 @@ namespace Skree {
             const uint64_t& now,
             const Replication::QueueItem& item,
             Utils::known_event_t& event
-        ) {
+        ) const {
             auto& no_failover = event.no_failover;
             auto no_failover_end = no_failover.lock();
             auto it = no_failover.find(item.failover_key);
@@ -120,13 +121,15 @@ namespace Skree {
             const uint64_t& raw_item_len,
             char*& raw_item,
             const Replication::QueueItem& item,
-            Utils::known_event_t& event
-        ) {
-            auto& queue = *(event.r_queue);
-            auto kv = queue.kv->NewSession();
+            Utils::known_event_t& event,
+            DbWrapper::TSession& kvSession,
+            DbWrapper::TSession& queueSession
+        ) const {
+            // auto& queue = *(event.r_queue);
+            // auto kv = queue.kv->NewSession();
 
-            auto commit = [&kv, &event](){
-                if(kv->end_transaction(true)) {
+            auto commit = [&kvSession, &event](){
+                if(kvSession.end_transaction(true)) {
                     return true;
 
                 } else {
@@ -140,8 +143,8 @@ namespace Skree {
                 }
             };
 
-            if(kv->begin_transaction()) {
-                const auto& status = kv->get(item.failover_key->data, item.failover_key->len);
+            if(kvSession.begin_transaction()) {
+                const auto& status = kvSession.get(item.failover_key->data, item.failover_key->len);
 
                 if((status.size() == 1) && (status[0] == '1')) {
                     char meta_key [item.failover_key->len + 2];
@@ -151,11 +154,11 @@ namespace Skree {
                     meta_key[item.failover_key->len + 1] = '0';
 
                     uint64_t key;
-                    queue.kv->append(&key, raw_item, raw_item_len);
+                    queueSession.append(&key, raw_item, raw_item_len);
 
                     key = htonll(key);
 
-                    if(!kv->set(meta_key, item.failover_key->len + 1, (char*)&key, sizeof(key))) {
+                    if(!kvSession.set(meta_key, item.failover_key->len + 1, (char*)&key, sizeof(key))) {
                         Utils::cluck(2,
                             "Can't update key %s",
                             meta_key
@@ -164,7 +167,7 @@ namespace Skree {
                         // TODO: what should happen here?
                     }
 
-                    if(!kv->set(item.failover_key->data, item.failover_key->len, "0", 1)) {
+                    if(!kvSession.set(item.failover_key->data, item.failover_key->len, "0", 1)) {
                         Utils::cluck(2,
                             "Can't remove key %s",
                             item.failover_key->data
@@ -187,318 +190,325 @@ namespace Skree {
             }
         }
 
-        bool Replication::failover(const uint64_t& now, Utils::known_event_t& event) {
-            auto& queue_r2 = *(event.r2_queue);
-            uint64_t itemId;
-            auto _item = queue_r2.read(itemId);
-
-            if(!_item) {
-                // Utils::cluck(1, "replication: empty queue\n");
-                queue_r2.Reset();
-                return false;
-            }
-
-            auto item = parse_queue_item(event,/* itemId,*/ _item);
-            bool commit = true;
-
-            {
-                auto& failover = event.failover;
-                auto failover_end = failover.lock();
-                auto it = failover.find(item->failover_key);
-                failover.unlock();
-
-                if(
-                    (it == failover_end)
-                    && !do_failover(_item->len, _item->data, *item, event)
-                ) {
-                    commit = false;
-                }
-            }
-
-            if(
-                check_no_failover(now, *item, event)
-                || !do_failover(_item->len, _item->data, *item, event)
-            ) {
-                commit = false;
-            }
-
-            if(commit && !queue_r2.kv->remove(itemId)) {
-                // TODO: what should really happen here?
-                commit = (queue_r2.kv->check(itemId) <= 0);
-            }
-
-            queue_r2.sync_read_offset(commit);
-            if(!commit) {
-                queue_r2.Reset();
-            }
-
-            // free(item->peer_id);
-            // free(item->failover_key);
-            // delete item;
-            // free(_item);
-
-            return commit;
-        }
-
-        bool Replication::replication(const uint64_t& now, Utils::known_event_t& event) {
+        uint32_t Replication::process(const uint64_t& now, Utils::known_event_t& event) const {
             // Utils::cluck(1, "replication: before read\n");
-            auto& queue = *(event.r_queue);
-            uint64_t itemId;
-            auto _item = queue.read(itemId);
+            auto queue2_session = event.r2_queue->kv->NewSession(DbWrapper::TSession::ST_QUEUE);
 
-            if(!_item) {
-                // Utils::cluck(1, "replication: empty queue\n");
-                queue.Reset();
-                return false;
+            if(!queue2_session->begin_transaction()) {
+                return 0;
             }
 
-            auto item = parse_queue_item(event,/* itemId,*/ _item);
+            auto kv_session = event.r_queue->kv->NewSession(DbWrapper::TSession::ST_KV);
 
-            // Utils::cluck(2, "repl thread: %s\n", event.id);
+            // if(!kv_session->begin_transaction()) { // this breaks cas()
+            //     queue2_session->end_transaction(false); // this can fail too
+            //     return 0;
+            // }
 
-            // TODO: overflow
-            if((item->rts + event.ttl) > now) {
-                // Utils::cluck(3, "skip repl: not now, rts: %llu, now: %llu\n", item->rts, now);
-                // cleanup();
-                queue.sync_read_offset(false);
-                queue.Reset();
-                return false;
-            }
+            std::deque<std::tuple<
+                uint64_t,
+                std::shared_ptr<Utils::muh_str_t>,
+                std::shared_ptr<QueueItem>
+            >> itemsToProcess;
+            decltype(itemsToProcess) itemsToFailover;
 
+            bool waited = false;
             auto& failover = event.failover;
 
-            {
-                // Utils::cluck(1, "asd1\n");
-                auto failover_end = failover.lock();
-                auto it = failover.find(item->failover_key);
-                failover.unlock();
-                // Utils::cluck(1, "asd2\n");
+            auto queue_session = event.r_queue->kv->NewSession(DbWrapper::TSession::ST_QUEUE);
 
-                if(it != failover_end) {
-                    // TODO: what should really happen here?
-                    // Utils::cluck(1, "skip repl: failover flag is set\n");
-                    // cleanup();
-                    queue.sync_read_offset(false);
-                    queue.Reset();
-                    return false;
-                }
-            }
+            for(uint32_t i = 0; i < event.BatchSize; ++i) {
+                uint64_t itemId;
+                auto _item = queue_session->next(itemId);
 
-            if(check_no_failover(now, *item, event)) {
-                // TODO: what should really happen here?
-                // Utils::cluck(1, "skip repl: no_failover flag is set\n");
-                // cleanup();
-                queue.sync_read_offset(false);
-                queue.Reset();
-                return false;
-            }
+                if(_item) {
+                    auto item = parse_queue_item(event,/* itemId,*/ _item);
 
-            failover.lock();
-            failover[item->failover_key] = 0;
-            failover.unlock();
+                    // Utils::cluck(2, "repl thread: %s\n", event.id);
 
-            auto& no_failover = event.no_failover;
-            no_failover.lock();
-            no_failover[item->failover_key] = now;
-            no_failover.unlock();
-
-            bool commit = true;
-
-            if(queue.kv->cas(item->failover_key->data, item->failover_key->len, "0", 1, "1", 1)) {
-                uint64_t key;
-                event.r2_queue->kv->append(&key, _item->data, _item->len);
-                // Utils::cluck(3,
-                //     "Key %s for event %s has been added to r2_queue\n",
-                //     item->failover_key,
-                //     event.id
-                // );
-
-            } else if(queue.kv->check(item->failover_key->data, item->failover_key->len) > 0) {
-                Utils::cluck(2,
-                    "Key %s could not be added to r2_queue",
-                    item->failover_key->data
-                    // queue.kv->error().name()
-                );
-                // commit = false;
-                commit = do_failover(_item->len, _item->data, *item, event);
-            }
-
-            if(commit && !queue.kv->remove(itemId)) {
-                // TODO: what should really happen here?
-                commit = (queue.kv->check(itemId) <= 0);
-            }
-
-            queue.sync_read_offset(commit);
-
-            if(!commit) {
-                queue.Reset();
-                event.unfailover(item->failover_key);
-                // cleanup();
-                return false;
-            }
-            // Utils::cluck(2, "replication: after sync_read_offset(), rid: %llu\n", item->rid);
-
-            auto& known_peers = server.known_peers;
-            auto known_peers_end = known_peers.lock();
-            auto _peer = known_peers.find(item->peer_id);
-            known_peers.unlock();
-
-            Skree::Client* peer = ((_peer == known_peers_end) ? nullptr : _peer->second.next());
-
-            // Utils::cluck(2, "Seems like I need to failover task %llu\n", item->rid);
-
-            if(peer == nullptr) {
-                bool should_run_replication_exec = false;
-
-                auto count_replicas = std::make_shared<uint32_t>(0);
-                auto acceptances = std::make_shared<uint32_t>(0);
-                auto pending = std::make_shared<uint32_t>(0);
-
-                auto mutex = std::make_shared<Utils::TSpinLock>();
-
-                std::shared_ptr<Utils::muh_str_t> data_str;
-                data_str.reset(new Utils::muh_str_t {
-                    .own = false,
-                    .len = item->rin_len,
-                    .data = (char*)(item->rin) // TODO
-                });
-
-                std::shared_ptr<std::deque<std::shared_ptr<Utils::muh_str_t>>> peers;
-
-                // Utils::cluck(2, "item->peers_cnt = %lu", item->peers_cnt);
-
-                if(item->peers_cnt > 0) {
-                    *count_replicas = item->peers_cnt;
-                    size_t offset = 0;
-
-                    peers.reset(new std::deque<std::shared_ptr<Utils::muh_str_t>>());
-
-                    while(item->peers_cnt > 0) {
-                        uint32_t peer_name_len;
-                        memcpy(&peer_name_len, (item->rpr + offset), sizeof(peer_name_len));
-                        offset += sizeof(peer_name_len);
-                        peer_name_len = ntohl(peer_name_len);
-
-                        const char* peer_name = item->rpr + offset;
-                        offset += peer_name_len;
-
-                        uint32_t peer_port;
-                        memcpy(&peer_port, (item->rpr + offset), sizeof(peer_port));
-                        offset += sizeof(peer_port);
-                        peer_port = ntohl(peer_port);
-
-                        peers->push_back(Utils::make_peer_id(
-                            peer_name_len,
-                            peer_name,
-                            peer_port
-                        ));
-
-                        --(item->peers_cnt);
+                    // TODO: overflow
+                    if((item->rts + event.ttl) > now) {
+                        // Utils::cluck(3, "skip repl: not now, rts: %llu, now: %llu\n", item->rts, now);
+                        // cleanup();
+                        break;
                     }
 
-                    for(const auto& _peer_id : *peers) {
-                        ++(item->peers_cnt);
+                    {
+                        // Utils::cluck(1, "asd1\n");
+                        auto failover_end = failover.lock();
+                        auto it = failover.find(item->failover_key);
+                        failover.unlock();
+                        // Utils::cluck(1, "asd2\n");
 
-                        known_peers_end = known_peers.lock();
-                        auto it = known_peers.find(_peer_id);
-                        known_peers.unlock();
-
-                        if(it == known_peers_end) {
-                            // Utils::cluck(2, "Peer %s NOT found", _peer_id->data);
-                            Utils::TSpinLockGuard guard(*mutex);
-                            ++(*acceptances);
-
-                            if((item->peers_cnt == *count_replicas) && (*pending > 0)) {
-                                should_run_replication_exec = false;
-                            }
-
-                        } else {
-                            // Utils::cluck(2, "Peer %s is found", _peer_id->data);
-                            should_run_replication_exec = false;
-
-                            {
-                                Utils::TSpinLockGuard guard(*mutex);
-                                ++(*pending);
-                            }
-
-                            std::shared_ptr<out_packet_i_ctx> ctx;
-                            ctx.reset(new out_packet_i_ctx {
-                                .count_replicas = count_replicas,
-                                .pending = pending,
-                                .acceptances = acceptances,
-                                .mutex = mutex,
-                                .event = &event,
-                                .data = data_str,
-                                .peer_id = item->peer_id,
-                                .failover_key = item->failover_key,
-                                .rpr = peers,
-                                .rid = item->rid,
-                                .origin = _item
-                            });
-
-                            auto i_req = Skree::Actions::I::out_init(item->peer_id, event, item->rid_net);
-
-                            i_req->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
-                                std::shared_ptr<void>(ctx, (void*)ctx.get()),
-                                std::make_shared<Skree::PendingReads::Callbacks::ReplicationProposeSelf>(server)
-                            ));
-
-                            it->second.next()->push_write_queue(i_req);
+                        if(it != failover_end) {
+                            // TODO: what should really happen here?
+                            // Utils::cluck(1, "skip repl: failover flag is set\n");
+                            // cleanup();
+                            break;
                         }
                     }
-                    // Utils::cluck(2, "zxc: %u", item->peers_cnt);
+
+                    if(check_no_failover(now, *item, event)) {
+                        // TODO: what should really happen here?
+                        // Utils::cluck(1, "skip repl: no_failover flag is set\n");
+                        // cleanup();
+                        break;
+                    }
+
+                    failover.lock();
+                    failover[item->failover_key] = 0;
+                    failover.unlock();
+
+                    auto& no_failover = event.no_failover;
+                    no_failover.lock();
+                    no_failover[item->failover_key] = now;
+                    no_failover.unlock();
+
+                    if(kv_session->cas(item->failover_key->data, item->failover_key->len, "0", 1, "1", 1)) {
+                        uint64_t key;
+                        queue2_session->append(&key, _item->data, _item->len);
+                        // Utils::cluck(3,
+                        //     "Key %s for event %s has been added to r2_queue\n",
+                        //     item->failover_key,
+                        //     event.id
+                        // );
+                        itemsToProcess.push_back(std::make_tuple(itemId, _item, item));
+
+                    } else if(kv_session->check(item->failover_key->data, item->failover_key->len) > 0) {
+                        Utils::cluck(2,
+                            "Key %s could not be added to r2_queue",
+                            item->failover_key->data
+                            // queue.kv->error().name()
+                        );
+                        itemsToFailover.push_back(std::make_tuple(itemId, _item, item));
+                        // commit = false;
+                    }
+
+                } else if((i > 0) && !waited) { // TODO: is this really necessary here?
+                    waited = true;
+                    // nanosleep(); // TODO
+                    --i;
+                    continue;
+
+                } else {
+                    break;
+                }
+            }
+
+            {
+                const auto queue2_rv = queue2_session->end_transaction(true);
+                // kv_session->end_transaction(queue2_rv);
+
+                if(!queue2_rv) {
+                    return 0;
+                }
+            }
+
+            kv_session->Reset();
+            queue_session->Reset();
+            queue2_session->Reset();
+
+            if(!itemsToFailover.empty()) {
+                for(const auto& node : itemsToFailover) {
+                    const auto& [itemId, _item, item] = node;
+
+                    if(!do_failover(
+                        _item->len,
+                        _item->data,
+                        *item,
+                        event,
+                        *kv_session,
+                        *queue_session
+                    )) {
+                        event.unfailover(item->failover_key);
+                    }
                 }
 
-                if(should_run_replication_exec) {
-                    std::shared_ptr<out_packet_i_ctx> ctx;
-                    ctx.reset(new out_packet_i_ctx {
-                        .count_replicas = count_replicas,
-                        .pending = pending,
-                        .acceptances = acceptances,
-                        .mutex = mutex,
+                kv_session->Reset();
+                queue_session->Reset();
+            }
+
+            if(itemsToProcess.empty()) {
+                // Utils::cluck(1, "replication: empty queue\n");
+                return itemsToFailover.size();
+            }
+
+            auto& known_peers = server.known_peers;
+
+            for(const auto& item : itemsToProcess) {
+                if(!queue_session->remove(std::get<0>(item))) {
+                    // TODO: what should really happen here?
+                    // commit = (queue.kv->check(itemId) <= 0);
+                }
+            }
+
+            queue_session->Reset();
+
+            for(const auto& node : itemsToProcess) {
+                // Utils::cluck(2, "replication: after sync_read_offset(), rid: %llu\n", item->rid);
+                const auto& [itemId, _item, item] = node;
+
+                auto known_peers_end = known_peers.lock();
+                auto _peer = known_peers.find(item->peer_id);
+                known_peers.unlock();
+
+                Skree::Client* peer = ((_peer == known_peers_end) ? nullptr : _peer->second.next());
+
+                // Utils::cluck(2, "Seems like I need to failover task %llu\n", item->rid);
+
+                if(peer == nullptr) {
+                    bool should_run_replication_exec = false;
+
+                    auto count_replicas = std::make_shared<uint32_t>(0);
+                    auto acceptances = std::make_shared<uint32_t>(0);
+                    auto pending = std::make_shared<uint32_t>(0);
+
+                    auto mutex = std::make_shared<Utils::TSpinLock>();
+
+                    std::shared_ptr<Utils::muh_str_t> data_str;
+                    data_str.reset(new Utils::muh_str_t {
+                        .own = false,
+                        .len = item->rin_len,
+                        .data = (char*)(item->rin) // TODO
+                    });
+
+                    std::shared_ptr<std::deque<std::shared_ptr<Utils::muh_str_t>>> peers;
+
+                    // Utils::cluck(2, "item->peers_cnt = %lu", item->peers_cnt);
+
+                    if(item->peers_cnt > 0) {
+                        *count_replicas = item->peers_cnt;
+                        size_t offset = 0;
+
+                        peers.reset(new std::deque<std::shared_ptr<Utils::muh_str_t>>());
+
+                        while(item->peers_cnt > 0) {
+                            uint32_t peer_name_len;
+                            memcpy(&peer_name_len, (item->rpr + offset), sizeof(peer_name_len));
+                            offset += sizeof(peer_name_len);
+                            peer_name_len = ntohl(peer_name_len);
+
+                            const char* peer_name = item->rpr + offset;
+                            offset += peer_name_len;
+
+                            uint32_t peer_port;
+                            memcpy(&peer_port, (item->rpr + offset), sizeof(peer_port));
+                            offset += sizeof(peer_port);
+                            peer_port = ntohl(peer_port);
+
+                            peers->push_back(Utils::make_peer_id(
+                                peer_name_len,
+                                peer_name,
+                                peer_port
+                            ));
+
+                            --(item->peers_cnt);
+                        }
+
+                        for(const auto& _peer_id : *peers) {
+                            ++(item->peers_cnt);
+
+                            known_peers_end = known_peers.lock();
+                            auto it = known_peers.find(_peer_id);
+                            known_peers.unlock();
+
+                            if(it == known_peers_end) {
+                                // Utils::cluck(2, "Peer %s NOT found", _peer_id->data);
+                                Utils::TSpinLockGuard guard(*mutex);
+                                ++(*acceptances);
+
+                                if((item->peers_cnt == *count_replicas) && (*pending > 0)) {
+                                    should_run_replication_exec = false;
+                                }
+
+                            } else {
+                                // Utils::cluck(2, "Peer %s is found", _peer_id->data);
+                                should_run_replication_exec = false;
+
+                                {
+                                    Utils::TSpinLockGuard guard(*mutex);
+                                    ++(*pending);
+                                }
+
+                                std::shared_ptr<out_packet_i_ctx> ctx;
+                                ctx.reset(new out_packet_i_ctx {
+                                    .count_replicas = count_replicas,
+                                    .pending = pending,
+                                    .acceptances = acceptances,
+                                    .mutex = mutex,
+                                    .event = &event,
+                                    .data = data_str,
+                                    .peer_id = item->peer_id,
+                                    .failover_key = item->failover_key,
+                                    .rpr = peers,
+                                    .rid = item->rid,
+                                    .origin = _item
+                                });
+
+                                auto i_req = Skree::Actions::I::out_init(item->peer_id, event, item->rid_net);
+
+                                i_req->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
+                                    std::shared_ptr<void>(ctx, (void*)ctx.get()),
+                                    std::make_shared<Skree::PendingReads::Callbacks::ReplicationProposeSelf>(server)
+                                ));
+
+                                it->second.next()->push_write_queue(i_req);
+                            }
+                        }
+                        // Utils::cluck(2, "zxc: %u", item->peers_cnt);
+                    }
+
+                    if(should_run_replication_exec) {
+                        std::shared_ptr<out_packet_i_ctx> ctx;
+                        ctx.reset(new out_packet_i_ctx {
+                            .count_replicas = count_replicas,
+                            .pending = pending,
+                            .acceptances = acceptances,
+                            .mutex = mutex,
+                            .event = &event,
+                            .data = data_str,
+                            .peer_id = item->peer_id,
+                            .failover_key = item->failover_key,
+                            .rpr = peers,
+                            .rid = item->rid,
+                            .origin = _item
+                        });
+
+                        server.replication_exec(ctx);
+                    }
+
+                } else {
+                    // TODO: rin_str's type
+                    std::shared_ptr<Utils::muh_str_t> rin_str;
+                    rin_str.reset(new Utils::muh_str_t {
+                        .own = false,
+                        .len = item->rin_len,
+                        .data = (char*)(item->rin) // TODO?
+                    });
+
+                    std::shared_ptr<out_data_c_ctx> ctx;
+                    ctx.reset(new out_data_c_ctx {
                         .event = &event,
-                        .data = data_str,
-                        .peer_id = item->peer_id,
-                        .failover_key = item->failover_key,
-                        .rpr = peers,
+                        .rin = rin_str,
                         .rid = item->rid,
+                        .failover_key = item->failover_key,
                         .origin = _item
                     });
 
-                    server.replication_exec(ctx);
+                    auto c_req = Skree::Actions::C::out_init(event, item->rid_net, item->rin_len, item->rin);
+
+                    c_req->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
+                        std::shared_ptr<void>(ctx, (void*)ctx.get()),
+                        std::make_shared<Skree::PendingReads::Callbacks::ReplicationPingTask>(server)
+                    ));
+
+                    c_req->finish();
+
+                    peer->push_write_queue(c_req);
                 }
-
-            } else {
-                // TODO: rin_str's type
-                std::shared_ptr<Utils::muh_str_t> rin_str;
-                rin_str.reset(new Utils::muh_str_t {
-                    .own = false,
-                    .len = item->rin_len,
-                    .data = (char*)(item->rin) // TODO?
-                });
-
-                std::shared_ptr<out_data_c_ctx> ctx;
-                ctx.reset(new out_data_c_ctx {
-                    .event = &event,
-                    .rin = rin_str,
-                    .rid = item->rid,
-                    .failover_key = item->failover_key,
-                    .origin = _item
-                });
-
-                auto c_req = Skree::Actions::C::out_init(event, item->rid_net, item->rin_len, item->rin);
-
-                c_req->set_cb(std::make_shared<Skree::Base::PendingRead::QueueItem>(
-                    std::shared_ptr<void>(ctx, (void*)ctx.get()),
-                    std::make_shared<Skree::PendingReads::Callbacks::ReplicationPingTask>(server)
-                ));
-
-                c_req->finish();
-
-                peer->push_write_queue(c_req);
             }
 
-            return commit;
+            return itemsToProcess.size() + itemsToFailover.size();
         }
     }
 }

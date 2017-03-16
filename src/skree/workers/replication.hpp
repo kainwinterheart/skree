@@ -16,7 +16,8 @@ namespace Skree {
                 : Skree::Base::Worker(_server, _args) {}
 
             virtual void run() override;
-        private:
+
+        protected:
             struct QueueItem {
                 uint32_t rin_len;
                 uint32_t hostname_len;
@@ -39,20 +40,24 @@ namespace Skree {
                 std::shared_ptr<Utils::muh_str_t> item
             );
 
-            bool failover(const uint64_t& now, Utils::known_event_t& event);
-            bool replication(const uint64_t& now, Utils::known_event_t& event);
             bool check_no_failover(
                 const uint64_t& now,
                 const Replication::QueueItem& item,
                 Utils::known_event_t& event
-            );
+            ) const;
 
             bool do_failover(
                 const uint64_t& raw_item_len,
                 char*& raw_item,
                 const Replication::QueueItem& item,
-                Utils::known_event_t& event
-            );
+                Utils::known_event_t& event,
+                DbWrapper::TSession& kvSession,
+                DbWrapper::TSession& queueSession
+            ) const;
+
+        private:
+            virtual uint32_t process(const uint64_t& now, Utils::known_event_t& event) const;
+            virtual void Stat(Utils::known_event_t& event, uint32_t count) const;
         };
     }
 }

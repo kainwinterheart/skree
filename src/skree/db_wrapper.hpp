@@ -329,18 +329,33 @@ namespace Skree {
                 const char * nvbuf,
                 size_t nvsiz
             ) {
-                begin_transaction();
+                if(!begin_transaction()) {
+                    Utils::cluck(1, "[cas] failed to begin transaction");
+                    return false;
+                }
+
+                auto commit = [this](bool commit, unsigned short step) {
+                    if(end_transaction(commit)) {
+                        return true;
+
+                    } else {
+                        Utils::cluck(2, "[cas] failed to commit transaction; step = %hu", step);
+                        return false;
+                    }
+                };
 
                 const auto& value = get(kbuf, ksiz);
 
                 if(value.size() != ovsiz) {
                     // Utils::cluck(3, "[cas] size mismatch: %llu != %llu", value.size(), ovsiz);
                     // abort();
+                    commit(false, 1);
                     return false;
                 }
 
                 if(strncmp(value.data(), ovbuf, ovsiz) != 0) {
                     Utils::cluck(1, "[cas] data mismatch");
+                    commit(false, 2);
                     return false;
                 }
 
@@ -350,8 +365,7 @@ namespace Skree {
                     Utils::cluck(1, "[cas] set() failed");
                 }
 
-                if(!end_transaction(result)) {
-                    Utils::cluck(1, "[cas] failed to commit transaction");
+                if(!commit(result, 3)) {
                     return false;
                 }
 
@@ -377,17 +391,26 @@ namespace Skree {
             }
 
             bool end_transaction(bool commit = true) {
+                int rv;
                 if(commit) {
                     #ifdef SKREE_DBWRAPPER_DEBUG
                     Utils::cluck(2, "Transaction committed at session %llu", (uint64_t)this);
                     #endif
-                    return (Session_->commit_transaction(Session_.get(), nullptr) == 0);
+                    rv = Session_->commit_transaction(Session_.get(), nullptr);
 
                 } else {
                     #ifdef SKREE_DBWRAPPER_DEBUG
                     Utils::cluck(2, "Transaction rolled back at session %llu", (uint64_t)this);
                     #endif
-                    return (Session_->rollback_transaction(Session_.get(), nullptr) == 0);
+                    rv = Session_->rollback_transaction(Session_.get(), nullptr);
+                }
+
+                if (rv == 0) {
+                    return true;
+
+                } else {
+                    Utils::cluck(1, wiredtiger_strerror(rv));
+                    return false;
                 }
             }
 
