@@ -530,7 +530,7 @@ namespace Skree {
 
         memcpy(meta_key, failover_key, failover_key_len);
         meta_key[failover_key_len] = 'm';
-        meta_key[failover_key_len + 1] = '0';
+        meta_key[failover_key_len + 1] = '\0';
 
         const auto& meta = kv.get(meta_key, failover_key_len + 1);
 

@@ -151,7 +151,7 @@ namespace Skree {
 
                     memcpy(meta_key, item.failover_key->data, item.failover_key->len);
                     meta_key[item.failover_key->len] = 'm';
-                    meta_key[item.failover_key->len + 1] = '0';
+                    meta_key[item.failover_key->len + 1] = '\0';
 
                     uint64_t key;
                     queueSession.append(&key, raw_item, raw_item_len);
