@@ -241,18 +241,26 @@ namespace Skree {
             peer_id->len
             + 1 // :
             + 20 // wrinseq
-            + 1 // 'm'
             + 1 // \0
         ];
 
         auto& db = *(queue.kv);
         uint32_t processed = 0;
         const uint32_t _peers_cnt = htonl(ctx.peers_count);
+        auto kv_batch = db.NewSession();
+        auto queue_batch = db.NewSession(DbWrapper::TSession::ST_QUEUE);
+        bool in_transaction = false;
 
-        {
-            auto kv_batch = db.NewSession();
-            auto queue_batch = db.NewSession(DbWrapper::TSession::ST_QUEUE);
+        if(queue_batch->begin_transaction()) {
+            if(kv_batch->begin_transaction()) {
+                in_transaction = true;
 
+            } else {
+                queue_batch->end_transaction(false);
+            }
+        }
+
+        if(in_transaction) {
             for(uint32_t i = 0; i < ctx.events_count; ++i) {
                 const auto event = (*ctx.events.get())[i];
                 const uint32_t event_len = htonl(event->len);
@@ -316,20 +324,18 @@ namespace Skree {
                 free(data); // TODO: according to WT docs, this could break insertions
 
                 if(rv) {
-                    sprintf(failover_key, "%s:%llu", peer_id->data, key);
+                    sprintf(failover_key, "%s:%llu", peer_id->data, ntohll(event->id_net));
                     size_t failover_key_len = strlen(failover_key);
 
-                    kv_batch->add(failover_key, failover_key_len, "0", 1);
-
-                    failover_key[failover_key_len] = 'm';
-                    ++failover_key_len;
                     auto keyNet = htonll(key);
+                    char failoverValue [1 + sizeof(keyNet)];
+
+                    failoverValue[0] = '0';
+                    memcpy(failoverValue + 1, &keyNet, sizeof(keyNet));
 
                     kv_batch->add(
-                        failover_key,
-                        failover_key_len,
-                        (char*)&keyNet,
-                        sizeof(keyNet)
+                        failover_key, failover_key_len,
+                        failoverValue, 1 + sizeof(keyNet)
                     );
 
                     ++processed;
@@ -342,6 +348,14 @@ namespace Skree {
 
                 // free(event->data); // TODO
                 // delete event; // TODO?
+            }
+
+            bool commit = (processed == ctx.events_count);
+            auto kv_rv = kv_batch->end_transaction(commit);
+            auto queue_rv = queue_batch->end_transaction(commit && kv_rv);
+
+            if(!kv_rv || !queue_rv) {
+                processed = 0;
             }
         }
 
@@ -526,17 +540,11 @@ namespace Skree {
         Utils::known_event_t& event
     ) {
         auto& kv = *(event.r_queue->kv);
-        char meta_key [failover_key_len + 2];
+        const auto& meta = kv.get(failover_key, failover_key_len);
 
-        memcpy(meta_key, failover_key, failover_key_len);
-        meta_key[failover_key_len] = 'm';
-        meta_key[failover_key_len + 1] = '\0';
-
-        const auto& meta = kv.get(meta_key, failover_key_len + 1);
-
-        if(meta.size() > 0) {
+        if(meta.size() == (1 + sizeof(uint64_t))) {
             uint64_t id;
-            memcpy(&id, meta.data(), sizeof(id));
+            memcpy(&id, meta.data() + 1, sizeof(id));
             id = ntohll(id);
 
             if(!kv.remove(id)) {
@@ -544,12 +552,13 @@ namespace Skree {
             }
         }
 
-        if(!kv.remove(meta_key, failover_key_len + 1)) {
-            Utils::cluck(2, "Key %s could not be removed", meta_key);
-        }
-
         if(!kv.remove(failover_key, failover_key_len)) {
-            Utils::cluck(2, "Key %s could not be removed", failover_key);
+            char _failover_key [failover_key_len + 1];
+
+            memcpy(_failover_key, failover_key, failover_key_len);
+            _failover_key[failover_key_len] = '\0';
+
+            Utils::cluck(2, "Key %s could not be removed", _failover_key);
         }
     }
 

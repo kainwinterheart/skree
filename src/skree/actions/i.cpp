@@ -49,13 +49,18 @@ namespace Skree {
             auto& failover = event.failover;
             auto failover_end = failover.lock();
             auto it = failover.find(suffix);
+            const bool absentInFailover = (it == failover_end);
+            const uint64_t id = (absentInFailover ? 0 : it->second);
+
+            failover.unlock();
 
             // TODO: following checks could possibly flap
-            if(it == failover_end) {
+            if(absentInFailover) {
                 auto& db = *(event.r_queue->kv);
                 auto size = db.check(suffix->data, suffix->len);
+                // TODO?: So what if the instance has been restarted with empty db?
 
-                if(size == 1) {
+                if(size == (1 + sizeof(uint64_t))) {
                     // this instance has not tried to failover the event yet
                     args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_K));
 
@@ -70,8 +75,6 @@ namespace Skree {
                 }
 
             } else {
-                auto& id = it->second;
-
                 if(id == 0) {
                     // this instance is currently in the process of failovering the event
                     args->out.reset(new Skree::Base::PendingWrite::QueueItem (SKREE_META_OPCODE_F));
@@ -91,8 +94,6 @@ namespace Skree {
                     }
                 }
             }
-
-            failover.unlock(); // TODO: transaction is too long
         }
 
         std::shared_ptr<Skree::Base::PendingWrite::QueueItem> I::out_init(

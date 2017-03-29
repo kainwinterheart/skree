@@ -78,8 +78,7 @@ namespace Skree {
 
             out->peer_id = Utils::make_peer_id(out->hostname_len, out->hostname, out->port);
             out->failover_key = Utils::NewStr(
-                1
-                + out->peer_id->len
+                out->peer_id->len
                 + 1 // :
                 + 20 // wrinseq
                 + 1 // \0
@@ -146,30 +145,24 @@ namespace Skree {
             if(kvSession.begin_transaction()) {
                 const auto& status = kvSession.get(item.failover_key->data, item.failover_key->len);
 
-                if((status.size() == 1) && (status[0] == '1')) {
-                    char meta_key [item.failover_key->len + 2];
-
-                    memcpy(meta_key, item.failover_key->data, item.failover_key->len);
-                    meta_key[item.failover_key->len] = 'm';
-                    meta_key[item.failover_key->len + 1] = '\0';
-
+                // TODO: review all conditions that need to be failovered
+                if((status.size() == (1 + sizeof(uint64_t))) && (status[0] == '1')) {
                     uint64_t key;
                     queueSession.append(&key, raw_item, raw_item_len);
 
                     key = htonll(key);
 
-                    if(!kvSession.set(meta_key, item.failover_key->len + 1, (char*)&key, sizeof(key))) {
+                    char failoverValue [1 + sizeof(key)];
+
+                    failoverValue[0] = '0';
+                    memcpy(failoverValue + 1, &key, sizeof(key));
+
+                    if(!kvSession.set(
+                        item.failover_key->data, item.failover_key->len,
+                        failoverValue, 1 + sizeof(key)
+                    )) {
                         Utils::cluck(2,
                             "Can't update key %s",
-                            meta_key
-                            // kv->error().name()
-                        );
-                        // TODO: what should happen here?
-                    }
-
-                    if(!kvSession.set(item.failover_key->data, item.failover_key->len, "0", 1)) {
-                        Utils::cluck(2,
-                            "Can't remove key %s",
                             item.failover_key->data
                             // kv->error().name()
                         );
@@ -264,7 +257,20 @@ namespace Skree {
                     no_failover[item->failover_key] = now;
                     no_failover.unlock();
 
-                    if(kv_session->cas(item->failover_key->data, item->failover_key->len, "0", 1, "1", 1)) {
+                    const auto itemIdNet = htonll(itemId);
+                    char oldFailoverValue [1 + sizeof(itemIdNet)];
+                    char newFailoverValue [1 + sizeof(itemIdNet)];
+
+                    oldFailoverValue[0] = '0';
+                    newFailoverValue[0] = '1';
+                    memcpy(oldFailoverValue + 1, &itemIdNet, sizeof(itemIdNet));
+                    memcpy(newFailoverValue + 1, &itemIdNet, sizeof(itemIdNet));
+
+                    if(kv_session->cas(
+                        item->failover_key->data, item->failover_key->len,
+                        oldFailoverValue, 1 + sizeof(itemIdNet),
+                        newFailoverValue, 1 + sizeof(itemIdNet)
+                    )) {
                         uint64_t key;
                         queue2_session->append(&key, _item->data, _item->len);
                         // Utils::cluck(3,
@@ -357,11 +363,11 @@ namespace Skree {
                 // Utils::cluck(2, "Seems like I need to failover task %llu\n", item->rid);
 
                 if(peer == nullptr) {
-                    bool should_run_replication_exec = false;
+                    bool should_run_replication_exec = true;
 
                     auto count_replicas = std::make_shared<uint32_t>(0);
                     auto acceptances = std::make_shared<uint32_t>(0);
-                    auto pending = std::make_shared<uint32_t>(0);
+                    auto rejects = std::make_shared<uint32_t>(0);
 
                     auto mutex = std::make_shared<Utils::TSpinLock>();
 
@@ -417,24 +423,19 @@ namespace Skree {
                                 Utils::TSpinLockGuard guard(*mutex);
                                 ++(*acceptances);
 
-                                if((item->peers_cnt == *count_replicas) && (*pending > 0)) {
-                                    should_run_replication_exec = false;
+                                if((*acceptances + *rejects) == *count_replicas) {
+                                    should_run_replication_exec = true;
                                 }
 
                             } else {
                                 // Utils::cluck(2, "Peer %s is found", _peer_id->data);
                                 should_run_replication_exec = false;
 
-                                {
-                                    Utils::TSpinLockGuard guard(*mutex);
-                                    ++(*pending);
-                                }
-
                                 std::shared_ptr<out_packet_i_ctx> ctx;
                                 ctx.reset(new out_packet_i_ctx {
                                     .count_replicas = count_replicas,
-                                    .pending = pending,
                                     .acceptances = acceptances,
+                                    .rejects = rejects,
                                     .mutex = mutex,
                                     .event = &event,
                                     .data = data_str,
@@ -462,8 +463,8 @@ namespace Skree {
                         std::shared_ptr<out_packet_i_ctx> ctx;
                         ctx.reset(new out_packet_i_ctx {
                             .count_replicas = count_replicas,
-                            .pending = pending,
                             .acceptances = acceptances,
+                            .rejects = rejects,
                             .mutex = mutex,
                             .event = &event,
                             .data = data_str,

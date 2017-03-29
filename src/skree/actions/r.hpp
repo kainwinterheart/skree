@@ -52,8 +52,8 @@ namespace Skree {
         std::shared_ptr<Utils::muh_str_t> peer_id;
         std::shared_ptr<Utils::muh_str_t> failover_key;
         std::shared_ptr<uint32_t> count_replicas;
-        std::shared_ptr<uint32_t> pending;
         std::shared_ptr<uint32_t> acceptances;
+        std::shared_ptr<uint32_t> rejects;
         // char* rpr; // TODO?
         std::shared_ptr<std::deque<std::shared_ptr<Utils::muh_str_t>>> rpr;
         uint64_t rid;

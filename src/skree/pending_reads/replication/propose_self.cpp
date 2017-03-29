@@ -12,10 +12,12 @@ namespace Skree {
 
                 ctx->mutex->Lock();
 
-                --(*(ctx->pending));
-
-                if(args->opcode == SKREE_META_OPCODE_K)
+                if(args->opcode == SKREE_META_OPCODE_K) {
                     ++(*(ctx->acceptances));
+
+                } else {
+                    ++(*(ctx->rejects));
+                }
 
                 continue_replication_exec(ctx);
 
@@ -30,7 +32,7 @@ namespace Skree {
 
                 ctx->mutex->Lock();
 
-                --(*(ctx->pending));
+                ++(*(ctx->rejects));
 
                 continue_replication_exec(ctx);
             }
@@ -38,7 +40,7 @@ namespace Skree {
             void ReplicationProposeSelf::continue_replication_exec(
                 std::shared_ptr<out_packet_i_ctx> ctx
             ) {
-                if(*(ctx->pending) == 0) {
+                if((*(ctx->acceptances) + *(ctx->rejects)) == *(ctx->count_replicas)) {
                     ctx->mutex->Unlock();
 
                     server.replication_exec(ctx);
