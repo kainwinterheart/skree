@@ -49,6 +49,28 @@ namespace Skree {
             bool own;
             std::shared_ptr<muh_str_t> origin; // TODO: this is shit
 
+            muh_str_t(
+                char* _data,
+                uint32_t _len,
+                bool _own
+            )
+                : data(_data)
+                , len(_len)
+                , own(_own)
+            {
+            }
+
+            muh_str_t(const muh_str_t& right) = delete;
+
+            muh_str_t(muh_str_t&& right)
+                : data(right.data)
+                , len(right.len)
+                , own(right.own)
+                , origin(std::move(right.origin))
+            {
+                right.own = false;
+            }
+
             ~muh_str_t() {
                 if(own)
                     free(data);
@@ -186,11 +208,7 @@ namespace Skree {
 
         static inline std::shared_ptr<muh_str_t> NewStr(uint32_t len) {
             auto out = std::shared_ptr<muh_str_t>();
-            out.reset(new muh_str_t {
-                .own = true,
-                .len = len,
-                .data = (char*)malloc(len)
-            });
+            out.reset(new muh_str_t((char*)malloc(len), len, true));
 
             return out;
         }

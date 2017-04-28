@@ -478,11 +478,9 @@ namespace Skree {
                 WT_ITEM value;
                 AssertOk("Failed to fetch data", OwFCursor->get_value(OwFCursor.get(), &value));
 
-                out.reset(new Utils::muh_str_t {
-                    .len = (uint32_t)value.size,
-                    .own = true,
-                    .data = (char*)malloc((uint32_t)value.size),
-                });
+                out.reset(new Utils::muh_str_t(
+                    (char*)malloc((uint32_t)value.size), (uint32_t)value.size, true
+                ));
 
                 memcpy(out->data, value.data, out->len);
 

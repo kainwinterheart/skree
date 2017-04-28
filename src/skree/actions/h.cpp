@@ -53,12 +53,9 @@ namespace Skree {
             }
 
             if(args->out->get_opcode() == SKREE_META_OPCODE_K) {
-                std::shared_ptr<Utils::muh_str_t> _peer_name;
-                _peer_name.reset(new Utils::muh_str_t {
-                    .own = true,
-                    .len = host_len,
-                    .data = strndup(host, host_len)
-                });
+                std::shared_ptr<Utils::muh_str_t> _peer_name(
+                    new Utils::muh_str_t(strndup(host, host_len), host_len, true)
+                );
 
                 client.set_peer_name(_peer_name);
                 client.set_peer_port(port);

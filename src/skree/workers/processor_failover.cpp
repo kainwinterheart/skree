@@ -47,13 +47,8 @@ namespace Skree {
                     repeat = true;
 
                 } else if(state == SKREE_META_EVENTSTATE_LOST) {
-                    std::shared_ptr<Utils::muh_str_t> _item;
-                    _item.reset(new Utils::muh_str_t {
-                        .own = false,
-                        .data = itemData,
-                        .len = itemLen,
-                        .origin = item,
-                    });
+                    std::shared_ptr<Utils::muh_str_t> _item(new Utils::muh_str_t(itemData, itemLen, false));
+                    _item->origin = item;
 
                     if(do_failover(now, event, origItemId, _item, *kv_session, *queue_session)) {
                         key_removed = true;

@@ -371,12 +371,9 @@ namespace Skree {
 
                     auto mutex = std::make_shared<Utils::TSpinLock>();
 
-                    std::shared_ptr<Utils::muh_str_t> data_str;
-                    data_str.reset(new Utils::muh_str_t {
-                        .own = false,
-                        .len = item->rin_len,
-                        .data = (char*)(item->rin) // TODO
-                    });
+                    std::shared_ptr<Utils::muh_str_t> data_str(
+                        new Utils::muh_str_t((char*)(item->rin), item->rin_len, false) // TODO: review item->rin usage
+                    );
 
                     std::shared_ptr<std::deque<std::shared_ptr<Utils::muh_str_t>>> peers;
 
@@ -480,12 +477,9 @@ namespace Skree {
 
                 } else {
                     // TODO: rin_str's type
-                    std::shared_ptr<Utils::muh_str_t> rin_str;
-                    rin_str.reset(new Utils::muh_str_t {
-                        .own = false,
-                        .len = item->rin_len,
-                        .data = (char*)(item->rin) // TODO?
-                    });
+                    std::shared_ptr<Utils::muh_str_t> rin_str(
+                        new Utils::muh_str_t((char*)(item->rin), item->rin_len, false) // TODO?: review item->rin_len usage
+                    );
 
                     std::shared_ptr<out_data_c_ctx> ctx;
                     ctx.reset(new out_data_c_ctx {

@@ -90,12 +90,9 @@ namespace Skree {
         // Debug
         {
             {
-                std::shared_ptr<Utils::muh_str_t> host;
-                host.reset(new Utils::muh_str_t {
-                    .own = false,
-                    .len = 9,
-                    .data = (char*)"127.0.0.1"
-                });
+                std::shared_ptr<Utils::muh_str_t> host(
+                    new Utils::muh_str_t((char*)"127.0.0.1", 9, false)
+                );
 
                 std::shared_ptr<peer_to_discover_t> peer;
                 peer.reset(new peer_to_discover_t {
@@ -111,12 +108,9 @@ namespace Skree {
             }
 
             {
-                std::shared_ptr<Utils::muh_str_t> host;
-                host.reset(new Utils::muh_str_t {
-                    .own = false,
-                    .len = 9,
-                    .data = (char*)"127.0.0.1"
-                });
+                std::shared_ptr<Utils::muh_str_t> host(
+                    new Utils::muh_str_t((char*)"127.0.0.1", 9, false)
+                );
 
                 std::shared_ptr<peer_to_discover_t> peer;
                 peer.reset(new peer_to_discover_t {
@@ -132,12 +126,9 @@ namespace Skree {
             }
 
             {
-                std::shared_ptr<Utils::muh_str_t> host;
-                host.reset(new Utils::muh_str_t {
-                    .own = false,
-                    .len = 9,
-                    .data = (char*)"127.0.0.1"
-                });
+                std::shared_ptr<Utils::muh_str_t> host(
+                    new Utils::muh_str_t((char*)"127.0.0.1", 9, false)
+                );
 
                 std::shared_ptr<peer_to_discover_t> peer;
                 peer.reset(new peer_to_discover_t {
@@ -168,8 +159,9 @@ namespace Skree {
         Skree::Workers::ProcessorFailover processorFailover (*this);
         processorFailover.start();
 
+        NMuhEv::TLoop loop;
+
         while(true) { // TODO
-            NMuhEv::TLoop loop;
             auto list = NMuhEv::MakeEvList(1);
 
             loop.AddEvent(NMuhEv::TEvSpec {

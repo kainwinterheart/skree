@@ -235,12 +235,9 @@ namespace Skree {
 
                     if(prev_item == peers_to_discover_end) {
                         // Utils::cluck("[discovery] fill peers_to_discover: %s:%u\n", host, port);
-                        std::shared_ptr<Utils::muh_str_t> _host;
-                        _host.reset(new Utils::muh_str_t {
-                            .own = true,
-                            .len = host_len,
-                            .data = strndup(host, host_len)
-                        });
+                        std::shared_ptr<Utils::muh_str_t> _host(
+                            new Utils::muh_str_t(strndup(host, host_len), host_len, true)
+                        );
 
                         peers_to_discover[_peer_id].reset(new peer_to_discover_t {
                             .host = _host,
@@ -458,12 +455,9 @@ namespace Skree {
                         // free(peer_name);
 
                     } else {
-                        std::shared_ptr<Utils::muh_str_t> _peer_name;
-                        _peer_name.reset(new Utils::muh_str_t {
-                            .own = true,
-                            .len = len,
-                            .data = strndup(peer_name, len)
-                        });
+                        std::shared_ptr<Utils::muh_str_t> _peer_name(
+                            new Utils::muh_str_t(strndup(peer_name, len), len, true)
+                        );
 
                         client.set_peer_name(_peer_name);
                         client.set_peer_port(_tmp);

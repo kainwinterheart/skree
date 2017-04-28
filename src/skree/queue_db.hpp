@@ -45,11 +45,9 @@ namespace Skree {
             DbWrapper::TReader::TData value;
 
             if(Reader->Read(&key, value)) {
-                out.reset(new Utils::muh_str_t {
-                    .len = (uint32_t)value.size,
-                    .own = true,
-                    .data = (char*)malloc((uint32_t)value.size),
-                });
+                out.reset(new Utils::muh_str_t(
+                    (char*)malloc((uint32_t)value.size), (uint32_t)value.size, true
+                ));
 
                 memcpy(out->data, value.data, out->len);
             }

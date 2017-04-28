@@ -69,12 +69,9 @@ namespace Skree {
                 in_pos += sizeof(len);
                 len = ntohl(len);
 
-                std::shared_ptr<Utils::muh_str_t> hostname;
-                hostname.reset(new Utils::muh_str_t {
-                    .own = true,
-                    .len = len,
-                    .data = strndup(args->data + in_pos, len)
-                });
+                std::shared_ptr<Utils::muh_str_t> hostname(
+                    new Utils::muh_str_t(strndup(args->data + in_pos, len), len, true)
+                );
 
                 in_pos += len + 1;
 
