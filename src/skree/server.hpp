@@ -16,20 +16,16 @@
 // #include "actions/w.hpp"
 // #include "actions/x.hpp"
 
-namespace Skree {
-    class Server;
-}
+// namespace Skree {
+//     class Server;
+// }
 
 #include "utils/atomic_hash_map.hpp"
 #include "utils/round_robin_vector.hpp"
-#include "utils/muhev.hpp"
-#include "client.hpp"
-#include "workers/client.hpp"
 #include "actions/e.hpp"
 #include "actions/r.hpp"
-#include "pending_reads/replication.hpp"
-#include "queue_db.hpp"
 #include "meta/states.hpp"
+#include "db_wrapper.hpp"
 
 #include <stdexcept>
 #include <functional>
@@ -38,6 +34,17 @@ namespace Skree {
 #include <utility>
 
 namespace Skree {
+    class Client;
+
+    namespace Workers {
+        class Client;
+        class ClientArgs;
+    }
+
+    namespace NMuhEv {
+        class TEvSpec;
+    };
+
     struct new_client_t {
         int fh;
         std::function<void(Client&)> cb;
@@ -72,7 +79,7 @@ namespace Skree {
     > peers_to_discover_t;
 
     typedef std::pair<
-        std::shared_ptr<Workers::Client::Args>,
+        std::shared_ptr<Workers::ClientArgs>,
         std::shared_ptr<Workers::Client>
     > ClientWorkerPair;
 

@@ -1,4 +1,7 @@
 #include "replication.hpp"
+#include "../meta/opcodes.hpp"
+#include "../server.hpp"
+#include "../client.hpp"
 
 namespace Skree {
     namespace PendingReads {

@@ -1,4 +1,7 @@
 #include "processor_failover.hpp"
+#include "../queue_db.hpp"
+#include "../server.hpp"
+#include "../meta/states.hpp"
 #include <ctime>
 #include <limits>
 

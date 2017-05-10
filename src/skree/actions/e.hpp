@@ -3,10 +3,12 @@
 #include "../utils/misc.hpp"
 
 namespace Skree {
-    struct in_packet_e_ctx;
+    // struct in_packet_e_ctx;
+    class Server;
+    class Client;
 }
 
-#include "../server.hpp"
+// #include "../server.hpp"
 #include "../meta/opcodes.hpp"
 
 namespace Skree {

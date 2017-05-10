@@ -10,6 +10,9 @@
 #include <pthread.h>
 
 namespace Skree {
+    class Server;
+    class Client;
+
     struct in_packet_r_ctx_event {
         const char* data;
         // char* id;
@@ -76,6 +79,6 @@ namespace Skree {
     }
 }
 
-#include "../server.hpp" // sorry
+// #include "../server.hpp" // sorry
 
 #endif

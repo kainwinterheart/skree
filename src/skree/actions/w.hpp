@@ -1,6 +1,6 @@
 #pragma once
 #include "../base/action.hpp"
-#include "../server.hpp"
+// #include "../server.hpp"
 // #include "../meta/opcodes.hpp"
 
 namespace Skree {

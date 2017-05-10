@@ -10,9 +10,11 @@
 #include <atomic>
 #include <execinfo.h>
 #include <stdlib.h>
+
 #ifdef SKREE_LONGMESS
 #include <cxxabi.h>
 #endif
+
 #include <string>
 #include <dlfcn.h>
 #include <stdarg.h>
@@ -24,7 +26,9 @@
 #include <pthread.h>
 #include <algorithm>
 
+#include "string.hpp"
 #include "atomic_hash_map.hpp"
+#include "events.hpp"
 
 // thank you, stackoverflow!
 #ifndef htonll
@@ -40,179 +44,8 @@
 namespace Skree {
     class Client;
     class Server;
-    class QueueDb;
 
     namespace Utils {
-        struct muh_str_t {
-            char* data;
-            uint32_t len;
-            bool own;
-            std::shared_ptr<muh_str_t> origin; // TODO: this is shit
-
-            muh_str_t(
-                char* _data,
-                uint32_t _len,
-                bool _own
-            )
-                : data(_data)
-                , len(_len)
-                , own(_own)
-            {
-            }
-
-            muh_str_t(const muh_str_t& right) = delete;
-
-            muh_str_t(muh_str_t&& right)
-                : data(right.data)
-                , len(right.len)
-                , own(right.own)
-                , origin(std::move(right.origin))
-            {
-                right.own = false;
-            }
-
-            ~muh_str_t() {
-                if(own)
-                    free(data);
-            }
-        };
-
-        struct TCharPointerComparator : public std::function<bool(
-            const char*, const char*
-        )> {
-            inline bool operator()(const char* a, const char* b) const {
-                return (strcmp(a, b) == 0);
-            }
-        };
-
-        struct TMuhStrPointerComparator : public std::function<bool(
-            std::shared_ptr<muh_str_t>, std::shared_ptr<muh_str_t>
-        )> {
-            inline bool operator()(
-                const std::shared_ptr<muh_str_t>& a,
-                const std::shared_ptr<muh_str_t>& b
-            ) const {
-                return (strcmp(a->data, b->data) == 0);
-            }
-        };
-
-        //BKDR hash algorithm
-        static inline int CharPointerHash(size_t len, const char* key) {
-            const int seed = 131; //31 131 1313 13131131313 etc//
-            uint64_t hash = 0;
-
-            for(size_t i = 0; i < len; ++i) {
-                hash = ((hash * seed) + key[i]);
-            }
-
-            return (hash & 0x7FFFFFFF);
-        }
-
-        struct TCharPointerHasher {
-            inline int operator()(const char* key) const {
-                return CharPointerHash(strlen(key), key);
-            }
-        };
-
-        struct TMuhStrPointerHasher {
-            inline int operator()(const std::shared_ptr<muh_str_t>& key) const {
-                return CharPointerHash(key->len, key->data);
-            }
-        };
-
-        typedef AtomicHashMap<
-            std::shared_ptr<muh_str_t>,
-            uint64_t,
-            Utils::TMuhStrPointerHasher,
-            Utils::TMuhStrPointerComparator
-        > failover_t;
-
-        typedef AtomicHashMap<
-            std::shared_ptr<muh_str_t>,
-            uint64_t,
-            Utils::TMuhStrPointerHasher,
-            Utils::TMuhStrPointerComparator
-        > no_failover_t;
-
-        struct skree_module_t {
-            size_t path_len;
-            char* path;
-            const void* config;
-        };
-
-        struct event_group_t {
-            size_t name_len;
-            char* name;
-            skree_module_t* module;
-        };
-
-        struct known_event_t {
-            uint32_t id_len;
-            uint32_t id_len_net;
-            char* id;
-            event_group_t* group;
-            uint32_t ttl;
-            uint32_t BatchSize;
-            QueueDb* queue;
-            QueueDb* queue2;
-            QueueDb* r_queue;
-            QueueDb* r2_queue;
-            std::atomic<uint_fast64_t> stat_num_processed;
-            std::atomic<uint_fast64_t> stat_num_failovered;
-            failover_t failover;
-            no_failover_t no_failover;
-
-            void unfailover(const std::shared_ptr<muh_str_t>& failover_key) {
-                {
-                    auto failover_end = failover.lock();
-                    auto it = failover.find(failover_key);
-
-                    if(it != failover_end)
-                        failover.erase(it);
-
-                    failover.unlock();
-                }
-
-                {
-                    auto no_failover_end = no_failover.lock();
-                    auto it = no_failover.find(failover_key);
-
-                    if(it != no_failover_end)
-                        no_failover.erase(it);
-
-                    no_failover.unlock();
-                }
-            }
-        };
-
-        typedef std::unordered_map<
-            const char*,
-            skree_module_t*,
-            TCharPointerHasher,
-            TCharPointerComparator
-        > skree_modules_t;
-
-        typedef std::unordered_map<
-            const char*,
-            event_group_t*,
-            TCharPointerHasher,
-            TCharPointerComparator
-        > event_groups_t;
-
-        typedef std::unordered_map<
-            const char*,
-            known_event_t*,
-            TCharPointerHasher,
-            TCharPointerComparator
-        > known_events_t;
-
-        static inline std::shared_ptr<muh_str_t> NewStr(uint32_t len) {
-            auto out = std::shared_ptr<muh_str_t>();
-            out.reset(new muh_str_t((char*)malloc(len), len, true));
-
-            return out;
-        }
-
         static inline std::shared_ptr<muh_str_t> make_peer_id(
             const size_t peer_name_len,
             const char* peer_name,
@@ -258,35 +91,6 @@ namespace Skree {
             } else {
                 return ntohs(((sockaddr_in6*)s_in.get())->sin6_port);
             }
-        }
-
-        static inline size_t alloc_file(const char* file, const size_t size) {
-            auto* fh = fopen(file, "w");
-
-            if(fh == nullptr) {
-                perror("open");
-                abort();
-            }
-
-            if(fchmod(fileno(fh), 0000644) == -1) {
-                perror("fchmod");
-                // abort();
-            }
-
-            if(fseek(fh, size - 1, SEEK_SET) == -1) {
-                perror("fseek");
-                abort();
-            }
-
-            if(fputc('\0', fh) == EOF) {
-                abort();
-            }
-
-            if(fclose(fh) == -1) {
-                perror("close");
-            }
-
-            return size;
         }
 
         static inline std::string longmess(int offset = 1) {

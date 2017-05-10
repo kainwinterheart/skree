@@ -4,6 +4,7 @@
 #include "../utils/misc.hpp"
 #include "../pending_reads/replication/propose_self.hpp"
 #include "../pending_reads/replication/ping_task.hpp"
+#include "../db_wrapper.hpp"
 
 #include <vector>
 #include <string>
@@ -62,4 +63,4 @@ namespace Skree {
     }
 }
 
-#include "../server.hpp" // sorry
+// #include "../server.hpp" // sorry

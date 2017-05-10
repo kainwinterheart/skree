@@ -1,4 +1,5 @@
 #include "statistics.hpp"
+#include "../server.hpp"
 
 namespace Skree {
     namespace Workers {

@@ -1,4 +1,5 @@
 #include "propose_self.hpp"
+#include "../../server.hpp"
 
 namespace Skree {
     namespace PendingReads {

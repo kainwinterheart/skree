@@ -1,6 +1,9 @@
 #include "server.hpp"
 #include "meta.hpp"
-#include <ctime>
+#include "queue_db.hpp"
+#include "client.hpp"
+
+#include "pending_reads/replication.hpp"
 
 #include "workers/synchronization.hpp"
 #include "workers/statistics.hpp"
@@ -10,6 +13,11 @@
 #include "workers/processor.hpp"
 #include "workers/processor_failover.hpp"
 #include "workers/cleanup.hpp"
+#include "workers/client.hpp"
+
+#include "utils/muhev.hpp"
+
+#include <ctime>
 
 namespace Skree {
     Server::Server(
@@ -79,7 +87,7 @@ namespace Skree {
         statistics.start();
 
         for(int i = 0; i < max_client_threads; ++i) {
-            auto args = std::make_shared<Skree::Workers::Client::Args>();
+            auto args = std::make_shared<Skree::Workers::ClientArgs>();
             auto client = std::make_shared<Skree::Workers::Client>(*this, args.get());
 
             threads.push_back(std::make_pair(args, client));

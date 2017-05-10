@@ -10,27 +10,27 @@ namespace Skree {
     struct new_client_t;
 
     namespace Workers {
+        struct ClientArgs {
+            std::queue<std::shared_ptr<new_client_t>> queue;
+            Utils::TSpinLock mutex;
+            int fds[2];
+
+            ClientArgs() {
+                if(socketpair(PF_LOCAL, SOCK_STREAM, 0, fds) == -1) {
+                    perror("socketpair");
+                    abort();
+                }
+            }
+
+            ~ClientArgs() {
+                for(int i = 0; i < 2; ++i) {
+                    close(fds[i]);
+                }
+            }
+        };
+
         class Client : public Skree::Base::Worker {
         public:
-            struct Args {
-                std::queue<std::shared_ptr<new_client_t>> queue;
-                Utils::TSpinLock mutex;
-                int fds[2];
-
-                Args() {
-                    if(socketpair(PF_LOCAL, SOCK_STREAM, 0, fds) == -1) {
-                        perror("socketpair");
-                        abort();
-                    }
-                }
-
-                ~Args() {
-                    for(int i = 0; i < 2; ++i) {
-                        close(fds[i]);
-                    }
-                }
-            };
-
             Client(Skree::Server& _server, const void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args)
             {
@@ -57,4 +57,4 @@ namespace Skree {
     }
 }
 
-#include "../server.hpp" // sorry
+// #include "../server.hpp" // sorry

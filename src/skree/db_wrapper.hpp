@@ -1,7 +1,6 @@
 #pragma once
 
 #include "utils/misc.hpp"
-#include "utils/mapped_file.hpp"
 #include <wiredtiger.h>
 #include <utility>
 // #include <pthread.h>
@@ -602,7 +601,6 @@ namespace Skree {
 
     private:
         std::shared_ptr<WT_CONNECTION> Db;
-        std::shared_ptr<Utils::MappedFile> PkFile;
 
     public:
         DbWrapper(std::string&& dbFileName);
@@ -653,11 +651,6 @@ namespace Skree {
             return NewSession(TSession::ST_QUEUE)->remove(key);
         }
 
-        uint64_t increment(uint64_t num) {
-            static_assert(sizeof(std::atomic<uint64_t>) == sizeof(uint64_t), "sizeof(std::atomic<uint64_t>) == sizeof(uint64_t)");
-            return std::atomic_fetch_add((std::atomic<uint64_t>*)PkFile->begin(), num) + num;
-        }
-
         bool cas(
             const char * kbuf,
             size_t ksiz,
@@ -680,7 +673,6 @@ namespace Skree {
         }
 
         bool synchronize() {
-            PkFile->sync();
             return true;
         }
 

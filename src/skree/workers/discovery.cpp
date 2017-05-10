@@ -2,6 +2,7 @@
 #include "../meta.hpp"
 
 #include <algorithm>
+#include <errno.h>
 
 namespace Skree {
     namespace Workers {

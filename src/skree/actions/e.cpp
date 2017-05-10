@@ -1,4 +1,7 @@
 #include "e.hpp"
+#include "../server.hpp"
+#include "../client.hpp"
+#include "../queue_db.hpp"
 
 namespace Skree {
     namespace Actions {

@@ -1,4 +1,8 @@
 #include "processor.hpp"
+#include "../queue_db.hpp"
+#include "../server.hpp"
+#include "../actions/e.hpp"
+
 #include <ctime>
 #include <limits>
 

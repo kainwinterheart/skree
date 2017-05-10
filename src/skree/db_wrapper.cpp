@@ -40,9 +40,5 @@ namespace Skree {
         });
 
         create();
-
-        dbFileName.append(".pk");
-
-        PkFile.reset(new Utils::MappedFile(dbFileName.c_str(), sizeof(uint64_t)));
     }
 }

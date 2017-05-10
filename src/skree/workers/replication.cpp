@@ -1,5 +1,9 @@
 #include "replication.hpp"
 #include <ctime>
+#include "../client.hpp"
+#include "../queue_db.hpp"
+#include "../actions/i.hpp"
+#include "../actions/c.hpp"
 
 namespace Skree {
     namespace Workers {

@@ -6,7 +6,6 @@
 #include "workers/queue_db_async_alloc.hpp"
 #include "utils/atomic_hash_map.hpp"
 #include "utils/string_sequence.hpp"
-#include "utils/mapped_file.hpp"
 
 #include <fcntl.h>
 #include <sys/mman.h>

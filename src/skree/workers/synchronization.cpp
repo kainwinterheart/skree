@@ -1,4 +1,6 @@
 #include "synchronization.hpp"
+#include "../queue_db.hpp"
+#include "../server.hpp"
 
 namespace Skree {
     namespace Workers {

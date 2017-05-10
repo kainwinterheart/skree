@@ -1,4 +1,5 @@
 #include "ping_task.hpp"
+#include "../../server.hpp"
 
 namespace Skree {
     namespace PendingReads {

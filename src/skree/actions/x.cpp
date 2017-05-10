@@ -1,4 +1,5 @@
 #include "x.hpp"
+#include "../server.hpp"
 
 namespace Skree {
     namespace Actions {

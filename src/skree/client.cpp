@@ -1,5 +1,6 @@
 #include "client.hpp"
 #include "meta.hpp"
+#include <errno.h>
 // #include "base/pending_read.hpp"
 
 namespace Skree {

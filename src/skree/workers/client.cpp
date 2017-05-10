@@ -1,5 +1,6 @@
 #include "client.hpp"
 #include "../utils/muhev.hpp"
+#include "../client.hpp"
 
 namespace Skree {
     namespace Workers {
@@ -30,7 +31,7 @@ namespace Skree {
                 ActiveClients.swap(newActiveClients);
 
                 loop.AddEvent(NMuhEv::TEvSpec {
-                    .Ident = (uintptr_t)((Args*)args)->fds[0],
+                    .Ident = (uintptr_t)((ClientArgs*)args)->fds[0],
                     .Filter = NMuhEv::MUHEV_FILTER_READ,
                     .Flags = NMuhEv::MUHEV_FLAG_NONE,
                     .Ctx = &AcceptContext
@@ -109,11 +110,11 @@ namespace Skree {
         }
 
         void Client::accept() {
-            Utils::TSpinLockGuard guard(((Args*)args)->mutex);
+            Utils::TSpinLockGuard guard(((ClientArgs*)args)->mutex);
 
-            while(!((Args*)args)->queue.empty()) {
-                auto new_client = ((Args*)args)->queue.front();
-                ((Args*)args)->queue.pop();
+            while(!((ClientArgs*)args)->queue.empty()) {
+                auto new_client = ((ClientArgs*)args)->queue.front();
+                ((ClientArgs*)args)->queue.pop();
 
                 auto client = std::make_shared<Skree::Client>(
                     new_client->fh,
