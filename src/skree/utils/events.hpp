@@ -10,6 +10,8 @@ namespace Skree {
     class QueueDb;
 
     namespace Utils {
+        class TForkManager;
+
         typedef AtomicHashMap<
             std::shared_ptr<muh_str_t>,
             uint64_t,
@@ -34,6 +36,7 @@ namespace Skree {
             size_t name_len;
             char* name;
             skree_module_t* module;
+            TForkManager* ForkManager;
         };
 
         struct known_event_t {

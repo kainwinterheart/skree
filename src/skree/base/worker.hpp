@@ -15,7 +15,7 @@ namespace Skree {
         protected:
             Skree::Server& server;
         public:
-            Worker(Skree::Server& _server, const void* _args = nullptr)
+            Worker(Skree::Server& _server, void* _args = nullptr)
                 : Skree::Base::WorkerLite(_args), server(_server) {
             }
 

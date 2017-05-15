@@ -4,6 +4,8 @@
 #include "misc.hpp"
 #include "muhev.hpp"
 
+#include <dlfcn.h>
+
 using namespace Skree::Utils;
 
 TForkManager::TShmObject::TShmObject(const uint32_t len, const TShmObject::EType type, uint64_t pid)
@@ -48,10 +50,10 @@ TForkManager::TShmObject::~TShmObject() {
     }
 }
 
-TForkManager::TForkManager(unsigned int maxWorkerCount, decltype(Cb)&& cb)
+TForkManager::TForkManager(unsigned int maxWorkerCount, skree_module_t* module)
     : MaxWorkerCount(maxWorkerCount)
     , CurrentWorkerCount(0)
-    , Cb(std::move(cb))
+    , Module(module)
 {
 }
 
@@ -74,6 +76,41 @@ void TForkManager::RespawnWorkers() {
 
         } else if (pid == 0) {
             close(fds[1]);
+
+            auto* handle = dlopen(Module->path, RTLD_NOW | RTLD_LOCAL | RTLD_FIRST);
+
+            if(!handle) {
+                Utils::cluck(1, dlerror());
+                abort();
+            }
+
+            auto* initializer = (void(*)(const void*))dlsym(handle, "init");
+
+            if(!initializer) {
+                Utils::cluck(1, dlerror());
+                abort();
+            }
+
+            auto* deinitializer = (void(*)())dlsym(handle, "destroy");
+
+            if(!deinitializer) {
+                Utils::cluck(1, dlerror());
+                abort();
+            }
+
+            if(atexit(deinitializer) == -1) {
+                perror("atexit");
+                abort();
+            }
+
+            auto* processor = (bool(*)(uint32_t, void*))dlsym(handle, "main");
+
+            if(!processor) {
+                Utils::cluck(1, dlerror());
+                abort();
+            }
+
+            initializer(Module->config);
 
             while (true) {
                 const int result = ::write(fds[0], "?", 1);
@@ -123,7 +160,12 @@ void TForkManager::RespawnWorkers() {
                 memcpy(&eventCount, *shmObject, sizeof(eventCount));
                 len += sizeof(eventCount);
 
-                // TODO: process event here
+                if(processor(eventCount, (char*)*shmObject + sizeof(eventCount))) {
+                    // TODO: handle success?
+
+                } else {
+                    // TODO: handle failure
+                }
 
                 while(true) {
                     const int result = ::write(fds[0], "!", 1);

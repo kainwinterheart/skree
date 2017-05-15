@@ -3,7 +3,6 @@
 
 #include "utils/misc.hpp"
 #include "db_wrapper.hpp"
-#include "workers/queue_db_async_alloc.hpp"
 #include "utils/atomic_hash_map.hpp"
 #include "utils/string_sequence.hpp"
 

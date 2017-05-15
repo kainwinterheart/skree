@@ -27,6 +27,8 @@
 #include "yaml-cpp/yaml.h"
 #include "src/skree/server.hpp"
 #include "src/skree/queue_db.hpp"
+#include "src/skree/utils/fork_manager.hpp"
+#include "src/skree/workers/fork_manager.hpp"
 
 static Skree::Utils::skree_modules_t skree_modules;
 static Skree::Utils::event_groups_t event_groups;
@@ -143,14 +145,16 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Known events file should contain a sequence of event groups\n");
         }
 
-        for(auto group = config.begin(); group != config.end(); ++group) {
-            if(group->Type() != YAML::NodeType::Map) {
+        for(const auto group : config) {
+            if(group.Type() != YAML::NodeType::Map) {
                 fprintf(stderr, "Each event group should be a map\n");
                 abort();
             }
 
-            const YAML::Node _name = (*group)["name"];
+            const YAML::Node _name = group["name"];
+            const YAML::Node _workersCount = group["workers_count"];
             std::string group_name;
+            uint32_t workersCount = 1;
 
             if(_name && (_name.Type() == YAML::NodeType::Scalar)) {
                 group_name = _name.as<std::string>();
@@ -160,14 +164,23 @@ int main(int argc, char** argv) {
                 abort();
             }
 
-            const YAML::Node _events = (*group)["events"];
+            if(_workersCount && (_workersCount.Type() == YAML::NodeType::Scalar)) {
+                workersCount = _workersCount.as<uint32_t>();
+            }
+
+            if(workersCount < 1) {
+                fprintf(stderr, "workers_count not specified, assuming 1\n");
+                workersCount = 1; // sane enough
+            }
+
+            const YAML::Node _events = group["events"];
 
             if(!_events || (_events.Type() != YAML::NodeType::Sequence)) {
                 fprintf(stderr, "Every event group should have an event list\n");
                 abort();
             }
 
-            Skree::Utils::event_group_t* event_group = (Skree::Utils::event_group_t*)malloc(sizeof(*event_group));
+            auto* event_group = new Skree::Utils::event_group_t();
 
             event_group->name_len = group_name.length();
 
@@ -176,7 +189,39 @@ int main(int argc, char** argv) {
             group_name_[event_group->name_len] = '\0';
 
             event_group->name = group_name_;
-            // event_group->module = skree_module; // TODO
+
+            {
+                const YAML::Node module = group["module"];
+
+                if(module.Type() != YAML::NodeType::Map) {
+                    fprintf(stderr, "Module definition should be a map\n");
+                    abort();
+                }
+
+                const YAML::Node _path = group["path"];
+                std::string path;
+
+                if(_path && (_path.Type() == YAML::NodeType::Scalar)) {
+                    path = _path.as<std::string>();
+
+                } else {
+                    fprintf(stderr, "Every module should have a path\n");
+                    abort();
+                }
+
+                event_group->module = new Skree::Utils::skree_module_t();
+                event_group->module->path_len = path.length();
+                event_group->module->config = nullptr; // TODO
+
+                char* path_ = (char*)malloc(event_group->module->path_len + 1);
+                memcpy(path_, path.c_str(), event_group->module->path_len);
+                path_[event_group->module->path_len] = '\0';
+
+                event_group->module->path = path_;
+
+                event_group->ForkManager = new Skree::Utils::TForkManager(workersCount, event_group->module);
+                (new Skree::Workers::TForkManager(event_group->ForkManager))->start(); // TODO
+            }
 
             auto it = event_groups.find(group_name_);
 
@@ -188,17 +233,17 @@ int main(int argc, char** argv) {
                 abort();
             }
 
-            for(auto event = _events.begin(); event != _events.end(); ++event) {
-                if(event->Type() != YAML::NodeType::Map) {
+            for(const auto event : _events) {
+                if(event.Type() != YAML::NodeType::Map) {
                     fprintf(stderr, "Every event should be a map\n");
                     abort();
                 }
 
-                const YAML::Node _id = (*event)["id"];
+                const YAML::Node _id = event["id"];
 
                 if(_id && (_id.Type() == YAML::NodeType::Scalar)) {
-                    const YAML::Node _ttl = (*event)["ttl"];
-                    const YAML::Node _batchSize = (*event)["batch_size"];
+                    const YAML::Node _ttl = event["ttl"];
+                    const YAML::Node _batchSize = event["batch_size"];
                     uint32_t ttl;
                     uint32_t batchSize = 1;
 

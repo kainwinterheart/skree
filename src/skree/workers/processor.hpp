@@ -12,7 +12,7 @@ namespace Skree {
     namespace Workers {
         class Processor : public Skree::Base::Worker {
         public:
-            Processor(Skree::Server& _server, const void* _args = nullptr)
+            Processor(Skree::Server& _server, void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args) {}
 
             virtual void run() override;

@@ -85,6 +85,8 @@ namespace Skree {
             // Utils::cluck(1, "processor: before read\n");
             // auto& queue = *(event.queue);
 
+            // const int id = event.group.ForkManager.WaitFreeWorker();
+
             auto queue2_session = event.queue2->kv->NewSession(DbWrapper::TSession::ST_QUEUE);
 
             // kv_session->begin_transaction();

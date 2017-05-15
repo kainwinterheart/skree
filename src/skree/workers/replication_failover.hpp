@@ -6,7 +6,7 @@ namespace Skree {
     namespace Workers {
         class ReplicationFailover : public Skree::Workers::Replication {
         public:
-            ReplicationFailover(Skree::Server& _server, const void* _args = nullptr)
+            ReplicationFailover(Skree::Server& _server, void* _args = nullptr)
                 : Skree::Workers::Replication(_server, _args) {}
         private:
 

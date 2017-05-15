@@ -9,10 +9,10 @@ namespace Skree {
     namespace Base {
         class WorkerLite {
         protected:
-            const void* args;
+            void* args;
 
         public:
-            WorkerLite(const void* _args = nullptr) : args(_args) {
+            WorkerLite(void* _args = nullptr) : args(_args) {
             }
 
             virtual void start() {

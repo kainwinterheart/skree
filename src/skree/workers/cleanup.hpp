@@ -9,7 +9,7 @@ namespace Skree {
     namespace Workers {
         class Cleanup : public Skree::Base::Worker {
         public:
-            Cleanup(Skree::Server& _server, const void* _args = nullptr)
+            Cleanup(Skree::Server& _server, void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args) {}
 
             virtual void run() override;

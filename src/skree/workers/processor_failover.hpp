@@ -6,7 +6,7 @@ namespace Skree {
     namespace Workers {
         class ProcessorFailover : public Skree::Workers::Processor {
         public:
-            ProcessorFailover(Skree::Server& _server, const void* _args = nullptr)
+            ProcessorFailover(Skree::Server& _server, void* _args = nullptr)
                 : Skree::Workers::Processor(_server, _args) {}
         private:
             virtual uint32_t process(const uint64_t& now, Utils::known_event_t& event) const override;

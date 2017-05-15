@@ -2,6 +2,7 @@
 
 #include "string.hpp"
 #include "spin_lock.hpp"
+#include "events.hpp"
 
 // #include <stdlib.h>
 #include <unistd.h>
@@ -17,8 +18,6 @@
 
 namespace Skree {
     namespace Utils {
-        class TSpinLock;
-
         class TForkManager {
         public:
             class TShmObject {
@@ -94,7 +93,7 @@ namespace Skree {
         private:
             unsigned int MaxWorkerCount;
             unsigned int CurrentWorkerCount;
-            std::function<bool(void*)> Cb;
+            skree_module_t* Module;
             std::unordered_map<int, int> Fd2Pid;
             std::vector<int> Fds;
             std::unordered_set<int> FreeWorkers;
@@ -106,7 +105,7 @@ namespace Skree {
             Utils::TSpinLock WaitersLock;
 
         public:
-            TForkManager(unsigned int maxWorkerCount, decltype(Cb)&& cb);
+            TForkManager(unsigned int maxWorkerCount, skree_module_t* module);
 
             int WaitFreeWorker();
             void FinalizeShmObject(TShmObject&& object);

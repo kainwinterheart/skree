@@ -13,7 +13,7 @@ namespace Skree {
     namespace Workers {
         class Discovery : public Skree::Base::Worker {
         public:
-            Discovery(Skree::Server& _server, const void* _args = nullptr)
+            Discovery(Skree::Server& _server, void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args) {}
 
             virtual void run() override;

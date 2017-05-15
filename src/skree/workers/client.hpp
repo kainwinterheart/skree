@@ -31,7 +31,7 @@ namespace Skree {
 
         class Client : public Skree::Base::Worker {
         public:
-            Client(Skree::Server& _server, const void* _args = nullptr)
+            Client(Skree::Server& _server, void* _args = nullptr)
                 : Skree::Base::Worker(_server, _args)
             {
                 AcceptContext = WakeupContext = '\0';
