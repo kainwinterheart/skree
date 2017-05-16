@@ -90,6 +90,54 @@ namespace Skree {
                 }
             };
 
+            class TFreeWorker {
+            private:
+                int Fd;
+                bool Used;
+                TForkManager& ForkManager;
+
+            public:
+                TFreeWorker(int fd, TForkManager& forkManager)
+                    : Fd(fd)
+                    , Used(false)
+                    , ForkManager(forkManager)
+                {
+                }
+
+                TFreeWorker(const TFreeWorker&) = delete;
+
+                TFreeWorker(TFreeWorker&& right)
+                    : Fd(right.Fd)
+                    , Used(right.Used)
+                    , ForkManager(right.ForkManager)
+                {
+                    right.Used = true;
+                }
+
+                template<typename... TArgs>
+                TShmObject GetShmObject(TArgs&&... rest) const {
+                    return TShmObject(std::forward<TArgs&&>(rest)..., ForkManager.Fd2Pid.at(Fd));
+                }
+
+                void Use() {
+                    Used = true;
+                }
+
+                ~TFreeWorker() {
+                    if(!Used) {
+                        {
+                            Utils::TSpinLockGuard guard(ForkManager.FreeWorkersLock);
+
+                            ForkManager.FreeWorkers.insert(Fd);
+                        }
+
+                        ForkManager.PingWaiter();
+                    }
+                }
+            };
+
+            friend class TFreeWorker;
+
         private:
             unsigned int MaxWorkerCount;
             unsigned int CurrentWorkerCount;
@@ -107,14 +155,9 @@ namespace Skree {
         public:
             TForkManager(unsigned int maxWorkerCount, skree_module_t* module);
 
-            int WaitFreeWorker();
+            TForkManager::TFreeWorker WaitFreeWorker();
             void FinalizeShmObject(TShmObject&& object);
             void Start();
-
-            template<typename... TArgs>
-            TShmObject GetShmObject(const int fd, TArgs&&... rest) const {
-                return TShmObject(std::forward<TArgs&&>(rest)..., Fd2Pid.at(fd));
-            }
 
         private:
             void RespawnWorkers();

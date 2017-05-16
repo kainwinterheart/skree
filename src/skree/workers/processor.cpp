@@ -2,6 +2,7 @@
 #include "../queue_db.hpp"
 #include "../server.hpp"
 #include "../actions/e.hpp"
+#include "../utils/fork_manager.hpp"
 
 #include <ctime>
 #include <limits>
@@ -85,7 +86,7 @@ namespace Skree {
             // Utils::cluck(1, "processor: before read\n");
             // auto& queue = *(event.queue);
 
-            // const int id = event.group.ForkManager.WaitFreeWorker();
+            auto&& freeWorker = event.group->ForkManager->WaitFreeWorker();
 
             auto queue2_session = event.queue2->kv->NewSession(DbWrapper::TSession::ST_QUEUE);
 
@@ -107,6 +108,7 @@ namespace Skree {
             auto& wip = server.wip;
 
             auto queue_session = event.queue->kv->NewSession(DbWrapper::TSession::ST_QUEUE);
+            uint32_t shmObjectLen = sizeof(uint32_t);
 
             for(uint32_t i = 0; i < event.BatchSize; ++i) {
                 uint64_t itemId;
@@ -139,6 +141,8 @@ namespace Skree {
                         free(failover_item);
 
                         itemsToProcess.push_back(std::make_pair(itemId, item));
+
+                        shmObjectLen += sizeof(uint32_t) + item->len;
 
                     } else {
                         // Utils::cluck(2, "db.cas() failed: %s\n", kv.error().name());
@@ -203,7 +207,33 @@ namespace Skree {
                 return itemsToFailover.size();
             }
 
-            // TODO: process event here
+            {
+                auto&& shmObject = freeWorker.GetShmObject(shmObjectLen, Utils::TForkManager::TShmObject::SHMOT_DATA);
+                char* shmObjectMem = (char*)*shmObject;
+                uint64_t pos = 0;
+
+                {
+                    const uint32_t shmObjectLenNet = htonl(shmObjectLen);
+                    memcpy(shmObjectMem + pos, &shmObjectLenNet, sizeof(shmObjectLenNet));
+                    pos += sizeof(shmObjectLenNet);
+                }
+
+                for(const auto& item : itemsToProcess) {
+                    // TODO: too much copying is going on in this method
+
+                    {
+                        const uint32_t itemLenNet = htonl(item.second->len);
+                        memcpy(shmObjectMem + pos, &itemLenNet, sizeof(itemLenNet));
+                        pos += sizeof(itemLenNet);
+                    }
+
+                    memcpy(shmObjectMem + pos, item.second->data, item.second->len);
+                    pos += item.second->len;
+                }
+
+                event.group->ForkManager->FinalizeShmObject(std::move(shmObject));
+                freeWorker.Use();
+            }
 
             queue_session->begin_transaction(); // this can fail, but I think it is not critical
 

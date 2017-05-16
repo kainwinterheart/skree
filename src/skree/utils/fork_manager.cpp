@@ -228,7 +228,7 @@ bool TForkManager::HaveShmObjectFor(const int pid) {
     return (it != ShmObjects.end());
 }
 
-int TForkManager::WaitFreeWorker() {
+TForkManager::TFreeWorker TForkManager::WaitFreeWorker() {
     NMuhEv::TLoop loop;
     int fds[2];
 
@@ -247,7 +247,7 @@ int TForkManager::WaitFreeWorker() {
 
                 FreeWorkers.erase(it);
 
-                return fd;
+                return TFreeWorker(fd, *this);
             }
         }
 
