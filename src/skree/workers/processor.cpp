@@ -213,9 +213,9 @@ namespace Skree {
                 uint64_t pos = 0;
 
                 {
-                    const uint32_t shmObjectLenNet = htonl(shmObjectLen);
-                    memcpy(shmObjectMem + pos, &shmObjectLenNet, sizeof(shmObjectLenNet));
-                    pos += sizeof(shmObjectLenNet);
+                    const uint32_t itemsToProcessSizeNet = htonl((uint32_t)itemsToProcess.size());
+                    memcpy(shmObjectMem + pos, &itemsToProcessSizeNet, sizeof(itemsToProcessSizeNet));
+                    pos += sizeof(itemsToProcessSizeNet);
                 }
 
                 for(const auto& item : itemsToProcess) {

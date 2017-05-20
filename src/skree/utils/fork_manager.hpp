@@ -36,6 +36,8 @@ namespace Skree {
                 int Pid;
 
             public:
+                TShmObject() = delete;
+
                 TShmObject(
                     const uint32_t len,
                     const TShmObject::EType type,
@@ -148,6 +150,7 @@ namespace Skree {
             Utils::TSpinLock FreeWorkersLock;
             int WakeupFds[2];
             std::unordered_map<int, TShmObject> ShmObjects;
+            std::unordered_map<int, std::shared_ptr<TShmObject>> UsedShmObjects;
             Utils::TSpinLock ShmObjectsLock;
             std::queue<int> Waiters;
             Utils::TSpinLock WaitersLock;
@@ -161,7 +164,8 @@ namespace Skree {
 
         private:
             void RespawnWorkers();
-            std::shared_ptr<TShmObject> GetShmObjectFor(const int pid, const bool erase);
+            std::shared_ptr<TShmObject> GetShmObjectFor(const int pid);
+            void EraseShmObjectFor(const int pid);
             bool HaveShmObjectFor(const int pid);
             void PingWaiter();
         };

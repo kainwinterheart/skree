@@ -7,3 +7,6 @@ contrib-build
 build/
 build
 *.bak
+*.dSYM
+*.so
+loader

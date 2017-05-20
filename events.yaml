@@ -1,7 +1,7 @@
 -
     name: Example group
     module:
-        path: /var/lib/skree/modules/perl.so
+        path: /Users/gennadiy/Yandex.Disk.localized/skree/src/modules/base/base.so
         config:
             lib:
                 - /var/www/muh_kool_project

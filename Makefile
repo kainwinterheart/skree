@@ -48,6 +48,10 @@ $(TARGET): $(OBJS)
 	$(CXX) -o $(TARGET) $(OBJS) $(LIBS) $(LDFLAGS)
 	rm -f $(OBJS)
 
+base_module:
+	# cd src/modules && $(CXX) $(CXXFLAGS) $(LDFLAGS) -fsanitize=address -lpthread -lstdc++ -ltcmalloc -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -o loader -std=c++1z loader.cpp ../skree/utils/spin_lock.cpp ../skree/utils/hashers.cpp ../skree/utils/string.cpp ../skree/utils/events.cpp ../skree/utils/fork_manager.cpp ../skree/utils/atomic_hash_map.cpp ../skree/workers/fork_manager.cpp ../skree/utils/muhev.cpp -fno-omit-frame-pointer -stdlib=libc++ -Wl,-no_pie -g
+	cd src/modules/base && $(CXX) $(CXXFLAGS) $(LDFLAGS) -Wl,-no_pie -g -lstdc++ -o base.so -shared -fPIC -std=c++1z main.cpp
+
 all: $(TARGET)
 
 clean:
