@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <utility>
 
 namespace Skree {
     namespace Utils {
@@ -27,6 +28,14 @@ namespace Skree {
         struct TCharPointerHasher {
             inline int operator()(const char* key) const {
                 return CharPointerHash(strlen(key), key);
+            }
+        };
+
+        template<typename T>
+        struct TPairHasher {
+            inline int operator()(const std::pair<T, T> pair) const {
+                std::hash<T> int_hasher;
+                return int_hasher(pair.first) ^ int_hasher(pair.second);
             }
         };
     }

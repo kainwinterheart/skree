@@ -16,6 +16,7 @@ TForkManager::TShmObject::TShmObject(const uint32_t len, const TShmObject::EType
     , Len(len)
     , Addr(nullptr)
     , Pid(pid)
+    , FinishCb([](){ Utils::cluck(1, "Call to uninitialized FinishCb [1]"); })
 {
     if(Pid == 0) {
         Pid = getpid();
@@ -81,9 +82,20 @@ TForkManager::TShmObject::~TShmObject() {
         perror("munmap");
     }
 
-    if((Fd != -1) && (shm_unlink(Name.data) == -1)) {
-        perror("shm_unlink");
+    if(Fd != -1) {
+        if(close(Fd) == -1) {
+            perror("close");
+        }
+
+        if((shm_unlink(Name.data) == -1) && (errno != ENOENT)) {
+            perror("shm_unlink");
+        }
     }
+}
+
+void TForkManager::TShmObject::ExecFinishCb() {
+    FinishCb();
+    FinishCb = [](){ Utils::cluck(1, "Call to uninitialized FinishCb [2]"); };
 }
 
 TForkManager::TForkManager(unsigned int maxWorkerCount, skree_module_t* module)
@@ -108,8 +120,7 @@ void TForkManager::RespawnWorkers() {
         if (pid > 0) {
             close(fds[0]);
 
-            Fd2Pid[fds[1]] = pid;
-            Fds.push_back(fds[1]);
+            Workers.insert(std::make_pair(fds[1], pid));
             // Utils::cluck(1, "spawned new worker");
 
         } else if (pid == 0) {
@@ -273,11 +284,34 @@ std::shared_ptr<TForkManager::TShmObject> TForkManager::GetShmObjectFor(const in
     }
 }
 
-void TForkManager::EraseShmObjectFor(const int pid) {
+std::shared_ptr<TForkManager::TShmObject> TForkManager::EraseShmObjectFor(const int pid) {
     Utils::TSpinLockGuard guard(ShmObjectsLock);
 
-    ShmObjects.erase(pid);
-    UsedShmObjects.erase(pid);
+    {
+        const auto& it = UsedShmObjects.find(pid);
+
+        if(it != UsedShmObjects.end()) {
+            const auto out = it->second;
+
+            UsedShmObjects.erase(it);
+
+            return out;
+        }
+    }
+
+    {
+        auto&& it = ShmObjects.find(pid);
+
+        if(it != ShmObjects.end()) {
+            std::shared_ptr<TShmObject> out(new TShmObject(std::move(it->second)));
+
+            ShmObjects.erase(it);
+
+            return out;
+        }
+    }
+
+    return std::shared_ptr<TShmObject>();
 }
 
 bool TForkManager::HaveShmObjectFor(const int pid) {
@@ -306,11 +340,13 @@ TForkManager::TFreeWorker TForkManager::WaitFreeWorker() {
             if(!FreeWorkers.empty()) {
                 // Utils::cluck(1, "WaitFreeWorker loop: 2");
                 const auto& it = FreeWorkers.begin();
-                const int fd = *it;
+                const auto pair = *it;
 
                 FreeWorkers.erase(it);
 
-                return TFreeWorker(fd, *this);
+                if(Workers.count(pair) > 0) { // the race is here, but it probably is ok
+                    return TFreeWorker(pair.first, pair.second, *this);
+                }
             }
         }
 
@@ -406,7 +442,7 @@ void TForkManager::Start() {
     while(true) {
         RespawnWorkers();
 
-        auto list = NMuhEv::MakeEvList(Fds.size() + 1);
+        auto list = NMuhEv::MakeEvList(Workers.size() + 1);
 
         loop.AddEvent(NMuhEv::TEvSpec {
             .Ident = (uintptr_t)WakeupFds[0],
@@ -415,13 +451,15 @@ void TForkManager::Start() {
             .Ctx = nullptr
         }, list);
 
-        for(auto fd : Fds) {
+        for(const auto& pair : Workers) {
+            const auto fd = pair.first;
+            const auto pid = pair.second;
             bool isFree = false;
 
-            if(FreeWorkers.count(fd) > 0) {
+            if(FreeWorkers.count(pair) > 0) {
                 Utils::TSpinLockGuard guard(FreeWorkersLock);
 
-                if(FreeWorkers.count(fd) > 0) {
+                if(FreeWorkers.count(pair) > 0) {
                     isFree = true;
                 }
             }
@@ -434,10 +472,10 @@ void TForkManager::Start() {
             loop.AddEvent(NMuhEv::TEvSpec {
                 .Ident = (uintptr_t)fd,
                 .Filter = (NMuhEv::MUHEV_FILTER_READ | (
-                    HaveShmObjectFor(Fd2Pid[fd]) ? NMuhEv::MUHEV_FILTER_WRITE : 0
+                    HaveShmObjectFor(pid) ? NMuhEv::MUHEV_FILTER_WRITE : 0
                 )),
                 .Flags = NMuhEv::MUHEV_FLAG_NONE,
-                .Ctx = nullptr
+                .Ctx = (void*)pid
             }, list);
         }
 
@@ -482,15 +520,15 @@ void TForkManager::Start() {
                         (event.Flags & NMuhEv::MUHEV_FLAG_EOF)
                         || (event.Flags & NMuhEv::MUHEV_FLAG_ERROR)
                     ) {
-                        EraseShmObjectFor(Fd2Pid[event.Ident]); // local failover will requeue lost events
+                        EraseShmObjectFor((uintptr_t)event.Ctx); // local failover will requeue lost events
                         --CurrentWorkerCount;
-                        Fd2Pid.erase(event.Ident);
+                        Workers.erase(std::make_pair((int)event.Ident, (uintptr_t)event.Ctx));
                         close(event.Ident);
                         continue;
                     }
 
                     if(event.Filter & NMuhEv::MUHEV_FILTER_WRITE) {
-                        auto&& object = GetShmObjectFor(Fd2Pid.at(event.Ident));
+                        auto&& object = GetShmObjectFor((uintptr_t)event.Ctx);
 
                         if(object) {
                             size_t len = 0;
@@ -545,14 +583,17 @@ void TForkManager::Start() {
                             if(msg[i] == '?') {
                                 {
                                     Utils::TSpinLockGuard guard(FreeWorkersLock);
-                                    FreeWorkers.insert(event.Ident);
+                                    FreeWorkers.insert(std::make_pair((int)event.Ident, (uintptr_t)event.Ctx));
                                 }
 
                                 PingWaiter();
 
                             } else if(msg[i] == '!') {
-                                EraseShmObjectFor(Fd2Pid[event.Ident]);
-                                // TODO: finalize event processing here
+                                auto object = EraseShmObjectFor((uintptr_t)event.Ctx);
+
+                                if(object) {
+                                    object->ExecFinishCb();
+                                }
 
                             } else {
                                 Utils::cluck(2, "Got invalid opcode from worker: 0x%.2X", msg[i]);

@@ -211,6 +211,7 @@ namespace Skree {
                 auto&& shmObject = freeWorker.GetShmObject(shmObjectLen, Utils::TForkManager::TShmObject::SHMOT_DATA);
                 char* shmObjectMem = (char*)*shmObject;
                 uint64_t pos = 0;
+                auto itemIds = std::make_shared<std::vector<uint64_t>>();
 
                 {
                     const uint32_t itemsToProcessSizeNet = htonl((uint32_t)itemsToProcess.size());
@@ -229,7 +230,35 @@ namespace Skree {
 
                     memcpy(shmObjectMem + pos, item.second->data, item.second->len);
                     pos += item.second->len;
+
+                    itemIds->push_back(item.first);
                 }
+
+                auto kv = event.queue->kv;
+
+                shmObject.SetFinishCb([itemIds, kv, this](){
+                    auto& wip = server.wip;
+                    auto kv_session = kv->NewSession(DbWrapper::TSession::ST_KV);
+
+                    for(const auto& itemId : *itemIds) {
+                        auto itemIdNet = htonll(itemId);
+
+                        if(!kv_session->remove((char*)&itemIdNet, sizeof(itemIdNet))) {
+                            // TODO: what should really happen here?
+                            // commit = (kv.check((char*)&itemIdNet, sizeof(itemIdNet)) <= 0);
+                        }
+
+                        auto wip_end = wip.lock();
+                        auto it = wip.find(itemId);
+
+                        if(it != wip_end) {
+                            // TODO: this should not be done here unconditionally
+                            wip.erase(it);
+                        }
+
+                        wip.unlock();
+                    }
+                });
 
                 event.group->ForkManager->FinalizeShmObject(std::move(shmObject));
                 freeWorker.Use();
@@ -238,31 +267,13 @@ namespace Skree {
             queue_session->begin_transaction(); // this can fail, but I think it is not critical
 
             for(const auto& item : itemsToProcess) {
-                auto itemId = item.first;
-                auto itemIdNet = htonll(itemId);
-
-                if(!kv_session->remove((char*)&itemIdNet, sizeof(itemIdNet))) {
-                    // TODO: what should really happen here?
-                    // commit = (kv.check((char*)&itemIdNet, sizeof(itemIdNet)) <= 0);
-                }
-
-                if(/*commit && */!queue_session->remove(item.first /*itemId*/)) {
+                if(/*commit && */!queue_session->remove(item.first)) {
                     // TODO: what should really happen here?
                     // commit = (kv.check(itemId) <= 0);
                 }
-
-                auto wip_end = wip.lock();
-                auto it = wip.find(itemId);
-
-                if(it != wip_end) {
-                    // TODO: this should not be done here unconditionally
-                    wip.erase(it);
-                }
-
-                wip.unlock();
             }
 
-            queue_session->end_transaction(true);
+            queue_session->end_transaction(true); // this can fail too
             // Utils::cluck(2, "processor: after sync_read_offset(), rid: %llu\n", item->id);
 
             // if(commit) {
