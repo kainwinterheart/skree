@@ -158,12 +158,13 @@ namespace Skree {
             unsigned int CurrentWorkerCount;
             skree_module_t* Module;
             std::unordered_set<std::pair<int, int>, TPairHasher<int>> Workers;
+            Utils::TSpinLock WorkersLock;
             std::unordered_set<std::pair<int, int>, TPairHasher<int>> FreeWorkers;
             Utils::TSpinLock FreeWorkersLock;
             int WakeupFds[2];
             std::unordered_map<int, TShmObject> ShmObjects;
             std::unordered_map<int, std::shared_ptr<TShmObject>> UsedShmObjects;
-            Utils::TSpinLock ShmObjectsLock;
+            // Utils::TSpinLock ShmObjectsLock; // all operations with ShmObjects and UsedShmObjects are done by single thread
             std::queue<int> Waiters;
             Utils::TSpinLock WaitersLock;
 

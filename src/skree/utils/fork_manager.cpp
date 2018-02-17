@@ -120,6 +120,7 @@ void TForkManager::RespawnWorkers() {
         if (pid > 0) {
             close(fds[0]);
 
+            Utils::TSpinLockGuard guard(WorkersLock);
             Workers.insert(std::make_pair(fds[1], pid));
             // Utils::cluck(1, "spawned new worker");
 
@@ -153,12 +154,6 @@ void TForkManager::RespawnWorkers() {
                 Utils::cluck(1, dlerror());
                 abort();
             }
-
-            if(atexit(deinitializer) == -1) {
-                // Utils::cluck(1, "fork: 7");
-                perror("atexit");
-                abort();
-            }
             // Utils::cluck(1, "fork: 8");
 
             auto* processor = (bool(*)(uint32_t, void*))dlsym(handle, "run");
@@ -168,12 +163,30 @@ void TForkManager::RespawnWorkers() {
                 Utils::cluck(1, dlerror());
                 abort();
             }
+
+            auto* readyCheck = (bool(*)())dlsym(handle, "ready");
+
+            if(!readyCheck) {
+                // Utils::cluck(1, "fork: 9");
+                Utils::cluck(1, dlerror());
+                abort();
+            }
+
+            if(atexit(deinitializer) == -1) {
+                // Utils::cluck(1, "fork: 7");
+                perror("atexit");
+                abort();
+            }
             // Utils::cluck(1, "fork: 10");
 
             initializer(Module->config);
             // Utils::cluck(1, "fork: 11");
 
-            while (true) {
+            while(true) {
+                if(!readyCheck()) {
+                    continue;
+                }
+
                 const int result = ::write(fds[0], "?", 1);
 
                 if (
@@ -267,7 +280,7 @@ void TForkManager::RespawnWorkers() {
 }
 
 std::shared_ptr<TForkManager::TShmObject> TForkManager::GetShmObjectFor(const int pid) {
-    Utils::TSpinLockGuard guard(ShmObjectsLock);
+    // Utils::TSpinLockGuard guard(ShmObjectsLock);
 
     const auto& it = ShmObjects.find(pid);
 
@@ -285,7 +298,7 @@ std::shared_ptr<TForkManager::TShmObject> TForkManager::GetShmObjectFor(const in
 }
 
 std::shared_ptr<TForkManager::TShmObject> TForkManager::EraseShmObjectFor(const int pid) {
-    Utils::TSpinLockGuard guard(ShmObjectsLock);
+    // Utils::TSpinLockGuard guard(ShmObjectsLock);
 
     {
         const auto& it = UsedShmObjects.find(pid);
@@ -315,7 +328,7 @@ std::shared_ptr<TForkManager::TShmObject> TForkManager::EraseShmObjectFor(const 
 }
 
 bool TForkManager::HaveShmObjectFor(const int pid) {
-    Utils::TSpinLockGuard guard(ShmObjectsLock);
+    // Utils::TSpinLockGuard guard(ShmObjectsLock);
 
     const auto& it = ShmObjects.find(pid);
 
@@ -343,6 +356,8 @@ TForkManager::TFreeWorker TForkManager::WaitFreeWorker() {
                 const auto pair = *it;
 
                 FreeWorkers.erase(it);
+
+                Utils::TSpinLockGuard guard(WorkersLock);
 
                 if(Workers.count(pair) > 0) { // the race is here, but it probably is ok
                     return TFreeWorker(pair.first, pair.second, *this);
@@ -522,7 +537,12 @@ void TForkManager::Start() {
                     ) {
                         EraseShmObjectFor((uintptr_t)event.Ctx); // local failover will requeue lost events
                         --CurrentWorkerCount;
-                        Workers.erase(std::make_pair((int)event.Ident, (uintptr_t)event.Ctx));
+
+                        {
+                            Utils::TSpinLockGuard guard(WorkersLock);
+                            Workers.erase(std::make_pair((int)event.Ident, (uintptr_t)event.Ctx));
+                        }
+
                         close(event.Ident);
                         continue;
                     }
