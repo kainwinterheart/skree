@@ -1,23 +1,26 @@
-CXX = $(HOME)/llvm/llvm_cmake_build/bin/clang++
+LLVM_DIR = $(HOME)/workspace/llvm/llvm_cmake_build
+CLANG_VERSION = 7.0.0
+
+CXX = $(LLVM_DIR)/bin/clang++
 
 MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
 INCLUDE_FLAGS := -nostdinc \
--I$(HOME)/llvm/llvm_cmake_build/lib/clang/5.0.0/include/ \
--I$(HOME)/llvm/llvm_cmake_build/include \
--I$(HOME)/llvm/llvm_cmake_build/include/c++/v1 \
+-I$(LLVM_DIR)/lib/clang/$(CLANG_VERSION)/include/ \
+-I$(LLVM_DIR)/include \
+-I$(LLVM_DIR)/include/c++/v1 \
 -I/usr/local/include/ \
 -I$(MAKEFILE_DIR)/contrib-build/usr/local/include \
 -I$(MAKEFILE_DIR)/contrib-build/usr/include \
 -I$(MAKEFILE_DIR)/contrib-build/include \
--I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.11.sdk/usr/include
+-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include
 
 LIBRARY_FLAGS := -L/usr/local/lib \
 -L$(MAKEFILE_DIR)/contrib-build/usr/local/lib \
 -L$(MAKEFILE_DIR)/contrib-build/usr/lib \
 -L$(MAKEFILE_DIR)/contrib-build/lib \
--L$(HOME)/llvm/llvm_cmake_build/lib \
--L$(HOME)/llvm/llvm_cmake_build/lib/clang/5.0.0/lib/darwin
+-L$(LLVM_DIR)/lib \
+-L$(LLVM_DIR)/lib/clang/$(CLANG_VERSION)/lib/darwin
 
 CXXFLAGS = $(INCLUDE_FLAGS) \
 -std=c++1z -Wno-expansion-to-defined \
