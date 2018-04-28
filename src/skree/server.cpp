@@ -18,6 +18,7 @@
 #include "utils/muhev.hpp"
 
 #include <ctime>
+#include <random>
 
 namespace Skree {
     Server::Server(
@@ -482,9 +483,13 @@ namespace Skree {
 
             if(candidate_peer_ids->size() > 1) {
                 // TODO
-                std::random_shuffle(
+                thread_local static std::random_device rd;
+                thread_local static std::mt19937 g(rd());
+
+                std::shuffle(
                     candidate_peer_ids->begin(),
-                    candidate_peer_ids->end()
+                    candidate_peer_ids->end(),
+                    g
                 );
             }
 

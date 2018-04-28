@@ -416,7 +416,7 @@ void TForkManager::FinalizeShmObject(TShmObject&& object) {
     }
 
     {
-        Utils::TSpinLockGuard guard(ShmObjectsLock);
+        //Utils::TSpinLockGuard guard(ShmObjectsLock);
 
         ShmObjects.insert_or_assign(object.GetPid(), std::move(object));
     }
