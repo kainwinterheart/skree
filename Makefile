@@ -1,7 +1,8 @@
-LLVM_DIR = $(HOME)/workspace/llvm/llvm_cmake_build
-CLANG_VERSION = 7.0.0
+LLVM_DIR := $(HOME)/workspace/llvm/llvm_cmake_build
+CLANG_VERSION := 7.0.0
 
-CXX = $(LLVM_DIR)/bin/clang++
+CC := $(LLVM_DIR)/bin/clang
+CXX := $(LLVM_DIR)/bin/clang++
 
 MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
@@ -22,10 +23,14 @@ LIBRARY_FLAGS := -L/usr/local/lib \
 -L$(LLVM_DIR)/lib \
 -L$(LLVM_DIR)/lib/clang/$(CLANG_VERSION)/lib/darwin
 
-CXXFLAGS = $(INCLUDE_FLAGS) \
--std=c++1z -Wno-expansion-to-defined \
+CFLAGS := $(INCLUDE_FLAGS) -Wno-expansion-to-defined -Wno-gnu-include-next -Wno-macro-redefined
+
+CXXFLAGS_GENERAL := $(CFLAGS) \
+-g -fno-omit-frame-pointer -stdlib=libc++
+
+CXXFLAGS := $(CXXFLAGS_GENERAL) \
+-std=c++1z \
 -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free \
--g -fno-omit-frame-pointer -stdlib=libc++ \
 # -DSKREE_LONGMESS \
 # -DSKREE_DBWRAPPER_DEBUG \
 # -fstack-protector-all \
@@ -70,23 +75,42 @@ contrib: contrib_yaml_cpp contrib_gperftools contrib_wiredtiger
 
 contrib_yaml_cpp:
 	mkdir -p contrib-build
-	cd contrib/yaml-cpp && cmake . \
-	&& make -j 16 && make DESTDIR=$(MAKEFILE_DIR)/contrib-build install
+	cd contrib/yaml-cpp && \
+	CC="$(CC)" \
+	CXX="$(CXX)" \
+	CFLAGS="$(CFLAGS)" \
+	CXXFLAGS="$(CXXFLAGS)" \
+	LDFLAGS="$(LIBRARY_FLAGS)" \
+    cmake \
+        -DCC="$(CC)" \
+        -DCXX="$(CXX)" \
+        -DCFLAGS="$(CFLAGS)" \
+        -DCXXFLAGS="$(CXXFLAGS)" \
+        -DLDFLAGS="$(LIBRARY_FLAGS)" \
+        . \
+	&& make -j 16 && make DESTDIR="$(MAKEFILE_DIR)/contrib-build" install
 
 contrib_gperftools:
 	mkdir -p contrib-build
 	cd contrib/gperftools && ./autogen.sh && \
-	./configure --prefix=$(MAKEFILE_DIR)/contrib-build \
+	CC="$(CC)" \
+	CXX="$(CXX)" \
+	CFLAGS="$(CFLAGS)" \
+	CXXFLAGS="$(CXXFLAGS_GENERAL)" \
+	LDFLAGS="$(LIBRARY_FLAGS)" \
+	./configure --prefix="$(MAKEFILE_DIR)/contrib-build" \
 	&& make -j 16 && make install
 
 contrib_wiredtiger:
 	mkdir -p contrib-build
 	cd contrib/wiredtiger && ./autogen.sh && \
-	CC="${HOME}/llvm/llvm_cmake_build/bin/clang" \
-	CFLAGS="$(INCLUDE_FLAGS) -Wno-expansion-to-defined" \
+	CC="$(CC)" \
+	CXX="$(CXX)" \
+	CFLAGS="$(CFLAGS)" \
+	CXXFLAGS="$(CXXFLAGS)" \
 	LDFLAGS="$(LIBRARY_FLAGS)" \
 	./configure \
-		--prefix=$(MAKEFILE_DIR)/contrib-build \
+		--prefix="$(MAKEFILE_DIR)/contrib-build" \
 		--enable-verbose \
 		--enable-tcmalloc \
 		--with-spinlock=gcc \
@@ -96,8 +120,8 @@ clean_contrib: clean_contrib_yaml_cpp clean_contrib_gperftools clean_contrib_wir
 	rm -rf contrib-build
 
 clean_contrib_yaml_cpp:
-	cd contrib/yaml-cpp && make DESTDIR=$(MAKEFILE_DIR)/contrib-build uninstall ||:
-	cd contrib/yaml-cpp && make DESTDIR=$(MAKEFILE_DIR)/contrib-build clean ||:
+	cd contrib/yaml-cpp && make DESTDIR="$(MAKEFILE_DIR)/contrib-build" uninstall ||:
+	cd contrib/yaml-cpp && make DESTDIR="$(MAKEFILE_DIR)/contrib-build" clean ||:
 	rm contrib/yaml-cpp/CMakeCache.txt ||:
 
 clean_contrib_gperftools:
